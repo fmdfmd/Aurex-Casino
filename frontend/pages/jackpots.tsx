@@ -130,10 +130,10 @@ export default function JackpotsPage() {
       <div className="min-h-screen bg-aurex-obsidian-900">
         <Header />
 
-        <main className="pt-20 pb-12">
+        <main className="pb-12">
           {/* Hero Section with Background */}
           <section 
-            className="relative overflow-hidden h-96 md:h-[500px] flex items-center justify-center"
+            className="relative overflow-hidden h-[450px] md:h-[550px] flex items-center justify-center pt-20"
             style={{
               backgroundImage: 'url(/images/jackpots-bg.jpg)',
               backgroundSize: 'cover',
@@ -141,7 +141,7 @@ export default function JackpotsPage() {
             }}
           >
             {/* Dark overlay */}
-            <div className="absolute inset-0 bg-gradient-to-b from-black/60 via-black/40 to-aurex-obsidian-900"></div>
+            <div className="absolute inset-0 bg-gradient-to-b from-black/50 via-black/30 to-aurex-obsidian-900"></div>
 
             <div className="relative z-10 max-w-7xl mx-auto px-4 text-center">
               {/* Header */}
