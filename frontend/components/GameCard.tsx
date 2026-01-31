@@ -15,11 +15,12 @@ interface Game {
   isHot?: boolean;
   jackpot?: number;
   popularity?: number;
+  mode?: 'demo' | 'real';
 }
 
 interface GameCardProps {
   game: Game;
-  onPlay?: (game: Game) => void;
+  onPlay?: (game: Game & { mode?: 'demo' | 'real' }) => void;
   onFavorite?: (game: Game) => void;
   isFavorite?: boolean;
   showRTP?: boolean;
