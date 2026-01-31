@@ -8,4 +8,4 @@ cmds = ['npm install']
 cmds = ['echo "Build complete"']
 
 [start]
-cmd = 'npm run setup && npm start'
+cmd = 'npm start'

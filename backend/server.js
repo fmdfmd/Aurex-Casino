@@ -136,7 +136,16 @@ app.use('/api/vault', vaultRoutes);
 // Game callback routes (специфический путь для callback от провайдера)
 app.use('/api/callback', gameCallbackRoutes);
 
-// Health check
+// Health check (Railway needs /health without /api)
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime()
+  });
+});
+
+// Health check (with /api for compatibility)
 app.get('/api/health', (req, res) => {
   res.json({ 
     status: 'OK', 
@@ -161,9 +170,27 @@ app.use('*', (req, res) => {
 
 const PORT = process.env.PORT || 6000;
 
+// Auto-run migrations in production (async, doesn't block server start)
+async function runProductionSetup() {
+  if (process.env.NODE_ENV === 'production' && process.env.DATABASE_URL) {
+    try {
+      console.log('🔄 Running database setup...');
+      const { execSync } = require('child_process');
+      execSync('npm run migrate', { stdio: 'inherit' });
+      execSync('npm run seed', { stdio: 'inherit' });
+      console.log('✅ Database setup complete');
+    } catch (error) {
+      console.log('⚠️ Database setup error (might be already initialized):', error.message);
+    }
+  }
+}
+
 server.listen(PORT, () => {
   console.log(`🚀 AUREX Empire server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  
+  // Run setup after server is listening (non-blocking)
+  setTimeout(() => runProductionSetup(), 1000);
 });
 
 module.exports = app;
