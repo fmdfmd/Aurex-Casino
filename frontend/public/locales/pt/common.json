@@ -358,7 +358,8 @@
     "yesterday": "Ontem",
     "week": "Semana",
     "month": "Mês",
-    "needHelp": "Precisa de ajuda?"
+    "needHelp": "Precisa de ajuda?",
+    "serverError": "Ошибка сервера"
   },
   "vip": {
     "title": "Níveis do Império",

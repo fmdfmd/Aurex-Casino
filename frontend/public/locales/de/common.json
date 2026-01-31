@@ -360,7 +360,8 @@
     "yesterday": "Gestern",
     "week": "Woche",
     "month": "Monat",
-    "needHelp": "Brauchen Sie Hilfe?"
+    "needHelp": "Brauchen Sie Hilfe?",
+    "serverError": "Ошибка сервера"
   },
   "vip": {
     "title": "Imperium-Stufen",

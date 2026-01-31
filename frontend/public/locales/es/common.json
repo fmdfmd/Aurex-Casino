@@ -360,7 +360,8 @@
     "yesterday": "Ayer",
     "week": "Semana",
     "month": "Mes",
-    "needHelp": "¿Necesitas ayuda?"
+    "needHelp": "¿Necesitas ayuda?",
+    "serverError": "Ошибка сервера"
   },
   "vip": {
     "title": "Niveles del Imperio",
