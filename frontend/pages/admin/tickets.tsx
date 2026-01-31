@@ -103,11 +103,12 @@ export default function AdminTicketsPage() {
   };
 
   const filteredTickets = (tickets || []).filter(t => {
+    if (!t) return false;
     const matchesSearch = 
-      t.id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      t.subject.toLowerCase().includes(searchTerm.toLowerCase());
+      (t.id || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+      (t.subject || '').toLowerCase().includes(searchTerm.toLowerCase());
     const matchesStatus = statusFilter === 'all' || t.status === statusFilter;
     const matchesPriority = priorityFilter === 'all' || t.priority === priorityFilter;
     return matchesSearch && matchesStatus && matchesPriority;
@@ -134,10 +135,10 @@ export default function AdminTicketsPage() {
   };
 
   const stats = {
-    open: (tickets || []).filter(t => t.status === 'open').length,
-    pending: (tickets || []).filter(t => t.status === 'pending').length,
-    urgent: (tickets || []).filter(t => t.priority === 'urgent' && t.status !== 'closed').length,
-    today: (tickets || []).filter(t => t.createdAt.startsWith(new Date().toISOString().split('T')[0])).length,
+    open: (tickets || []).filter(t => t?.status === 'open').length,
+    pending: (tickets || []).filter(t => t?.status === 'pending').length,
+    urgent: (tickets || []).filter(t => t?.priority === 'urgent' && t?.status !== 'closed').length,
+    today: (tickets || []).filter(t => t?.createdAt && t.createdAt.startsWith(new Date().toISOString().split('T')[0])).length,
   };
 
   return (
