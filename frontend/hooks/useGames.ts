@@ -211,7 +211,7 @@ export const useGameProvidersQuery = () => {
         return { data: { providers: [] } };
       }
       
-      const providers = [...new Set(gamesData.data.games.map((game: any) => game.provider))]
+      const providers = Array.from(new Set(gamesData.data.games.map((game: any) => game.provider)))
         .filter(Boolean)
         .sort();
       
