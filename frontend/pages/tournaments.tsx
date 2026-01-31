@@ -311,7 +311,7 @@ export default function TournamentsPage() {
         <div className="min-h-screen bg-aurex-obsidian-900 pt-12 pb-12">
           <div className="max-w-7xl mx-auto px-4">
             {/* Stats Cards */}
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-6 mb-12 -mt-8">
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4 mb-12 -mt-8">
               {stats.map((stat, index) => (
                 <motion.div
                   key={stat.label}
@@ -320,14 +320,12 @@ export default function TournamentsPage() {
                   transition={{ delay: index * 0.1 }}
                   className="relative group"
                 >
-                  <div className="absolute inset-0 bg-gradient-to-r opacity-0 group-hover:opacity-100 transition-opacity blur-xl" 
-                       style={{ background: `linear-gradient(to right, var(--tw-gradient-stops))` }}></div>
-                  <div className={`relative p-4 sm:p-6 bg-gradient-to-br ${stat.gradient} rounded-2xl shadow-lg`}>
-                    <div className="flex items-center space-x-3 sm:space-x-4 text-white">
-                      {stat.icon}
-                      <div>
-                        <div className="text-2xl sm:text-3xl font-black">{stat.value}</div>
-                        <div className="text-xs sm:text-sm opacity-80">{stat.label}</div>
+                  <div className={`relative p-4 sm:p-6 bg-gradient-to-br ${stat.gradient} rounded-2xl shadow-lg h-full min-h-[100px] sm:min-h-[120px] flex flex-col justify-center`}>
+                    <div className="flex items-center gap-3 text-white">
+                      <div className="flex-shrink-0">{stat.icon}</div>
+                      <div className="min-w-0">
+                        <div className="text-xl sm:text-2xl md:text-3xl font-black truncate">{stat.value}</div>
+                        <div className="text-[10px] sm:text-xs opacity-80 leading-tight">{stat.label}</div>
                       </div>
                     </div>
                   </div>
