@@ -219,7 +219,7 @@ export default function Header() {
               animate={{ opacity: 1, y: 0 }}
               exit={{ opacity: 0, y: -20 }}
               transition={{ duration: 0.2 }}
-              className="lg:hidden fixed inset-0 top-16 bg-black/98 backdrop-blur-xl z-[99999] overflow-y-auto"
+              className="lg:hidden fixed left-0 right-0 top-16 bottom-0 bg-aurex-obsidian-900 backdrop-blur-xl z-[99999] overflow-y-auto"
               style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
             >
               <nav className="p-4 space-y-2">
