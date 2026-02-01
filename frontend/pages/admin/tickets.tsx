@@ -19,6 +19,13 @@ import AuthGuard from '../../components/AuthGuard';
 import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
+interface TicketMessage {
+  id: number;
+  sender: 'user' | 'support';
+  text: string;
+  createdAt: string;
+}
+
 interface Ticket {
   id: string;
   odid: string;
@@ -26,12 +33,11 @@ interface Ticket {
   email: string;
   category: string;
   subject: string;
-  message: string;
   priority: 'low' | 'normal' | 'high' | 'urgent';
   status: 'open' | 'pending' | 'resolved' | 'closed';
   createdAt: string;
   updatedAt: string;
-  messages: number;
+  messages: TicketMessage[];
   assignedTo?: string;
 }
 
@@ -128,7 +134,12 @@ export default function AdminTicketsPage() {
     // In production, this would send to API
     setTickets(prev => prev.map(t => 
       t.id === selectedTicket.id 
-        ? { ...t, messages: t.messages + 1, status: 'pending', updatedAt: new Date().toISOString() } 
+        ? { 
+            ...t, 
+            messages: [...t.messages, { id: t.messages.length + 1, sender: 'support' as const, text: replyMessage, createdAt: new Date().toISOString() }], 
+            status: 'pending', 
+            updatedAt: new Date().toISOString() 
+          } 
         : t
     ));
     setReplyMessage('');
@@ -250,7 +261,7 @@ export default function AdminTicketsPage() {
                         <div className="text-white font-medium mb-1">{ticket.subject}</div>
                         <div className="flex items-center justify-between text-xs text-aurex-platinum-500">
                           <span>{ticket.username} • {getCategoryLabel(ticket.category)}</span>
-                          <span>{ticket.messages} сообщ.</span>
+                          <span>{ticket.messages?.length || 0} сообщ.</span>
                         </div>
                       </div>
                     ))
@@ -285,7 +296,7 @@ export default function AdminTicketsPage() {
                         <div className="text-xs text-aurex-platinum-500">{selectedTicket.odid} • {selectedTicket.email}</div>
                       </div>
                     </div>
-                    <div className="text-sm text-aurex-platinum-400">{selectedTicket.message}</div>
+                    <div className="text-sm text-aurex-platinum-400">{selectedTicket.messages?.[0]?.text || 'Нет сообщений'}</div>
                     <div className="text-xs text-aurex-platinum-500 mt-2">
                       Создан: {selectedTicket.createdAt}
                     </div>
