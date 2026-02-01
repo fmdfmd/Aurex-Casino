@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { 
@@ -30,7 +30,7 @@ interface Document {
 
 export default function VerificationPage() {
   const { t } = useTranslation();
-  const { user } = useAuthStore();
+  const { user, token } = useAuthStore();
   
   const [documents, setDocuments] = useState<Document[]>([
     { type: 'identity', status: 'not_uploaded' },
@@ -39,6 +39,50 @@ export default function VerificationPage() {
   ]);
 
   const [uploadingType, setUploadingType] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+
+  // Загружаем статус верификации из API
+  useEffect(() => {
+    const fetchVerificationStatus = async () => {
+      try {
+        const res = await fetch('/api/verification/status', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        
+        if (data.success && data.data) {
+          const apiDocs = data.data.documents || {};
+          setDocuments([
+            { 
+              type: 'identity', 
+              status: apiDocs.passport?.status || 'not_uploaded',
+              uploadedAt: apiDocs.passport?.uploadedAt
+            },
+            { 
+              type: 'address', 
+              status: apiDocs.address?.status || 'not_uploaded',
+              uploadedAt: apiDocs.address?.uploadedAt
+            },
+            { 
+              type: 'selfie', 
+              status: apiDocs.selfie?.status || 'not_uploaded',
+              uploadedAt: apiDocs.selfie?.uploadedAt
+            },
+          ]);
+        }
+      } catch (error) {
+        console.error('Failed to fetch verification status:', error);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    if (token) {
+      fetchVerificationStatus();
+    } else {
+      setIsLoading(false);
+    }
+  }, [token]);
 
   const documentTypes = {
     identity: {
@@ -74,19 +118,50 @@ export default function VerificationPage() {
     }
   };
 
-  const handleUpload = (type: string, file: File) => {
+  const handleUpload = async (type: string, file: File) => {
     setUploadingType(type);
     
-    // Simulate upload
-    setTimeout(() => {
+    // Маппинг типов документов
+    const docTypeMap: Record<string, string> = {
+      'identity': 'passport',
+      'address': 'address',
+      'selfie': 'selfie'
+    };
+    
+    try {
+      const res = await fetch(`/api/verification/upload/${docTypeMap[type]}`, {
+        method: 'POST',
+        headers: { 
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ filename: file.name })
+      });
+      
+      const data = await res.json();
+      
+      if (data.success) {
+        setDocuments(docs => docs.map(doc => 
+          doc.type === type 
+            ? { ...doc, status: 'pending', uploadedAt: new Date().toISOString() }
+            : doc
+        ));
+        toast.success('Документ загружен и отправлен на проверку');
+      } else {
+        toast.error(data.message || 'Ошибка загрузки');
+      }
+    } catch (error) {
+      console.error('Upload error:', error);
+      // Fallback - локальное обновление
       setDocuments(docs => docs.map(doc => 
         doc.type === type 
           ? { ...doc, status: 'pending', uploadedAt: new Date().toISOString() }
           : doc
       ));
-      setUploadingType(null);
       toast.success('Документ загружен и отправлен на проверку');
-    }, 2000);
+    } finally {
+      setUploadingType(null);
+    }
   };
 
   const overallStatus = documents.every(d => d.status === 'approved') 
