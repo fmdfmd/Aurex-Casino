@@ -344,22 +344,49 @@ export default function AdminVerificationPage() {
                     </div>
                   </div>
 
-                  {/* Document Preview Placeholder */}
+                  {/* Document Preview */}
                   <div className="bg-aurex-obsidian-900 rounded-xl p-8 text-center mb-6">
-                    <FileText className="w-16 h-16 mx-auto mb-4 text-aurex-platinum-600" />
+                    {selectedRequest.fileUrl ? (
+                      <img 
+                        src={`/api${selectedRequest.fileUrl}`}
+                        alt={selectedRequest.documentName}
+                        className="max-w-full max-h-64 mx-auto mb-4 rounded-lg object-contain"
+                        onError={(e) => {
+                          e.currentTarget.style.display = 'none';
+                          e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                      />
+                    ) : null}
+                    <div className={selectedRequest.fileUrl ? 'hidden' : ''}>
+                      <FileText className="w-16 h-16 mx-auto mb-4 text-aurex-platinum-600" />
+                    </div>
                     <div className="text-white font-medium mb-2">{selectedRequest.documentName}</div>
                     <button 
-                      onClick={() => {
+                      onClick={async () => {
                         if (selectedRequest.fileUrl) {
-                          const link = document.createElement('a');
-                          link.href = selectedRequest.fileUrl;
-                          link.download = selectedRequest.documentName || 'document';
-                          link.target = '_blank';
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
+                          try {
+                            const response = await fetch(`/api${selectedRequest.fileUrl}`, {
+                              headers: { Authorization: `Bearer ${token}` }
+                            });
+                            if (response.ok) {
+                              const blob = await response.blob();
+                              const url = window.URL.createObjectURL(blob);
+                              const link = document.createElement('a');
+                              link.href = url;
+                              link.download = selectedRequest.documentName || 'document';
+                              document.body.appendChild(link);
+                              link.click();
+                              document.body.removeChild(link);
+                              window.URL.revokeObjectURL(url);
+                            } else {
+                              toast.error('Не удалось скачать файл');
+                            }
+                          } catch (error) {
+                            console.error('Download error:', error);
+                            toast.error('Ошибка скачивания');
+                          }
                         } else {
-                          toast.error('Файл документа недоступен (тестовые данные)');
+                          toast.error('Файл документа недоступен');
                         }
                       }}
                       className="flex items-center space-x-2 mx-auto px-4 py-2 bg-aurex-gold-500 text-aurex-obsidian-900 font-bold rounded-lg hover:bg-aurex-gold-400 transition-colors"

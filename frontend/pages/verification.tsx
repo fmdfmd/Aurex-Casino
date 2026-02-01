@@ -129,13 +129,17 @@ export default function VerificationPage() {
     };
     
     try {
+      // Используем FormData для реальной загрузки файла
+      const formData = new FormData();
+      formData.append('file', file);
+      
       const res = await fetch(`/api/verification/upload/${docTypeMap[type]}`, {
         method: 'POST',
         headers: { 
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${token}`
+          // НЕ указываем Content-Type - браузер сам добавит multipart/form-data с boundary
         },
-        body: JSON.stringify({ filename: file.name })
+        body: formData
       });
       
       const data = await res.json();

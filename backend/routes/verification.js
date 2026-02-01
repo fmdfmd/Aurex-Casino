@@ -1,12 +1,47 @@
 const express = require('express');
 const router = express.Router();
+const multer = require('multer');
+const path = require('path');
+const fs = require('fs');
 const { auth, adminAuth } = require('../middleware/auth');
+
+// Создаём папку uploads если её нет
+const uploadsDir = path.join(__dirname, '../uploads/verification');
+if (!fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
+}
+
+// Настройка multer для загрузки файлов
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => {
+    cb(null, uploadsDir);
+  },
+  filename: (req, file, cb) => {
+    const userId = req.user?.id || 'unknown';
+    const docType = req.params.docType || 'doc';
+    const ext = path.extname(file.originalname) || '.jpg';
+    const filename = `${docType}_${userId}_${Date.now()}${ext}`;
+    cb(null, filename);
+  }
+});
+
+const upload = multer({
+  storage,
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+  fileFilter: (req, file, cb) => {
+    const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
+    if (allowedTypes.includes(file.mimetype)) {
+      cb(null, true);
+    } else {
+      cb(new Error('Неподдерживаемый формат файла. Используйте JPG, PNG, GIF, WEBP или PDF.'));
+    }
+  }
+});
 
 // In-memory хранилище верификаций
 let verifications = [
   {
     id: 'VER-001',
-    odid: 'AUREX-000001',
     odid: 'AUREX-000001',
     userId: '1',
     username: 'testuser',
@@ -31,7 +66,6 @@ let verifications = [
   },
   {
     id: 'VER-002',
-    odid: 'AUREX-000002',
     odid: 'AUREX-000002',
     userId: '2',
     username: 'cryptofan',
@@ -115,28 +149,98 @@ router.post('/start', auth, async (req, res) => {
   }
 });
 
-// Загрузить документ (имитация)
-router.post('/upload/:docType', auth, async (req, res) => {
+// Загрузить документ (реальная загрузка файла)
+router.post('/upload/:docType', auth, upload.single('file'), async (req, res) => {
   try {
-    const verification = verifications.find(v => v.odid === req.user.odid || v.userId === req.user.id);
-    
-    if (!verification) {
-      return res.status(404).json({ success: false, message: 'Сначала начните верификацию' });
-    }
-    
     const { docType } = req.params;
     if (!['passport', 'selfie', 'address'].includes(docType)) {
       return res.status(400).json({ success: false, message: 'Неверный тип документа' });
     }
+
+    let verification = verifications.find(v => v.odid === req.user.odid || v.userId === req.user.id);
     
-    verification.documents[docType] = {
-      uploaded: true,
-      status: 'pending',
-      url: `/uploads/${docType}_${req.user.id}.jpg`,
-      uploadedAt: new Date().toISOString(),
-    };
+    // Автоматически создаём верификацию если нет
+    if (!verification) {
+      verification = {
+        id: `VER-${String(Date.now()).slice(-6)}`,
+        odid: req.user.odid || `AUREX-${String(req.user.id).padStart(6, '0')}`,
+        userId: req.user.id,
+        username: req.user.username,
+        email: req.user.email,
+        status: 'pending',
+        level: 0,
+        documents: {
+          passport: { uploaded: false, status: 'not_uploaded' },
+          selfie: { uploaded: false, status: 'not_uploaded' },
+          address: { uploaded: false, status: 'not_uploaded' },
+        },
+        personalInfo: {},
+        submittedAt: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+      };
+      verifications.push(verification);
+    }
+
+    // Если файл загружен через multer
+    if (req.file) {
+      verification.documents[docType] = {
+        uploaded: true,
+        status: 'pending',
+        url: `/uploads/verification/${req.file.filename}`,
+        filename: req.file.filename,
+        originalName: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype,
+        uploadedAt: new Date().toISOString(),
+      };
+    } else if (req.body.fileData) {
+      // Base64 загрузка (альтернатива)
+      const base64Data = req.body.fileData.replace(/^data:image\/\w+;base64,/, '');
+      const ext = req.body.fileData.includes('png') ? '.png' : '.jpg';
+      const filename = `${docType}_${req.user.id}_${Date.now()}${ext}`;
+      const filepath = path.join(uploadsDir, filename);
+      
+      fs.writeFileSync(filepath, base64Data, 'base64');
+      
+      verification.documents[docType] = {
+        uploaded: true,
+        status: 'pending',
+        url: `/uploads/verification/${filename}`,
+        filename: filename,
+        originalName: req.body.filename || `${docType}${ext}`,
+        uploadedAt: new Date().toISOString(),
+      };
+    } else {
+      // Имитация загрузки (для совместимости)
+      const filename = `${docType}_${req.user.id}_${Date.now()}.jpg`;
+      verification.documents[docType] = {
+        uploaded: true,
+        status: 'pending',
+        url: `/uploads/verification/${filename}`,
+        filename: filename,
+        originalName: req.body.filename || `${docType}.jpg`,
+        uploadedAt: new Date().toISOString(),
+      };
+    }
     
     res.json({ success: true, message: 'Документ загружен', data: verification });
+  } catch (error) {
+    console.error('Upload error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Скачать документ (для админов)
+router.get('/download/:filename', adminAuth, async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filepath = path.join(uploadsDir, filename);
+    
+    if (!fs.existsSync(filepath)) {
+      return res.status(404).json({ success: false, message: 'Файл не найден' });
+    }
+    
+    res.download(filepath, filename);
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }

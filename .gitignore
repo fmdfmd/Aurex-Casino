@@ -55,6 +55,10 @@ tmp/
 *.sublime-project
 *.sublime-workspace
 
+# Uploads (user files)
+uploads/
+backend/uploads/
+
 # Misc
 .vercel
 .railway
