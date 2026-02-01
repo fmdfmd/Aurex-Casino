@@ -48,7 +48,9 @@ router.get('/bonuses', auth, async (req, res) => {
 
     // If no bonuses, create some default ones for the user
     if (userBonuses.length === 0 && !status) {
-      const defaultBonuses = createDefaultBonuses(req.user.id);
+      const user = await User.findById(req.user.id);
+      const vipLevel = user?.vipLevel || 0;
+      const defaultBonuses = createDefaultBonuses(req.user.id, vipLevel);
       global.tempVaultBonuses.push(...defaultBonuses);
       userBonuses = defaultBonuses;
     }
@@ -112,10 +114,13 @@ router.post('/activate/:bonusId', auth, async (req, res) => {
 });
 
 // Helper: Create default bonuses for new users
-function createDefaultBonuses(userId) {
+function createDefaultBonuses(userId, vipLevel = 0) {
   const now = new Date();
   const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
   const monthFromNow = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+
+  // VIP бонус разблокирован для VIP 3+ (Gold и выше)
+  const isVipUnlocked = vipLevel >= 3;
 
   return [
     {
@@ -159,8 +164,8 @@ function createDefaultBonuses(userId) {
       valueAmount: 5000,
       icon: '👑',
       expiresAt: monthFromNow.toISOString(),
-      isLocked: true,
-      unlockCondition: 'Достигните VIP уровня Gold',
+      isLocked: !isVipUnlocked,
+      unlockCondition: isVipUnlocked ? undefined : 'Достигните VIP уровня Gold (3+)',
       status: 'active',
       createdAt: now.toISOString()
     }
