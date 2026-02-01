@@ -648,16 +648,16 @@ router.get('/promotions', async (req, res) => {
 
 global.paymentMethodsConfig = global.paymentMethodsConfig || {
   crypto: [
-    { id: 'btc', name: 'Bitcoin', icon: '₿', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '10-30 мин' },
-    { id: 'eth', name: 'Ethereum', icon: 'Ξ', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '5-15 мин' },
-    { id: 'usdt', name: 'USDT TRC20', icon: '₮', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '1-5 мин' },
-    { id: 'ltc', name: 'Litecoin', icon: 'Ł', minDeposit: 500, maxDeposit: 5000000, minWithdraw: 1000, maxWithdraw: 2000000, processingTime: '5-15 мин' }
+    { id: 'btc', name: 'Bitcoin', icon: '₿', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '10-30 мин', fee: 0 },
+    { id: 'eth', name: 'Ethereum', icon: 'Ξ', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '5-15 мин', fee: 0 },
+    { id: 'usdt', name: 'USDT TRC20', icon: '₮', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, maxWithdraw: 5000000, processingTime: '1-5 мин', fee: 0 },
+    { id: 'ltc', name: 'Litecoin', icon: 'Ł', minDeposit: 500, maxDeposit: 5000000, minWithdraw: 1000, maxWithdraw: 2000000, processingTime: '5-15 мин', fee: 0 }
   ],
   fiat: [
-    { id: 'card', name: 'Visa/Mastercard', icon: '💳', minDeposit: 1000, maxDeposit: 500000, minWithdraw: 2000, maxWithdraw: 300000, processingTime: '1-24 часа' },
-    { id: 'sbp', name: 'СБП', icon: '🏦', minDeposit: 500, maxDeposit: 300000, minWithdraw: 1000, maxWithdraw: 200000, processingTime: 'Мгновенно' },
-    { id: 'qiwi', name: 'QIWI', icon: '🥝', minDeposit: 500, maxDeposit: 200000, minWithdraw: 1000, maxWithdraw: 150000, processingTime: '1-12 часов' },
-    { id: 'yoomoney', name: 'ЮMoney', icon: '💰', minDeposit: 500, maxDeposit: 200000, minWithdraw: 1000, maxWithdraw: 150000, processingTime: '1-24 часа' }
+    { id: 'card', name: 'Visa/Mastercard', icon: '💳', minDeposit: 1000, maxDeposit: 500000, minWithdraw: 2000, maxWithdraw: 300000, processingTime: '1-24 часа', fee: 2 },
+    { id: 'sbp', name: 'СБП', icon: '⚡', minDeposit: 500, maxDeposit: 300000, minWithdraw: 1000, maxWithdraw: 200000, processingTime: 'Мгновенно', fee: 0 },
+    { id: 'qiwi', name: 'QIWI', icon: '🟢', minDeposit: 500, maxDeposit: 200000, minWithdraw: 1000, maxWithdraw: 150000, processingTime: '1-12 часов', fee: 3 },
+    { id: 'yoomoney', name: 'ЮMoney', icon: '🟣', minDeposit: 500, maxDeposit: 200000, minWithdraw: 1000, maxWithdraw: 150000, processingTime: '1-24 часа', fee: 3 }
   ]
 };
 
