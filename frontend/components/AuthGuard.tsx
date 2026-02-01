@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
-import { Crown, Lock, LogIn, UserPlus } from 'lucide-react';
+import { Crown, Lock, LogIn, UserPlus, Home } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useAuthStore } from '../store/authStore';
@@ -117,6 +117,14 @@ export default function AuthGuard({ children, requireAdmin = false }: AuthGuardP
               >
                 <UserPlus className="w-5 h-5" />
                 <span>Создать аккаунт</span>
+              </Link>
+
+              <Link
+                href="/"
+                className="flex items-center justify-center space-x-2 w-full py-3 text-aurex-platinum-400 hover:text-aurex-gold-500 transition-all"
+              >
+                <Home className="w-4 h-4" />
+                <span>На главную</span>
               </Link>
             </div>
 
