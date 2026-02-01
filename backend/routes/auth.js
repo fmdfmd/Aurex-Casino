@@ -1,10 +1,120 @@
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
-const { User } = require('../models/temp-models');
 const config = require('../config/config');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
+
+// Determine which database to use
+const usePostgres = !!process.env.DATABASE_URL;
+let pool, User;
+
+if (usePostgres) {
+  pool = require('../config/database');
+  console.log('🐘 Auth using PostgreSQL');
+} else {
+  User = require('../models/temp-models').User;
+  console.log('📦 Auth using in-memory storage');
+}
+
+// PostgreSQL User helpers
+const PGUser = {
+  async findOne(query) {
+    if (!usePostgres) return User.findOne(query);
+    try {
+      if (query.email) {
+        const result = await pool.query('SELECT * FROM users WHERE email = $1', [query.email]);
+        return result.rows[0] || null;
+      }
+      if (query.username) {
+        const result = await pool.query('SELECT * FROM users WHERE username = $1', [query.username]);
+        return result.rows[0] || null;
+      }
+      if (query.$or) {
+        const email = query.$or.find(q => q.email)?.email;
+        const username = query.$or.find(q => q.username)?.username;
+        const result = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
+        return result.rows[0] || null;
+      }
+      if (query.referralCode) {
+        const result = await pool.query('SELECT * FROM users WHERE referral_code = $1', [query.referralCode]);
+        return result.rows[0] || null;
+      }
+      return null;
+    } catch (e) { console.error('PGUser.findOne error:', e); return null; }
+  },
+  async findById(id) {
+    if (!usePostgres) return User.findById(id);
+    try {
+      const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
+      return result.rows[0] || null;
+    } catch (e) { console.error('PGUser.findById error:', e); return null; }
+  },
+  async create(data) {
+    if (!usePostgres) return User.create(data);
+    try {
+      const hashedPassword = await bcrypt.hash(data.password, 12);
+      const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
+      const referralCode = `REF-${data.username.toUpperCase().slice(0, 6)}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+      const result = await pool.query(
+        `INSERT INTO users (odid, username, email, password, referral_code, balance, bonus_balance, vip_level, is_active)
+         VALUES ($1, $2, $3, $4, $5, 1000, 500, 1, true) RETURNING *`,
+        [odid, data.username, data.email, hashedPassword, referralCode]
+      );
+      const user = result.rows[0];
+      user._id = user.id;
+      user.comparePassword = async (pwd) => bcrypt.compare(pwd, user.password);
+      user.save = async () => user;
+      return user;
+    } catch (e) { console.error('PGUser.create error:', e); throw e; }
+  },
+  async comparePassword(user, pwd) {
+    if (user.comparePassword) return user.comparePassword(pwd);
+    return bcrypt.compare(pwd, user.password);
+  },
+  async updateById(id, updates) {
+    if (!usePostgres) {
+      const user = await User.findById(id);
+      if (user) { Object.assign(user, updates); await user.save(); }
+      return user;
+    }
+    try {
+      const result = await pool.query(
+        'UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
+        [id]
+      );
+      return result.rows[0] || null;
+    } catch (e) { console.error('PGUser.updateById error:', e); return null; }
+  }
+};
+
+// Format user for response
+const formatUser = (user) => {
+  if (!user) return null;
+  const id = user._id || user.id;
+  return {
+    id,
+    odid: user.odid || `AUREX-${String(id).padStart(6, '0')}`,
+    username: user.username,
+    email: user.email,
+    firstName: user.firstName || user.first_name,
+    lastName: user.lastName || user.last_name,
+    balance: user.balance || { RUB: parseFloat(user.balance) || 0 },
+    bonusBalance: parseFloat(user.bonusBalance || user.bonus_balance) || 0,
+    vipLevel: user.vipLevel || user.vip_level || 1,
+    vipPoints: user.vipPoints || user.vip_points || 0,
+    isVerified: user.isVerified || user.is_verified || false,
+    isAdmin: user.isAdmin || user.is_admin || false,
+    role: (user.isAdmin || user.is_admin) ? 'admin' : (user.role || 'user'),
+    referralCode: user.referralCode || user.referral_code,
+    depositCount: user.depositCount || user.deposit_count || 0,
+    usedBonuses: user.usedBonuses || user.used_bonuses || {},
+    wager: user.wager || { required: 0, completed: 0, active: false },
+    lastLogin: user.lastLogin || user.last_login,
+    createdAt: user.createdAt || user.created_at
+  };
+};
 
 // Generate JWT token
 const generateToken = (userId) => {
@@ -51,9 +161,7 @@ router.post('/register', [
     const { username, email, password, firstName, lastName, referralCode } = req.body;
 
     // Check if user already exists
-    const existingUser = await User.findOne({
-      $or: [{ email }, { username }]
-    });
+    const existingUser = await PGUser.findOne({ $or: [{ email }, { username }] });
 
     if (existingUser) {
       return res.status(400).json({
@@ -62,71 +170,17 @@ router.post('/register', [
       });
     }
 
-    // Find referrer if referral code provided
-    let referrer = null;
-    if (referralCode) {
-      referrer = await User.findOne({ referralCode: referralCode });
-    }
-
-    // Create new user with temp-models compatible structure
-    const userData = {
-      username,
-      email,
-      password,
-      firstName,
-      lastName,
-      ipAddress: req.ip,
-      userAgent: req.get('User-Agent')
-    };
-    
-    const user = await User.create(userData);
-    
-    // Set referrer if exists (for temp-models)
-    if (referrer && user.referral) {
-      user.referral.referredBy = referrer._id;
-    } else if (referrer) {
-      user.referredBy = referrer._id;
-    }
-    
-    // Update referrer stats if exists
-    if (referrer) {
-      if (referrer.referral) {
-        referrer.referral.referralCount = (referrer.referral.referralCount || 0) + 1;
-      } else {
-        referrer.referralCount = (referrer.referralCount || 0) + 1;
-      }
-      if (typeof referrer.save === 'function') {
-        await referrer.save();
-      } else {
-        await User.findByIdAndUpdate(referrer._id, referrer);
-      }
-    }
-
-    // Give welcome bonus
-    user.balance.RUB = 1000; // 1000 RUB welcome bonus
-    user.bonusBalance = 500; // 500 RUB bonus balance
-
-    await user.save();
+    // Create new user
+    const user = await PGUser.create({ username, email, password, firstName, lastName });
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user._id || user.id);
 
     res.status(201).json({
       success: true,
       message: 'Registration successful',
       data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          balance: user.balance,
-          bonusBalance: user.bonusBalance,
-          referralCode: user.referralCode,
-          vipLevel: user.vipLevel,
-          isVerified: user.isVerified
-        },
+        user: formatUser(user),
         token
       }
     });
@@ -167,9 +221,9 @@ router.post('/login', [
     }
 
     // Поиск пользователя по email ИЛИ username
-    let user = await User.findOne({ email: loginValue });
+    let user = await PGUser.findOne({ email: loginValue });
     if (!user) {
-      user = await User.findOne({ username: loginValue });
+      user = await PGUser.findOne({ username: loginValue });
     }
 
     if (!user) {
@@ -180,7 +234,7 @@ router.post('/login', [
     }
 
     // Check password
-    const isPasswordValid = await user.comparePassword(password);
+    const isPasswordValid = await PGUser.comparePassword(user, password);
     if (!isPasswordValid) {
       return res.status(401).json({
         success: false,
@@ -189,51 +243,24 @@ router.post('/login', [
     }
 
     // Check if user is active
-    if (!user.isActive) {
+    if (user.isActive === false || user.is_active === false) {
       return res.status(401).json({
         success: false,
         error: 'Аккаунт деактивирован'
       });
     }
 
-    // Update last login info
-    user.lastLogin = new Date();
-    user.ipAddress = req.ip;
-    user.userAgent = req.get('User-Agent');
-    await user.save();
+    // Update last login
+    await PGUser.updateById(user._id || user.id, { lastLogin: new Date() });
 
     // Generate token
-    const token = generateToken(user._id);
+    const token = generateToken(user._id || user.id);
 
     res.json({
       success: true,
       message: 'Login successful',
       data: {
-        user: {
-          id: user._id,
-          odid: user.odid || `AUREX-${String(user._id).padStart(6, '0')}`,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          balance: user.balance || 0,
-          bonusBalance: user.bonusBalance || 0,
-          vipLevel: user.vipLevel || 1,
-          vipPoints: user.vipPoints || 0,
-          isVerified: user.isVerified || false,
-          isAdmin: user.isAdmin || false,
-          role: user.isAdmin ? 'admin' : (user.role || 'user'),
-          lastLogin: user.lastLogin,
-          depositCount: user.depositCount || 0,
-          usedBonuses: user.usedBonuses || {
-            firstDeposit: false,
-            secondDeposit: false,
-            thirdDeposit: false,
-            fourthDeposit: false
-          },
-          wager: user.wager || { required: 0, completed: 0, active: false },
-          referral: user.referral || { code: '', referredBy: null, referralCount: 0, referralEarnings: 0 }
-        },
+        user: formatUser(user),
         token
       }
     });
@@ -249,7 +276,7 @@ router.post('/login', [
 // Get current user
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id).select('-password');
+    const user = await PGUser.findById(req.user.id);
     
     if (!user) {
       return res.status(404).json({
@@ -261,33 +288,7 @@ router.get('/me', auth, async (req, res) => {
     res.json({
       success: true,
       data: {
-        user: {
-          id: user._id,
-          odid: user.odid || `AUREX-${String(user._id).padStart(6, '0')}`,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: user.fullName,
-          avatar: user.avatar,
-          balance: user.balance,
-          bonusBalance: user.bonusBalance,
-          totalBalanceRUB: user.totalBalanceRUB,
-          vipLevel: user.vipLevel,
-          isVerified: user.isVerified,
-          isAdmin: user.isAdmin,
-          referralCode: user.referralCode,
-          totalDeposited: user.totalDeposited,
-          totalWithdrawn: user.totalWithdrawn,
-          gamesPlayed: user.gamesPlayed,
-          totalWagered: user.totalWagered,
-          depositCount: user.depositCount || 0,
-          usedBonuses: user.usedBonuses || {},
-          wager: user.wager,
-          settings: user.settings,
-          lastLogin: user.lastLogin,
-          createdAt: user.createdAt
-        }
+        user: formatUser(user)
       }
     });
   } catch (error) {
@@ -333,7 +334,7 @@ router.put('/profile', auth, [
     }
 
     const updates = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await PGUser.findById(req.user.id);
 
     if (!user) {
       return res.status(404).json({
@@ -402,7 +403,7 @@ router.put('/change-password', auth, [
     }
 
     const { currentPassword, newPassword } = req.body;
-    const user = await User.findById(req.user.id);
+    const user = await PGUser.findById(req.user.id);
 
     if (!user) {
       return res.status(404).json({
@@ -412,7 +413,7 @@ router.put('/change-password', auth, [
     }
 
     // Verify current password
-    const isCurrentPasswordValid = await user.comparePassword(currentPassword);
+    const isCurrentPasswordValid = await PGUser.comparePassword(user, currentPassword);
     if (!isCurrentPasswordValid) {
       return res.status(400).json({
         success: false,
@@ -440,16 +441,16 @@ router.put('/change-password', auth, [
 // Refresh token
 router.post('/refresh', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await PGUser.findById(req.user.id);
     
-    if (!user || !user.isActive) {
+    if (!user || user.isActive === false || user.is_active === false) {
       return res.status(401).json({
         success: false,
         error: 'Invalid token'
       });
     }
 
-    const token = generateToken(user._id);
+    const token = generateToken(user._id || user.id);
 
     res.json({
       success: true,
@@ -460,31 +461,6 @@ router.post('/refresh', auth, async (req, res) => {
     res.status(500).json({
       success: false,
       error: 'Failed to refresh token'
-    });
-  }
-});
-
-// Get current user
-router.get('/me', auth, async (req, res) => {
-  try {
-    const userResult = User.findById(req.user.id);
-    const user = await userResult.select('-password');
-    if (!user || !user.isActive) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    res.json({
-      success: true,
-      data: { user }
-    });
-  } catch (error) {
-    console.error('Get user error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get user data'
     });
   }
 });

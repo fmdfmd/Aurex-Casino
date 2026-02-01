@@ -146,6 +146,46 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- Promocodes table
+CREATE TABLE IF NOT EXISTS promocodes (
+  id SERIAL PRIMARY KEY,
+  code VARCHAR(100) UNIQUE NOT NULL,
+  type VARCHAR(50) NOT NULL, -- deposit_bonus, freespins, bonus, cashback
+  value DECIMAL(15, 2) NOT NULL,
+  value_type VARCHAR(20) DEFAULT 'percent', -- percent, fixed
+  max_bonus DECIMAL(15, 2),
+  min_deposit DECIMAL(15, 2),
+  wager INTEGER DEFAULT 35,
+  usage_limit INTEGER DEFAULT 1000,
+  used_count INTEGER DEFAULT 0,
+  is_active BOOLEAN DEFAULT TRUE,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Promocode usages table
+CREATE TABLE IF NOT EXISTS promocode_usages (
+  id SERIAL PRIMARY KEY,
+  promocode_id INTEGER REFERENCES promocodes(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  activated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(promocode_id, user_id)
+);
+
+-- Verifications table
+CREATE TABLE IF NOT EXISTS verifications (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  status VARCHAR(50) DEFAULT 'pending', -- pending, approved, rejected
+  level INTEGER DEFAULT 0,
+  documents JSONB DEFAULT '{}',
+  personal_info JSONB DEFAULT '{}',
+  rejection_reason TEXT,
+  submitted_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  reviewed_at TIMESTAMP,
+  reviewed_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
 -- Create indexes for better performance
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
