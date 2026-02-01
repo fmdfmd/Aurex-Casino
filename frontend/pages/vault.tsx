@@ -37,6 +37,10 @@ interface VaultBonus {
   unlockCondition?: string;
   wagerRequired?: number;
   wagerCompleted?: number;
+  status?: 'available' | 'activated' | 'used';
+  gradient?: string;
+  valueAmount?: number;
+  activatedAt?: string;
 }
 
 interface VaultStats {
