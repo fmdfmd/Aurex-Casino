@@ -14,6 +14,7 @@ yarn.lock
 /frontend/out/
 /frontend/build/
 /backend/dist/
+*.tsbuildinfo
 
 # Logs
 *.log
