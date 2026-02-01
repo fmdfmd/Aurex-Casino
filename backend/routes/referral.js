@@ -1,42 +1,47 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
-const { User } = require('../models/temp-models');
 
-// ============ USER ROUTES ============
-
-// Получить реферальную статистику
+// Получить реферальную статистику пользователя
 router.get('/stats', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+    // Получаем данные пользователя
+    const userResult = await pool.query(
+      'SELECT referral_code, referral_earnings FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
     }
     
-    const odid = user.odid || `AUREX-${String(user._id).slice(-6).toUpperCase()}`;
+    const user = userResult.rows[0];
     
-    // Get referral data (support both structures)
-    const referralData = user.referral || {};
-    const totalEarnings = referralData.referralEarnings || user.referralEarnings || 0;
-    const referralCount = referralData.referralCount || user.referralCount || 0;
-    const referralCode = referralData.code || user.referralCode || `REF-${odid}`;
+    // Считаем рефералов
+    const refResult = await pool.query(`
+      SELECT 
+        COUNT(*) as total_referrals,
+        COUNT(*) FILTER (WHERE deposit_count > 0) as active_referrals
+      FROM users
+      WHERE referred_by = $1
+    `, [req.user.id]);
     
-    const stats = {
-      odid,
-      referralCode: referralCode,
-      referralLink: `https://aurex.io/?ref=${referralCode}`,
-      totalReferrals: referralCount,
-      activeReferrals: 0, // Simplified for temp-models
-      totalEarnings,
-      thisMonthEarnings: totalEarnings,
-      availableWithdraw: totalEarnings,
-      pendingEarnings: 0,
-      tier: getTier(referralCount),
-      commission: getCommission(referralCount),
-    };
+    const refStats = refResult.rows[0];
     
-    res.json({ success: true, data: stats });
+    res.json({
+      success: true,
+      data: {
+        referralCode: user.referral_code,
+        referralLink: `https://aurex.casino/register?ref=${user.referral_code}`,
+        totalReferrals: parseInt(refStats.total_referrals),
+        activeReferrals: parseInt(refStats.active_referrals),
+        totalEarnings: parseFloat(user.referral_earnings) || 0,
+        commissionPercent: 10 // 10% от депозитов рефералов
+      }
+    });
   } catch (error) {
+    console.error('Get referral stats error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -44,76 +49,111 @@ router.get('/stats', auth, async (req, res) => {
 // Получить список рефералов
 router.get('/list', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
-    }
+    const { page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    const referralData = user.referral || {};
-    const referralCount = referralData.referralCount || user.referralCount || 0;
-    const commission = getCommission(referralCount);
+    const result = await pool.query(`
+      SELECT id, username, created_at, deposit_count, 
+        (SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE user_id = users.id AND type = 'deposit' AND status = 'completed') as total_deposits
+      FROM users
+      WHERE referred_by = $1
+      ORDER BY created_at DESC
+      LIMIT $2 OFFSET $3
+    `, [req.user.id, parseInt(limit), offset]);
     
-    // For temp-models, we return empty list (no way to query by referredBy easily)
-    // In production with MongoDB, this would query properly
-    const formattedReferrals = [];
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM users WHERE referred_by = $1',
+      [req.user.id]
+    );
     
-    res.json({ success: true, data: formattedReferrals });
+    const referrals = result.rows.map(r => ({
+      id: r.id,
+      username: r.username.substring(0, 2) + '***' + r.username.slice(-1), // Маскируем имя
+      registeredAt: r.created_at,
+      depositCount: r.deposit_count,
+      totalDeposits: parseFloat(r.total_deposits),
+      earned: parseFloat(r.total_deposits) * 0.1 // 10% комиссия
+    }));
+    
+    res.json({
+      success: true,
+      data: {
+        referrals,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: parseInt(countResult.rows[0].count)
+        }
+      }
+    });
   } catch (error) {
+    console.error('Get referral list error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Вывод реферальных на основной баланс
-router.post('/withdraw', auth, async (req, res) => {
+// Забрать реферальные вознаграждения
+router.post('/claim', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({ success: false, message: 'User not found' });
+    const userResult = await pool.query(
+      'SELECT referral_earnings FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    const earnings = parseFloat(userResult.rows[0].referral_earnings) || 0;
+    
+    if (earnings < 100) {
+      return res.status(400).json({ 
+        success: false, 
+        message: 'Минимальная сумма для вывода: ₽100' 
+      });
     }
     
-    const referralData = user.referral || {};
-    const available = referralData.referralEarnings || user.referralEarnings || 0;
+    // Переносим на основной баланс
+    await pool.query(
+      'UPDATE users SET balance = balance + $1, referral_earnings = 0 WHERE id = $2',
+      [earnings, req.user.id]
+    );
     
-    if (available < 500) {
-      return res.status(400).json({ success: false, message: 'Минимум для вывода: ₽500' });
-    }
+    // Логируем транзакцию
+    await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, status, description)
+       VALUES ($1, 'referral_bonus', $2, 'completed', 'Реферальное вознаграждение')`,
+      [req.user.id, earnings]
+    );
     
-    // Переводим на основной баланс
-    if (user.balance && typeof user.balance === 'object') {
-      user.balance.RUB = (user.balance.RUB || 0) + available;
-    }
-    
-    if (user.referral) {
-      user.referral.referralEarnings = 0;
-    } else {
-      user.referralEarnings = 0;
-    }
-    
-    await User.findByIdAndUpdate(user._id, user);
-    
-    res.json({ success: true, message: `₽${available.toLocaleString()} переведено на баланс` });
+    res.json({
+      success: true,
+      message: `₽${earnings.toFixed(2)} переведено на ваш баланс`,
+      data: { claimedAmount: earnings }
+    });
   } catch (error) {
+    console.error('Claim referral earnings error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Хелперы
-function getTier(referralsCount) {
-  if (referralsCount >= 100) return { name: 'Diamond', level: 5 };
-  if (referralsCount >= 50) return { name: 'Platinum', level: 4 };
-  if (referralsCount >= 25) return { name: 'Gold', level: 3 };
-  if (referralsCount >= 10) return { name: 'Silver', level: 2 };
-  if (referralsCount >= 5) return { name: 'Bronze', level: 1 };
-  return { name: 'Starter', level: 0 };
-}
-
-function getCommission(referralsCount) {
-  if (referralsCount >= 100) return 50;
-  if (referralsCount >= 50) return 45;
-  if (referralsCount >= 25) return 40;
-  if (referralsCount >= 10) return 35;
-  if (referralsCount >= 5) return 30;
-  return 25;
-}
+// Начислить реферальный бонус (вызывается при депозите реферала)
+router.post('/credit', auth, async (req, res) => {
+  try {
+    const { referrerId, depositAmount } = req.body;
+    
+    if (!referrerId || !depositAmount) {
+      return res.status(400).json({ success: false, message: 'Неверные данные' });
+    }
+    
+    const commission = depositAmount * 0.1; // 10%
+    
+    await pool.query(
+      'UPDATE users SET referral_earnings = referral_earnings + $1 WHERE id = $2',
+      [commission, referrerId]
+    );
+    
+    res.json({ success: true, data: { credited: commission } });
+  } catch (error) {
+    console.error('Credit referral error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 module.exports = router;

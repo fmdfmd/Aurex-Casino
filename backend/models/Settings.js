@@ -1,4 +1,4 @@
-const { getDb, generateId } = require('./temp-models');
+const pool = require('../config/database');
 
 // Default settings
 const defaultSettings = {
@@ -53,49 +53,73 @@ const defaultSettings = {
   }
 };
 
-// In-memory settings storage (in production would be MongoDB)
-let settingsCache = null;
-
 const Settings = {
   // Get all settings
   async get() {
-    const db = getDb();
-    
-    if (!db.settings) {
-      db.settings = { ...defaultSettings, id: 'global', updatedAt: new Date().toISOString() };
+    try {
+      const result = await pool.query("SELECT value FROM settings WHERE key = 'global'");
+      
+      if (result.rows.length === 0) {
+        // Insert default settings
+        await pool.query(
+          "INSERT INTO settings (key, value) VALUES ('global', $1) ON CONFLICT (key) DO NOTHING",
+          [JSON.stringify(defaultSettings)]
+        );
+        return { ...defaultSettings, id: 'global', updatedAt: new Date().toISOString() };
+      }
+      
+      const settings = typeof result.rows[0].value === 'string' 
+        ? JSON.parse(result.rows[0].value) 
+        : result.rows[0].value;
+      
+      return { ...defaultSettings, ...settings, id: 'global' };
+    } catch (error) {
+      console.error('Settings.get error:', error);
+      return { ...defaultSettings, id: 'global' };
     }
-    
-    return db.settings;
   },
 
   // Update settings by section
   async updateSection(section, data) {
-    const db = getDb();
-    
-    if (!db.settings) {
-      db.settings = { ...defaultSettings, id: 'global', updatedAt: new Date().toISOString() };
+    try {
+      const currentSettings = await this.get();
+      
+      if (currentSettings[section]) {
+        currentSettings[section] = { ...currentSettings[section], ...data };
+        currentSettings.updatedAt = new Date().toISOString();
+      }
+      
+      await pool.query(
+        "INSERT INTO settings (key, value, updated_at) VALUES ('global', $1, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP",
+        [JSON.stringify(currentSettings)]
+      );
+      
+      return currentSettings;
+    } catch (error) {
+      console.error('Settings.updateSection error:', error);
+      throw error;
     }
-    
-    if (db.settings[section]) {
-      db.settings[section] = { ...db.settings[section], ...data };
-      db.settings.updatedAt = new Date().toISOString();
-    }
-    
-    return db.settings;
   },
 
   // Update all settings at once
   async updateAll(data) {
-    const db = getDb();
-    
-    db.settings = {
-      ...defaultSettings,
-      ...data,
-      id: 'global',
-      updatedAt: new Date().toISOString()
-    };
-    
-    return db.settings;
+    try {
+      const newSettings = {
+        ...defaultSettings,
+        ...data,
+        updatedAt: new Date().toISOString()
+      };
+      
+      await pool.query(
+        "INSERT INTO settings (key, value, updated_at) VALUES ('global', $1, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP",
+        [JSON.stringify(newSettings)]
+      );
+      
+      return { ...newSettings, id: 'global' };
+    } catch (error) {
+      console.error('Settings.updateAll error:', error);
+      throw error;
+    }
   },
 
   // Get specific section
@@ -106,9 +130,16 @@ const Settings = {
 
   // Reset to defaults
   async reset() {
-    const db = getDb();
-    db.settings = { ...defaultSettings, id: 'global', updatedAt: new Date().toISOString() };
-    return db.settings;
+    try {
+      await pool.query(
+        "INSERT INTO settings (key, value, updated_at) VALUES ('global', $1, CURRENT_TIMESTAMP) ON CONFLICT (key) DO UPDATE SET value = $1, updated_at = CURRENT_TIMESTAMP",
+        [JSON.stringify(defaultSettings)]
+      );
+      return { ...defaultSettings, id: 'global', updatedAt: new Date().toISOString() };
+    } catch (error) {
+      console.error('Settings.reset error:', error);
+      throw error;
+    }
   }
 };
 

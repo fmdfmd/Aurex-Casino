@@ -3,116 +3,32 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { body, validationResult } = require('express-validator');
 const config = require('../config/config');
+const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
-
-// Determine which database to use
-const usePostgres = !!process.env.DATABASE_URL;
-let pool, User;
-
-if (usePostgres) {
-  pool = require('../config/database');
-  console.log('🐘 Auth using PostgreSQL');
-} else {
-  User = require('../models/temp-models').User;
-  console.log('📦 Auth using in-memory storage');
-}
-
-// PostgreSQL User helpers
-const PGUser = {
-  async findOne(query) {
-    if (!usePostgres) return User.findOne(query);
-    try {
-      if (query.email) {
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [query.email]);
-        return result.rows[0] || null;
-      }
-      if (query.username) {
-        const result = await pool.query('SELECT * FROM users WHERE username = $1', [query.username]);
-        return result.rows[0] || null;
-      }
-      if (query.$or) {
-        const email = query.$or.find(q => q.email)?.email;
-        const username = query.$or.find(q => q.username)?.username;
-        const result = await pool.query('SELECT * FROM users WHERE email = $1 OR username = $2', [email, username]);
-        return result.rows[0] || null;
-      }
-      if (query.referralCode) {
-        const result = await pool.query('SELECT * FROM users WHERE referral_code = $1', [query.referralCode]);
-        return result.rows[0] || null;
-      }
-      return null;
-    } catch (e) { console.error('PGUser.findOne error:', e); return null; }
-  },
-  async findById(id) {
-    if (!usePostgres) return User.findById(id);
-    try {
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [id]);
-      return result.rows[0] || null;
-    } catch (e) { console.error('PGUser.findById error:', e); return null; }
-  },
-  async create(data) {
-    if (!usePostgres) return User.create(data);
-    try {
-      const hashedPassword = await bcrypt.hash(data.password, 12);
-      const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
-      const referralCode = `REF-${data.username.toUpperCase().slice(0, 6)}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
-      const result = await pool.query(
-        `INSERT INTO users (odid, username, email, password, referral_code, balance, bonus_balance, vip_level, is_active)
-         VALUES ($1, $2, $3, $4, $5, 1000, 500, 1, true) RETURNING *`,
-        [odid, data.username, data.email, hashedPassword, referralCode]
-      );
-      const user = result.rows[0];
-      user._id = user.id;
-      user.comparePassword = async (pwd) => bcrypt.compare(pwd, user.password);
-      user.save = async () => user;
-      return user;
-    } catch (e) { console.error('PGUser.create error:', e); throw e; }
-  },
-  async comparePassword(user, pwd) {
-    if (user.comparePassword) return user.comparePassword(pwd);
-    return bcrypt.compare(pwd, user.password);
-  },
-  async updateById(id, updates) {
-    if (!usePostgres) {
-      const user = await User.findById(id);
-      if (user) { Object.assign(user, updates); await user.save(); }
-      return user;
-    }
-    try {
-      const result = await pool.query(
-        'UPDATE users SET last_login = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP WHERE id = $1 RETURNING *',
-        [id]
-      );
-      return result.rows[0] || null;
-    } catch (e) { console.error('PGUser.updateById error:', e); return null; }
-  }
-};
 
 // Format user for response
 const formatUser = (user) => {
   if (!user) return null;
-  const id = user._id || user.id;
+  const id = user.id;
   return {
     id,
     odid: user.odid || `AUREX-${String(id).padStart(6, '0')}`,
     username: user.username,
     email: user.email,
-    firstName: user.firstName || user.first_name,
-    lastName: user.lastName || user.last_name,
-    balance: user.balance || { RUB: parseFloat(user.balance) || 0 },
-    bonusBalance: parseFloat(user.bonusBalance || user.bonus_balance) || 0,
-    vipLevel: user.vipLevel || user.vip_level || 1,
-    vipPoints: user.vipPoints || user.vip_points || 0,
-    isVerified: user.isVerified || user.is_verified || false,
-    isAdmin: user.isAdmin || user.is_admin || false,
-    role: (user.isAdmin || user.is_admin) ? 'admin' : (user.role || 'user'),
-    referralCode: user.referralCode || user.referral_code,
-    depositCount: user.depositCount || user.deposit_count || 0,
-    usedBonuses: user.usedBonuses || user.used_bonuses || {},
-    wager: user.wager || { required: 0, completed: 0, active: false },
-    lastLogin: user.lastLogin || user.last_login,
-    createdAt: user.createdAt || user.created_at
+    firstName: user.first_name,
+    lastName: user.last_name,
+    balance: parseFloat(user.balance) || 0,
+    bonusBalance: parseFloat(user.bonus_balance) || 0,
+    vipLevel: user.vip_level || 1,
+    vipPoints: user.vip_points || 0,
+    isVerified: user.is_verified || false,
+    isAdmin: user.is_admin || false,
+    role: user.is_admin ? 'admin' : 'user',
+    referralCode: user.referral_code,
+    depositCount: user.deposit_count || 0,
+    lastLogin: user.last_login,
+    createdAt: user.created_at
   };
 };
 
@@ -138,15 +54,7 @@ router.post('/register', [
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number'),
-  body('firstName')
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage('First name must not exceed 50 characters'),
-  body('lastName')
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage('Last name must not exceed 50 characters')
+    .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -158,23 +66,52 @@ router.post('/register', [
       });
     }
 
-    const { username, email, password, firstName, lastName, referralCode } = req.body;
+    const { username, email, password, referralCode } = req.body;
 
     // Check if user already exists
-    const existingUser = await PGUser.findOne({ $or: [{ email }, { username }] });
+    const existingResult = await pool.query(
+      'SELECT * FROM users WHERE email = $1 OR username = $2',
+      [email, username]
+    );
 
-    if (existingUser) {
+    if (existingResult.rows.length > 0) {
+      const existing = existingResult.rows[0];
       return res.status(400).json({
         success: false,
-        error: existingUser.email === email ? 'Email already registered' : 'Username already taken'
+        error: existing.email === email ? 'Email already registered' : 'Username already taken'
       });
     }
 
-    // Create new user
-    const user = await PGUser.create({ username, email, password, firstName, lastName });
+    // Hash password
+    const hashedPassword = await bcrypt.hash(password, 12);
+    
+    // Generate ODID and referral code
+    const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
+    const userReferralCode = `REF-${username.toUpperCase().slice(0, 6)}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+
+    // Find referrer if referral code provided
+    let referredBy = null;
+    if (referralCode) {
+      const referrerResult = await pool.query(
+        'SELECT id FROM users WHERE referral_code = $1',
+        [referralCode]
+      );
+      if (referrerResult.rows.length > 0) {
+        referredBy = referrerResult.rows[0].id;
+      }
+    }
+
+    // Create user
+    const result = await pool.query(
+      `INSERT INTO users (odid, username, email, password, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, 1000, 500, 1, true) RETURNING *`,
+      [odid, username, email, hashedPassword, userReferralCode, referredBy]
+    );
+
+    const user = result.rows[0];
 
     // Generate token
-    const token = generateToken(user._id || user.id);
+    const token = generateToken(user.id);
 
     res.status(201).json({
       success: true,
@@ -186,18 +123,13 @@ router.post('/register', [
     });
   } catch (error) {
     console.error('Registration error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Registration failed'
-    });
+    res.status(500).json({ success: false, error: 'Registration failed' });
   }
 });
 
-// Login - поддержка входа по email ИЛИ username
+// Login
 router.post('/login', [
-  body('password')
-    .notEmpty()
-    .withMessage('Password is required')
+  body('password').notEmpty().withMessage('Password is required')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -209,52 +141,44 @@ router.post('/login', [
       });
     }
 
-    // Поддержка login (username) или email
     const { login, email, password } = req.body;
     const loginValue = login || email;
 
     if (!loginValue) {
-      return res.status(400).json({
-        success: false,
-        error: 'Email или логин обязателен'
-      });
+      return res.status(400).json({ success: false, error: 'Email или логин обязателен' });
     }
 
-    // Поиск пользователя по email ИЛИ username
-    let user = await PGUser.findOne({ email: loginValue });
-    if (!user) {
-      user = await PGUser.findOne({ username: loginValue });
+    // Find user by email or username
+    const result = await pool.query(
+      'SELECT * FROM users WHERE email = $1 OR username = $1',
+      [loginValue]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(401).json({ success: false, error: 'Неверный логин или пароль' });
     }
 
-    if (!user) {
-      return res.status(401).json({
-        success: false,
-        error: 'Неверный логин или пароль'
-      });
-    }
+    const user = result.rows[0];
 
     // Check password
-    const isPasswordValid = await PGUser.comparePassword(user, password);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
-      return res.status(401).json({
-        success: false,
-        error: 'Неверный логин или пароль'
-      });
+      return res.status(401).json({ success: false, error: 'Неверный логин или пароль' });
     }
 
     // Check if user is active
-    if (user.isActive === false || user.is_active === false) {
-      return res.status(401).json({
-        success: false,
-        error: 'Аккаунт деактивирован'
-      });
+    if (!user.is_active) {
+      return res.status(401).json({ success: false, error: 'Аккаунт деактивирован' });
     }
 
     // Update last login
-    await PGUser.updateById(user._id || user.id, { lastLogin: new Date() });
+    await pool.query(
+      'UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1',
+      [user.id]
+    );
 
     // Generate token
-    const token = generateToken(user._id || user.id);
+    const token = generateToken(user.id);
 
     res.json({
       success: true,
@@ -266,131 +190,73 @@ router.post('/login', [
     });
   } catch (error) {
     console.error('Login error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Login failed'
-    });
+    res.status(500).json({ success: false, error: 'Login failed' });
   }
 });
 
 // Get current user
 router.get('/me', auth, async (req, res) => {
   try {
-    const user = await PGUser.findById(req.user.id);
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
 
     res.json({
       success: true,
-      data: {
-        user: formatUser(user)
-      }
+      data: { user: formatUser(result.rows[0]) }
     });
   } catch (error) {
     console.error('Get user error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get user data'
-    });
+    res.status(500).json({ success: false, error: 'Failed to get user data' });
   }
 });
 
 // Update user profile
-router.put('/profile', auth, [
-  body('firstName')
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage('First name must not exceed 50 characters'),
-  body('lastName')
-    .optional()
-    .isLength({ max: 50 })
-    .withMessage('Last name must not exceed 50 characters'),
-  body('settings.notifications.email')
-    .optional()
-    .isBoolean()
-    .withMessage('Email notifications must be boolean'),
-  body('settings.notifications.push')
-    .optional()
-    .isBoolean()
-    .withMessage('Push notifications must be boolean'),
-  body('settings.privacy.showOnline')
-    .optional()
-    .isBoolean()
-    .withMessage('Show online status must be boolean')
-], async (req, res) => {
+router.put('/profile', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { firstName, lastName } = req.body;
+    
+    const updates = [];
+    const values = [];
+    
+    if (firstName !== undefined) {
+      values.push(firstName);
+      updates.push(`first_name = $${values.length}`);
     }
-
-    const updates = req.body;
-    const user = await PGUser.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    if (lastName !== undefined) {
+      values.push(lastName);
+      updates.push(`last_name = $${values.length}`);
     }
-
-    // Update allowed fields
-    if (updates.firstName !== undefined) user.firstName = updates.firstName;
-    if (updates.lastName !== undefined) user.lastName = updates.lastName;
-    if (updates.settings) {
-      if (updates.settings.notifications) {
-        Object.assign(user.settings.notifications, updates.settings.notifications);
-      }
-      if (updates.settings.privacy) {
-        Object.assign(user.settings.privacy, updates.settings.privacy);
-      }
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No updates provided' });
     }
-
-    await user.save();
+    
+    values.push(req.user.id);
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING *`,
+      values
+    );
 
     res.json({
       success: true,
       message: 'Profile updated successfully',
-      data: {
-        user: {
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: user.fullName,
-          settings: user.settings
-        }
-      }
+      data: { user: formatUser(result.rows[0]) }
     });
   } catch (error) {
     console.error('Update profile error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update profile'
-    });
+    res.status(500).json({ success: false, error: 'Failed to update profile' });
   }
 });
 
 // Change password
 router.put('/change-password', auth, [
-  body('currentPassword')
-    .notEmpty()
-    .withMessage('Current password is required'),
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
   body('newPassword')
     .isLength({ min: 6 })
     .withMessage('New password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('New password must contain at least one lowercase letter, one uppercase letter, and one number')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -403,65 +269,49 @@ router.put('/change-password', auth, [
     }
 
     const { currentPassword, newPassword } = req.body;
-    const user = await PGUser.findById(req.user.id);
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    const user = result.rows[0];
+
     // Verify current password
-    const isCurrentPasswordValid = await PGUser.comparePassword(user, currentPassword);
+    const isCurrentPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isCurrentPasswordValid) {
-      return res.status(400).json({
-        success: false,
-        error: 'Current password is incorrect'
-      });
+      return res.status(400).json({ success: false, error: 'Current password is incorrect' });
     }
 
     // Update password
-    user.password = newPassword;
-    await user.save();
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, req.user.id]
+    );
 
-    res.json({
-      success: true,
-      message: 'Password changed successfully'
-    });
+    res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('Change password error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to change password'
-    });
+    res.status(500).json({ success: false, error: 'Failed to change password' });
   }
 });
 
 // Refresh token
 router.post('/refresh', auth, async (req, res) => {
   try {
-    const user = await PGUser.findById(req.user.id);
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
     
-    if (!user || user.isActive === false || user.is_active === false) {
-      return res.status(401).json({
-        success: false,
-        error: 'Invalid token'
-      });
+    if (result.rows.length === 0 || !result.rows[0].is_active) {
+      return res.status(401).json({ success: false, error: 'Invalid token' });
     }
 
-    const token = generateToken(user._id || user.id);
+    const token = generateToken(result.rows[0].id);
 
-    res.json({
-      success: true,
-      data: { token }
-    });
+    res.json({ success: true, data: { token } });
   } catch (error) {
     console.error('Refresh token error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to refresh token'
-    });
+    res.status(500).json({ success: false, error: 'Failed to refresh token' });
   }
 });
 
@@ -469,45 +319,40 @@ router.post('/refresh', auth, async (req, res) => {
 router.get('/transactions', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20, type } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Get transactions from global store
-    const allTransactions = global.tempTransactions || [];
+    let query = 'SELECT * FROM transactions WHERE user_id = $1';
+    const values = [req.user.id];
     
-    // Filter by user
-    let userTransactions = allTransactions.filter(t => 
-      t.user === req.user.id || t.userId === req.user.id
-    );
-    
-    // Filter by type if specified
     if (type && type !== 'all') {
-      userTransactions = userTransactions.filter(t => t.type === type);
+      values.push(type);
+      query += ` AND type = $${values.length}`;
     }
     
-    // Sort by date (newest first)
-    userTransactions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
     
-    // Paginate
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedTransactions = userTransactions.slice(offset, offset + parseInt(limit));
+    const result = await pool.query(query, values);
+    
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM transactions WHERE user_id = $1',
+      [req.user.id]
+    );
     
     res.json({
       success: true,
       data: {
-        transactions: paginatedTransactions,
+        transactions: result.rows,
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: userTransactions.length,
-          pages: Math.ceil(userTransactions.length / parseInt(limit))
+          total: parseInt(countResult.rows[0].count),
+          pages: Math.ceil(parseInt(countResult.rows[0].count) / parseInt(limit))
         }
       }
     });
   } catch (error) {
     console.error('Get transactions error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get transactions'
-    });
+    res.status(500).json({ success: false, error: 'Failed to get transactions' });
   }
 });
 
@@ -515,58 +360,54 @@ router.get('/transactions', auth, async (req, res) => {
 router.get('/games/history', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20 } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Get game sessions from global store
-    const allSessions = global.tempGameSessions || [];
-    
-    // Filter by user
-    let userSessions = allSessions.filter(s => 
-      s.user === req.user.id || s.userId === req.user.id
+    const result = await pool.query(
+      `SELECT * FROM game_sessions WHERE user_id = $1 ORDER BY started_at DESC LIMIT $2 OFFSET $3`,
+      [req.user.id, parseInt(limit), offset]
     );
     
-    // Sort by date (newest first)
-    userSessions.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+    const statsResult = await pool.query(`
+      SELECT 
+        COUNT(*) as total_games,
+        COALESCE(SUM(bet_amount), 0) as total_bet,
+        COALESCE(SUM(win_amount), 0) as total_win,
+        COALESCE(MAX(win_amount), 0) as biggest_win
+      FROM game_sessions WHERE user_id = $1
+    `, [req.user.id]);
     
-    // Paginate
-    const offset = (parseInt(page) - 1) * parseInt(limit);
-    const paginatedSessions = userSessions.slice(offset, offset + parseInt(limit));
-    
-    // Calculate stats
-    const stats = {
-      totalGames: userSessions.length,
-      totalBet: userSessions.reduce((sum, s) => sum + (s.totalBet || 0), 0),
-      totalWin: userSessions.reduce((sum, s) => sum + (s.totalWin || 0), 0),
-      biggestWin: Math.max(0, ...userSessions.map(s => s.totalWin || 0))
-    };
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM game_sessions WHERE user_id = $1',
+      [req.user.id]
+    );
     
     res.json({
       success: true,
       data: {
-        sessions: paginatedSessions,
-        stats,
+        sessions: result.rows,
+        stats: {
+          totalGames: parseInt(statsResult.rows[0].total_games),
+          totalBet: parseFloat(statsResult.rows[0].total_bet),
+          totalWin: parseFloat(statsResult.rows[0].total_win),
+          biggestWin: parseFloat(statsResult.rows[0].biggest_win)
+        },
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: userSessions.length,
-          pages: Math.ceil(userSessions.length / parseInt(limit))
+          total: parseInt(countResult.rows[0].count),
+          pages: Math.ceil(parseInt(countResult.rows[0].count) / parseInt(limit))
         }
       }
     });
   } catch (error) {
     console.error('Get game history error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get game history'
-    });
+    res.status(500).json({ success: false, error: 'Failed to get game history' });
   }
 });
 
-// Logout (client-side only, token blacklisting would require Redis)
+// Logout
 router.post('/logout', auth, (req, res) => {
-  res.json({
-    success: true,
-    message: 'Logged out successfully'
-  });
+  res.json({ success: true, message: 'Logged out successfully' });
 });
 
 module.exports = router;

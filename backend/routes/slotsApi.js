@@ -2,7 +2,7 @@ const express = require('express');
 const axios = require('axios');
 const crypto = require('crypto');
 const config = require('../config/config');
-const { User, GameSession, Transaction } = require('../models/temp-models');
+const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
@@ -38,12 +38,13 @@ class SlotsApiService {
   // Authenticate user with slots provider
   async authenticateUser(userId, gameCode, currency = 'RUB') {
     try {
-      const user = await User.findById(userId);
-      if (!user) throw new Error('User not found');
+      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) throw new Error('User not found');
+      const user = userResult.rows[0];
 
       const authData = {
         user_id: userId,
-        user_ip: user.ipAddress || '127.0.0.1',
+        user_ip: '127.0.0.1',
         user_auth_token: this.generateAuthToken(userId),
         currency: currency,
         game_code: gameCode
@@ -63,36 +64,26 @@ class SlotsApiService {
   // Start game session
   async startGameSession(userId, gameCode, currency = 'RUB', language = 'ru') {
     try {
-      const user = await User.findById(userId);
-      if (!user) throw new Error('User not found');
+      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+      if (userResult.rows.length === 0) throw new Error('User not found');
+      const user = userResult.rows[0];
 
       // Create game session
       const sessionId = this.generateSessionId();
-      const gameSession = new GameSession({
-        user: userId,
-        gameCode: gameCode,
-        gameName: gameCode, // This should be mapped from games list
-        sessionId: sessionId,
-        operatorId: this.operatorId,
-        currency: currency,
-        startBalance: user.balance[currency] || 0,
-        currentBalance: user.balance[currency] || 0,
-        ipAddress: user.ipAddress,
-        userAgent: user.userAgent
-      });
-
-      await gameSession.save();
+      
+      const result = await pool.query(
+        `INSERT INTO game_sessions (user_id, game_id, game_name, session_id, provider, currency, status, bet_amount, win_amount)
+         VALUES ($1, $2, $3, $4, 'slots-api', $5, 'active', 0, 0) RETURNING *`,
+        [userId, gameCode, gameCode, sessionId, currency]
+      );
 
       // Generate game URL
       const gameUrl = this.generateGameUrl(userId, gameCode, sessionId, currency, language);
 
-      gameSession.gameUrl = gameUrl;
-      await gameSession.save();
-
       return {
         sessionId: sessionId,
         gameUrl: gameUrl,
-        balance: user.balance[currency] || 0,
+        balance: parseFloat(user.balance),
         currency: currency
       };
     } catch (error) {
@@ -132,55 +123,46 @@ class SlotsApiService {
     const { user_id, session_id, bet_amount, currency, game_code, round_id, transaction_id } = transactionData;
 
     try {
-      const user = await User.findById(user_id);
-      if (!user) throw new Error('User not found');
+      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+      if (userResult.rows.length === 0) throw new Error('User not found');
+      const user = userResult.rows[0];
 
-      const gameSession = await GameSession.findOne({ sessionId: session_id, status: 'active' });
-      if (!gameSession) throw new Error('Game session not found or inactive');
+      const sessionResult = await pool.query(
+        "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+        [session_id]
+      );
+      if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
+      const gameSession = sessionResult.rows[0];
 
-      // Check if user has sufficient balance
-      if (!user.canAfford(currency, bet_amount)) {
+      // Check balance
+      if (parseFloat(user.balance) < bet_amount) {
         throw new Error('Insufficient balance');
       }
 
-      // Create transaction
-      const transaction = new Transaction({
-        user: user_id,
-        gameSession: gameSession._id,
-        transactionId: transaction_id,
-        type: 'bet',
-        amount: -bet_amount, // Negative for bet
-        currency: currency,
-        balanceBefore: user.balance[currency],
-        balanceAfter: user.balance[currency] - bet_amount,
-        gameCode: game_code,
-        roundId: round_id
-      });
-
       // Update user balance
-      user.updateBalance(currency, -bet_amount);
-      user.totalWagered += bet_amount;
-      user.gamesPlayed += 1;
+      await pool.query(
+        'UPDATE users SET balance = balance - $1, total_wagered = total_wagered + $1, games_played = games_played + 1 WHERE id = $2',
+        [bet_amount, user_id]
+      );
 
       // Update game session
-      gameSession.totalBet += bet_amount;
-      gameSession.currentBalance = user.balance[currency];
-      gameSession.spinsCount += 1;
-      gameSession.updateActivity();
+      await pool.query(
+        'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
+        [bet_amount, gameSession.id]
+      );
 
-      // Save all changes
-      await Promise.all([
-        transaction.save(),
-        user.save(),
-        gameSession.save()
-      ]);
+      // Create transaction
+      await pool.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
+         VALUES ($1, 'bet', $2, $3, 'completed', $4, $5, $6)`,
+        [user_id, -bet_amount, currency, `Ставка в ${game_code}`, gameSession.id, round_id]
+      );
 
-      transaction.complete();
-      await transaction.save();
+      const newBalanceResult = await pool.query('SELECT balance FROM users WHERE id = $1', [user_id]);
 
       return {
         success: true,
-        balance: user.balance[currency],
+        balance: parseFloat(newBalanceResult.rows[0].balance),
         transaction_id: transaction_id
       };
     } catch (error) {
@@ -194,47 +176,40 @@ class SlotsApiService {
     const { user_id, session_id, win_amount, currency, game_code, round_id, transaction_id } = transactionData;
 
     try {
-      const user = await User.findById(user_id);
-      if (!user) throw new Error('User not found');
+      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+      if (userResult.rows.length === 0) throw new Error('User not found');
 
-      const gameSession = await GameSession.findOne({ sessionId: session_id, status: 'active' });
-      if (!gameSession) throw new Error('Game session not found or inactive');
-
-      // Create transaction
-      const transaction = new Transaction({
-        user: user_id,
-        gameSession: gameSession._id,
-        transactionId: transaction_id,
-        type: 'win',
-        amount: win_amount,
-        currency: currency,
-        balanceBefore: user.balance[currency],
-        balanceAfter: user.balance[currency] + win_amount,
-        gameCode: game_code,
-        roundId: round_id
-      });
+      const sessionResult = await pool.query(
+        "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+        [session_id]
+      );
+      if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
+      const gameSession = sessionResult.rows[0];
 
       // Update user balance
-      user.updateBalance(currency, win_amount);
+      await pool.query(
+        'UPDATE users SET balance = balance + $1 WHERE id = $2',
+        [win_amount, user_id]
+      );
 
       // Update game session
-      gameSession.totalWin += win_amount;
-      gameSession.currentBalance = user.balance[currency];
-      gameSession.updateActivity();
+      await pool.query(
+        'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
+        [win_amount, gameSession.id]
+      );
 
-      // Save all changes
-      await Promise.all([
-        transaction.save(),
-        user.save(),
-        gameSession.save()
-      ]);
+      // Create transaction
+      await pool.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
+         VALUES ($1, 'win', $2, $3, 'completed', $4, $5, $6)`,
+        [user_id, win_amount, currency, `Выигрыш в ${game_code}`, gameSession.id, round_id]
+      );
 
-      transaction.complete();
-      await transaction.save();
+      const newBalanceResult = await pool.query('SELECT balance FROM users WHERE id = $1', [user_id]);
 
       return {
         success: true,
-        balance: user.balance[currency],
+        balance: parseFloat(newBalanceResult.rows[0].balance),
         transaction_id: transaction_id
       };
     } catch (error) {
@@ -253,7 +228,6 @@ router.get('/games', async (req, res) => {
   try {
     const apiData = await slotsService.getGamesList();
     
-    // Парсим данные в нужный формат для frontend
     const processedGames = [];
     
     if (apiData && apiData.locator && apiData.locator.groups) {
@@ -271,9 +245,9 @@ router.get('/games', async (req, res) => {
               category: 'slots',
               lines: game.gm_ln,
               isNew: game.gm_new || false,
-              isHot: (game.gm_bk_id % 4 === 0), // каждая 4-я игра "hot"
-              rtp: 90 + (game.gm_bk_id % 10), // детерминированный RTP
-              popularity: 70 + (game.gm_bk_id % 30) // детерминированная популярность
+              isHot: (game.gm_bk_id % 4 === 0),
+              rtp: 90 + (game.gm_bk_id % 10),
+              popularity: 70 + (game.gm_bk_id % 30)
             });
           });
         }
@@ -290,10 +264,7 @@ router.get('/games', async (req, res) => {
     });
   } catch (error) {
     console.error('Error in /games endpoint:', error);
-    res.status(500).json({ 
-      success: false, 
-      error: error.message 
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -305,15 +276,9 @@ router.post('/start-game', auth, async (req, res) => {
 
     const gameData = await slotsService.startGameSession(userId, gameCode, currency, language);
     
-    res.json({ 
-      success: true, 
-      data: gameData 
-    });
+    res.json({ success: true, data: gameData });
   } catch (error) {
-    res.status(400).json({ 
-      success: false, 
-      error: error.message 
-    });
+    res.status(400).json({ success: false, error: error.message });
   }
 });
 
@@ -324,21 +289,20 @@ router.post('/callback/auth', async (req, res) => {
   try {
     const { user_id, user_auth_token } = req.body;
     
-    const user = await User.findById(user_id);
-    if (!user) {
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const user = userResult.rows[0];
 
-    // Verify auth token (implement your verification logic)
-    
     res.json({
       api: 'do-auth-user-ingame',
       answer: {
         operator_id: slotsService.operatorId,
         user_id: user_id,
         user_nickname: user.username,
-        balance: user.balance.RUB,
-        bonus_balance: user.bonusBalance,
+        balance: parseFloat(user.balance),
+        bonus_balance: parseFloat(user.bonus_balance),
         auth_token: user_auth_token,
         game_token: slotsService.generateAuthToken(user_id),
         error_code: 0,
@@ -349,10 +313,7 @@ router.post('/callback/auth', async (req, res) => {
       success: true
     });
   } catch (error) {
-    res.status(500).json({ 
-      error: 'Authentication failed',
-      error_code: 1
-    });
+    res.status(500).json({ error: 'Authentication failed', error_code: 1 });
   }
 });
 
@@ -431,10 +392,11 @@ router.post('/callback/balance', async (req, res) => {
   try {
     const { user_id } = req.body;
     
-    const user = await User.findById(user_id);
-    if (!user) {
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    if (userResult.rows.length === 0) {
       return res.status(404).json({ error: 'User not found' });
     }
+    const user = userResult.rows[0];
 
     res.json({
       api: 'do-get-balance-user-ingame',
@@ -442,8 +404,8 @@ router.post('/callback/balance', async (req, res) => {
         operator_id: slotsService.operatorId,
         user_id: user_id,
         user_nickname: user.username,
-        balance: user.balance.RUB,
-        bonus_balance: user.bonusBalance,
+        balance: parseFloat(user.balance),
+        bonus_balance: parseFloat(user.bonus_balance),
         error_code: 0,
         error_description: 'ok',
         currency: 'RUB',
@@ -452,10 +414,7 @@ router.post('/callback/balance', async (req, res) => {
       success: true
     });
   } catch (error) {
-    res.status(500).json({ 
-      error: 'Failed to get balance',
-      error_code: 1
-    });
+    res.status(500).json({ error: 'Failed to get balance', error_code: 1 });
   }
 });
 

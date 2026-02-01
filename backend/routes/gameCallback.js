@@ -1,14 +1,13 @@
 const express = require('express');
 const router = express.Router();
+const pool = require('../config/database');
 
 // Middleware для логирования всех запросов от провайдера
 router.use((req, res, next) => {
   console.log('🎮 Callback от провайдера:', {
     method: req.method,
     url: req.url,
-    headers: req.headers,
-    body: req.body,
-    query: req.query
+    body: req.body
   });
   next();
 });
@@ -18,66 +17,56 @@ router.post('/do-auth-user-ingame', async (req, res) => {
   try {
     const { user_id, auth_token, operator_id, game_id, currency, lang, mode } = req.body;
     
-    console.log('🔑 Авторизация пользователя в игре:', {
-      user_id,
-      auth_token,
-      operator_id, 
-      game_id,
-      currency,
-      lang,
-      mode
-    });
+    console.log('🔑 Авторизация пользователя в игре:', { user_id, game_id, currency, mode });
 
     let user = null;
     
     if (auth_token === 'demo') {
-      // Демо режим - используем демо пользователя
-      user = global.tempUsers.find(u => u.b2b_user_id === 'aurex_demo_001');
-      if (!user) {
-        user = {
-          _id: 'demo_user',
-          username: 'Demo Player',
-          balance: 10000,
-          currency: currency || 'RUB',
-          b2b_user_id: 'aurex_demo_001',
-          is_demo: true
-        };
+      // Демо режим - ищем или создаём демо пользователя
+      const demoResult = await pool.query("SELECT * FROM users WHERE username = 'demo_player' LIMIT 1");
+      
+      if (demoResult.rows.length === 0) {
+        // Создаём демо пользователя
+        const insertResult = await pool.query(
+          `INSERT INTO users (username, email, password_hash, balance, odid, is_demo)
+           VALUES ('demo_player', 'demo@aurex.casino', 'demo', 10000, 'AUREX-DEMO', true)
+           RETURNING *`
+        );
+        user = insertResult.rows[0];
+      } else {
+        user = demoResult.rows[0];
       }
     } else {
-      // Реальный режим - ищем пользователя по user_id (который должен быть B2B ID)
-      user = global.tempUsers.find(u => u.b2b_user_id === user_id || u._id === user_id);
+      // Реальный режим - ищем пользователя
+      const userResult = await pool.query(
+        'SELECT * FROM users WHERE id = $1 OR odid = $2',
+        [user_id, user_id]
+      );
       
-      if (!user) {
-        return res.status(404).json({
-          success: false,
-          error: 'User not found'
-        });
+      if (userResult.rows.length === 0) {
+        return res.status(404).json({ success: false, error: 'User not found' });
       }
+      user = userResult.rows[0];
     }
 
-    // Создаем игровую сессию
-    const sessionId = `session_${Date.now()}_${user._id}`;
-    global.tempSessions.push({
-      session_id: sessionId,
-      user_id: user._id,
-      b2b_user_id: user.b2b_user_id,
-      game_id,
-      balance: user.balance,
-      currency: user.currency,
-      created_at: new Date(),
-      expires_at: Date.now() + (60 * 60 * 1000) // 1 час
-    });
+    // Создаем игровую сессию в БД
+    const sessionId = `session_${Date.now()}_${user.id}`;
+    
+    await pool.query(
+      `INSERT INTO game_sessions (user_id, game_id, game_name, session_id, provider, currency, status, bet_amount, win_amount)
+       VALUES ($1, $2, $3, $4, 'provider', $5, 'active', 0, 0)`,
+      [user.id, game_id, game_id, sessionId, currency || 'RUB']
+    );
 
     console.log(`✅ Пользователь ${user.username} авторизован. Баланс: ${user.balance}₽`);
 
-    // Возвращаем успешный ответ
     res.json({
       success: true,
       user: {
-        id: user.b2b_user_id,
+        id: user.odid || user.id.toString(),
         username: user.username,
-        balance: user.balance,
-        currency: user.currency
+        balance: parseFloat(user.balance),
+        currency: currency || 'RUB'
       },
       session: {
         session_id: sessionId,
@@ -88,10 +77,7 @@ router.post('/do-auth-user-ingame', async (req, res) => {
 
   } catch (error) {
     console.error('❌ Ошибка авторизации:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -103,37 +89,36 @@ router.post('/get-balance', async (req, res) => {
     console.log('💰 Запрос баланса:', { user_id, session_id });
 
     // Ищем сессию
-    const session = global.tempSessions.find(s => s.session_id === session_id);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session not found'
-      });
+    const sessionResult = await pool.query(
+      "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+      [session_id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
     }
+    
+    const session = sessionResult.rows[0];
 
     // Ищем пользователя
-    const user = global.tempUsers.find(u => u._id === session.user_id || u.b2b_user_id === session.b2b_user_id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [session.user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
+    
+    const user = userResult.rows[0];
     
     console.log(`💰 Баланс пользователя ${user.username}: ${user.balance}₽`);
     
     res.json({
       success: true,
-      balance: user.balance,
-      currency: user.currency || 'RUB'
+      balance: parseFloat(user.balance),
+      currency: session.currency || 'RUB'
     });
 
   } catch (error) {
     console.error('❌ Ошибка получения баланса:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -145,68 +130,68 @@ router.post('/make-bet', async (req, res) => {
     console.log('🎲 Ставка:', { user_id, session_id, amount, bet_id, game_round_id });
 
     // Ищем сессию
-    const session = global.tempSessions.find(s => s.session_id === session_id);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session not found'
-      });
+    const sessionResult = await pool.query(
+      "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+      [session_id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
     }
+    
+    const session = sessionResult.rows[0];
 
     // Ищем пользователя
-    const userIndex = global.tempUsers.findIndex(u => u._id === session.user_id || u.b2b_user_id === session.b2b_user_id);
-    if (userIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [session.user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
-
-    const user = global.tempUsers[userIndex];
+    
+    const user = userResult.rows[0];
+    const currentBalance = parseFloat(user.balance);
     
     // Проверяем баланс
-    if (user.balance < amount) {
+    if (currentBalance < amount) {
       return res.status(400).json({
         success: false,
         error: 'Insufficient balance',
-        balance: user.balance
+        balance: currentBalance
       });
     }
 
     // Списываем ставку
-    const newBalance = user.balance - amount;
-    global.tempUsers[userIndex].balance = newBalance;
+    const newBalance = currentBalance - amount;
+    
+    await pool.query(
+      'UPDATE users SET balance = $1, total_wagered = total_wagered + $2, games_played = games_played + 1 WHERE id = $3',
+      [newBalance, amount, user.id]
+    );
+
+    // Обновляем сессию
+    await pool.query(
+      'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
+      [amount, session.id]
+    );
 
     // Создаем транзакцию
-    const transactionId = `bet_${Date.now()}`;
-    global.tempTransactions.push({
-      _id: transactionId,
-      user_id: user._id,
-      b2b_user_id: user.b2b_user_id,
-      type: 'bet',
-      amount: -amount,
-      balance_before: user.balance,
-      balance_after: newBalance,
-      game_round_id,
-      bet_id,
-      created_at: new Date()
-    });
+    const txResult = await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
+       VALUES ($1, 'bet', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
+      [user.id, -amount, `Ставка в игре`, game_round_id]
+    );
 
     console.log(`🎲 Ставка ${amount}₽ от ${user.username}. Новый баланс: ${newBalance}₽`);
     
     res.json({
       success: true,
       balance: newBalance,
-      currency: user.currency || 'RUB',
-      transaction_id: transactionId
+      currency: 'RUB',
+      transaction_id: txResult.rows[0].id.toString()
     });
 
   } catch (error) {
     console.error('❌ Ошибка ставки:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -218,59 +203,59 @@ router.post('/win', async (req, res) => {
     console.log('🎉 Выигрыш:', { user_id, session_id, amount, win_id, game_round_id });
 
     // Ищем сессию
-    const session = global.tempSessions.find(s => s.session_id === session_id);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session not found'
-      });
+    const sessionResult = await pool.query(
+      "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+      [session_id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
     }
+    
+    const session = sessionResult.rows[0];
 
     // Ищем пользователя
-    const userIndex = global.tempUsers.findIndex(u => u._id === session.user_id || u.b2b_user_id === session.b2b_user_id);
-    if (userIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [session.user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
-
-    const user = global.tempUsers[userIndex];
+    
+    const user = userResult.rows[0];
+    const currentBalance = parseFloat(user.balance);
     
     // Добавляем выигрыш
-    const newBalance = user.balance + amount;
-    global.tempUsers[userIndex].balance = newBalance;
+    const newBalance = currentBalance + amount;
+    
+    await pool.query(
+      'UPDATE users SET balance = $1 WHERE id = $2',
+      [newBalance, user.id]
+    );
+
+    // Обновляем сессию
+    await pool.query(
+      'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
+      [amount, session.id]
+    );
 
     // Создаем транзакцию
-    const transactionId = `win_${Date.now()}`;
-    global.tempTransactions.push({
-      _id: transactionId,
-      user_id: user._id,
-      b2b_user_id: user.b2b_user_id,
-      type: 'win',
-      amount: amount,
-      balance_before: user.balance,
-      balance_after: newBalance,
-      game_round_id,
-      win_id,
-      created_at: new Date()
-    });
+    const txResult = await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
+       VALUES ($1, 'win', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
+      [user.id, amount, `Выигрыш в игре`, game_round_id]
+    );
 
     console.log(`🎉 Выигрыш ${amount}₽ для ${user.username}. Новый баланс: ${newBalance}₽`);
     
     res.json({
       success: true,
       balance: newBalance,
-      currency: user.currency || 'RUB',
-      transaction_id: transactionId
+      currency: 'RUB',
+      transaction_id: txResult.rows[0].id.toString()
     });
 
   } catch (error) {
     console.error('❌ Ошибка выигрыша:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -282,58 +267,53 @@ router.post('/cancel-bet', async (req, res) => {
     console.log('🔄 Отмена ставки:', { user_id, session_id, bet_id, amount });
 
     // Ищем сессию
-    const session = global.tempSessions.find(s => s.session_id === session_id);
-    if (!session) {
-      return res.status(404).json({
-        success: false,
-        error: 'Session not found'
-      });
+    const sessionResult = await pool.query(
+      "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
+      [session_id]
+    );
+    
+    if (sessionResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Session not found' });
     }
+    
+    const session = sessionResult.rows[0];
 
     // Ищем пользователя
-    const userIndex = global.tempUsers.findIndex(u => u._id === session.user_id || u.b2b_user_id === session.b2b_user_id);
-    if (userIndex === -1) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [session.user_id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
     }
-
-    const user = global.tempUsers[userIndex];
+    
+    const user = userResult.rows[0];
+    const currentBalance = parseFloat(user.balance);
     
     // Возвращаем ставку
-    const newBalance = user.balance + amount;
-    global.tempUsers[userIndex].balance = newBalance;
+    const newBalance = currentBalance + amount;
+    
+    await pool.query(
+      'UPDATE users SET balance = $1 WHERE id = $2',
+      [newBalance, user.id]
+    );
 
     // Создаем транзакцию отмены
-    const transactionId = `cancel_${Date.now()}`;
-    global.tempTransactions.push({
-      _id: transactionId,
-      user_id: user._id,
-      b2b_user_id: user.b2b_user_id,
-      type: 'cancel',
-      amount: amount,
-      balance_before: user.balance,
-      balance_after: newBalance,
-      bet_id,
-      created_at: new Date()
-    });
+    const txResult = await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, currency, status, description)
+       VALUES ($1, 'cancel', $2, 'RUB', 'completed', 'Отмена ставки') RETURNING id`,
+      [user.id, amount]
+    );
 
     console.log(`🔄 Отмена ставки ${amount}₽ для ${user.username}. Новый баланс: ${newBalance}₽`);
     
     res.json({
       success: true,
       balance: newBalance,
-      currency: user.currency || 'RUB',
-      transaction_id: transactionId
+      currency: 'RUB',
+      transaction_id: txResult.rows[0].id.toString()
     });
 
   } catch (error) {
     console.error('❌ Ошибка отмены ставки:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
@@ -344,33 +324,31 @@ router.post('/game-end', async (req, res) => {
     
     console.log('🏁 Конец игры:', { user_id, session_id, game_round_id });
 
-    res.json({
-      success: true,
-      message: 'Game session ended'
-    });
+    // Закрываем сессию
+    if (session_id) {
+      await pool.query(
+        "UPDATE game_sessions SET status = 'completed', ended_at = CURRENT_TIMESTAMP WHERE session_id = $1",
+        [session_id]
+      );
+    }
+
+    res.json({ success: true, message: 'Game session ended' });
 
   } catch (error) {
     console.error('❌ Ошибка завершения игры:', error);
-    res.status(500).json({
-      success: false,
-      error: error.message
-    });
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
-// Обработка любых других callback запросов (только на /api/callback/*)
+// Обработка любых других callback запросов
 router.all('*', (req, res) => {
   console.log('🤔 Неизвестный callback запрос:', {
     method: req.method,
     url: req.url,
-    body: req.body,
-    query: req.query
+    body: req.body
   });
   
-  res.json({
-    success: true,
-    message: 'Callback received'
-  });
+  res.json({ success: true, message: 'Callback received' });
 });
 
 module.exports = router;

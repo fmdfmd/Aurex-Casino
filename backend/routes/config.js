@@ -1,5 +1,5 @@
 const express = require('express');
-const { User, GameSession, Transaction } = require('../models/temp-models');
+const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
 const router = express.Router();
 

@@ -1,539 +1,278 @@
 const express = require('express');
-const axios = require('axios');
-const crypto = require('crypto');
-const { body, validationResult } = require('express-validator');
-const { User, Transaction } = require('../models/temp-models');
-const config = require('../config/config');
-const { auth } = require('../middleware/auth');
 const router = express.Router();
+const pool = require('../config/database');
+const { auth } = require('../middleware/auth');
 
-// Lava Top Payment Service
-class LavaTopService {
-  constructor() {
-    this.apiUrl = config.lavaTop.apiUrl;
-    this.shopId = config.lavaTop.shopId;
-    this.apiKey = config.lavaTop.apiKey;
-  }
-
-  // Create invoice for deposit
-  async createInvoice(amount, currency, userId, orderId) {
-    try {
-      const invoiceData = {
-        shopId: this.shopId,
-        amount: amount,
-        currency: currency,
-        orderId: orderId,
-        hookUrl: `${config.server.frontendUrl}/api/payments/lava-callback`,
-        successUrl: `${config.server.frontendUrl}/payment/success`,
-        failUrl: `${config.server.frontendUrl}/payment/fail`,
-        additionalData: JSON.stringify({ userId })
-      };
-
-      const signature = this.generateSignature(invoiceData);
-      invoiceData.signature = signature;
-
-      const response = await axios.post(`${this.apiUrl}/createInvoice`, invoiceData, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      });
-
-      return response.data;
-    } catch (error) {
-      console.error('Lava Top create invoice error:', error);
-      throw new Error('Failed to create payment invoice');
-    }
-  }
-
-  // Check invoice status
-  async getInvoiceStatus(invoiceId) {
-    try {
-      const response = await axios.get(`${this.apiUrl}/statusInvoice`, {
-        params: { invoiceId },
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`
-        },
-        timeout: 15000
-      });
-
-      return response.data;
-    } catch (error) {
-      console.error('Lava Top status check error:', error);
-      throw new Error('Failed to check payment status');
-    }
-  }
-
-  // Create payout for withdrawal
-  async createPayout(amount, currency, card, userId, orderId) {
-    try {
-      const payoutData = {
-        shopId: this.shopId,
-        amount: amount,
-        currency: currency,
-        orderId: orderId,
-        card: card,
-        hookUrl: `${config.server.frontendUrl}/api/payments/lava-payout-callback`,
-        additionalData: JSON.stringify({ userId })
-      };
-
-      const signature = this.generateSignature(payoutData);
-      payoutData.signature = signature;
-
-      const response = await axios.post(`${this.apiUrl}/createPayout`, payoutData, {
-        headers: {
-          'Authorization': `Bearer ${this.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        timeout: 30000
-      });
-
-      return response.data;
-    } catch (error) {
-      console.error('Lava Top create payout error:', error);
-      throw new Error('Failed to create payout');
-    }
-  }
-
-  // Generate signature for Lava Top
-  generateSignature(data) {
-    const sortedData = Object.keys(data)
-      .filter(key => key !== 'signature')
-      .sort()
-      .map(key => `${key}:${data[key]}`)
-      .join('|');
-    
-    return crypto
-      .createHmac('sha256', this.apiKey)
-      .update(sortedData)
-      .digest('hex');
-  }
-
-  // Verify webhook signature
-  verifySignature(data, signature) {
-    const generatedSignature = this.generateSignature(data);
-    return generatedSignature === signature;
-  }
-}
-
-const lavaTopService = new LavaTopService();
-
-// Get user's payment history
+// Получить историю транзакций пользователя
 router.get('/history', auth, async (req, res) => {
   try {
     const { page = 1, limit = 20, type } = req.query;
-    const query = { 
-      user: req.user.id,
-      type: { $in: ['deposit', 'withdrawal'] }
-    };
+    const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    if (type) {
-      query.type = type;
+    let query = 'SELECT * FROM transactions WHERE user_id = $1';
+    const values = [req.user.id];
+    
+    if (type && type !== 'all') {
+      values.push(type);
+      query += ` AND type = $${values.length}`;
     }
-
-    const transactions = await Transaction.find(query)
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const total = await Transaction.countDocuments(query);
-
+    
+    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    
+    const result = await pool.query(query, values);
+    
+    const countResult = await pool.query(
+      'SELECT COUNT(*) FROM transactions WHERE user_id = $1',
+      [req.user.id]
+    );
+    
     res.json({
       success: true,
       data: {
-        transactions,
+        transactions: result.rows.map(t => ({
+          id: t.id,
+          type: t.type,
+          amount: parseFloat(t.amount),
+          currency: t.currency || 'RUB',
+          status: t.status,
+          paymentMethod: t.payment_method,
+          description: t.description,
+          createdAt: t.created_at
+        })),
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total,
-          pages: Math.ceil(total / limit)
+          total: parseInt(countResult.rows[0].count)
         }
       }
     });
   } catch (error) {
     console.error('Get payment history error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get payment history'
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Create deposit
-router.post('/deposit', auth, [
-  body('amount')
-    .isFloat({ min: 100 })
-    .withMessage('Minimum deposit amount is 100'),
-  body('currency')
-    .isIn(['RUB', 'USD', 'EUR'])
-    .withMessage('Invalid currency')
-], async (req, res) => {
+// Создать депозит
+router.post('/deposit', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { amount, paymentMethod, currency = 'RUB' } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
-
-    const { amount, currency } = req.body;
-    const userId = req.user.id;
-
-    // Generate unique order ID
-    const orderId = `DEP_${Date.now()}_${userId}`;
-
-    // Create transaction record
-    const transaction = new Transaction({
-      user: userId,
-      transactionId: Transaction.generateTransactionId(),
-      type: 'deposit',
-      amount: amount,
-      currency: currency,
-      balanceBefore: req.user.balance[currency] || 0,
-      balanceAfter: (req.user.balance[currency] || 0) + amount,
-      description: `Deposit ${amount} ${currency}`,
-      status: 'pending',
-      paymentMethod: 'lava_top',
-      paymentId: orderId,
-      ipAddress: req.ip
-    });
-
-    await transaction.save();
-
-    // Create Lava Top invoice
-    const invoice = await lavaTopService.createInvoice(amount, currency, userId, orderId);
-
-    // Update transaction with invoice data
-    transaction.metadata = {
-      invoiceId: invoice.id,
-      invoiceUrl: invoice.url
+    
+    // Создаём транзакцию
+    const result = await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, description)
+       VALUES ($1, 'deposit', $2, $3, 'pending', $4, 'Пополнение баланса')
+       RETURNING *`,
+      [req.user.id, amount, currency, paymentMethod]
+    );
+    
+    const transaction = result.rows[0];
+    
+    // Генерируем платёжные данные (заглушка для реального платёжного шлюза)
+    const paymentData = {
+      transactionId: transaction.id,
+      amount: parseFloat(amount),
+      currency,
+      paymentMethod,
+      // Для криптовалют
+      walletAddress: paymentMethod === 'btc' ? '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' :
+                     paymentMethod === 'eth' ? '0x742d35Cc6634C0532925a3b844Bc9e7595f0Ab12' :
+                     paymentMethod === 'usdt' ? 'TN3W4H6rK2ce4vX9YnFQHwKENnHjoxb3m9' : null,
+      // Для СБП
+      sbpLink: paymentMethod === 'sbp' ? `https://qr.nspk.ru/pay?amount=${amount}&purpose=AUREX` : null,
+      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 минут
     };
-    await transaction.save();
-
+    
     res.json({
       success: true,
+      message: 'Заявка на депозит создана',
       data: {
-        transactionId: transaction.transactionId,
-        paymentUrl: invoice.url,
-        amount: amount,
-        currency: currency,
-        orderId: orderId
+        transaction: {
+          id: transaction.id,
+          amount: parseFloat(transaction.amount),
+          status: transaction.status,
+          createdAt: transaction.created_at
+        },
+        paymentData
       }
     });
   } catch (error) {
     console.error('Create deposit error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create deposit'
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Create withdrawal
-router.post('/withdraw', auth, [
-  body('amount')
-    .isFloat({ min: 500 })
-    .withMessage('Minimum withdrawal amount is 500'),
-  body('currency')
-    .isIn(['RUB', 'USD', 'EUR'])
-    .withMessage('Invalid currency'),
-  body('card')
-    .matches(/^\d{16,19}$/)
-    .withMessage('Invalid card number')
-], async (req, res) => {
+// Подтвердить депозит (вызывается webhook от платёжки или вручную)
+router.post('/deposit/:id/confirm', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { id } = req.params;
+    
+    // Получаем транзакцию
+    const txResult = await pool.query(
+      "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'deposit' AND status = 'pending'",
+      [id, req.user.id]
+    );
+    
+    if (txResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Транзакция не найдена' });
     }
-
-    const { amount, currency, card } = req.body;
-    const userId = req.user.id;
-
-    const user = await User.findById(userId);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    // Check if user has sufficient balance
-    if (!user.canAfford(currency, amount)) {
-      return res.status(400).json({
-        success: false,
-        error: 'Insufficient balance'
-      });
-    }
-
-    // Check minimum withdrawal amount based on user's deposit history
-    const totalDeposited = await Transaction.aggregate([
-      { 
-        $match: { 
-          user: userId, 
-          type: 'deposit', 
-          status: 'completed',
-          currency: currency
-        } 
-      },
-      { $group: { _id: null, total: { $sum: '$amount' } } }
-    ]);
-
-    const depositedAmount = totalDeposited.length > 0 ? totalDeposited[0].total : 0;
-    if (amount > depositedAmount * 2) {
-      return res.status(400).json({
-        success: false,
-        error: 'Withdrawal amount cannot exceed 200% of total deposits'
-      });
-    }
-
-    // Generate unique order ID
-    const orderId = `WDR_${Date.now()}_${userId}`;
-
-    // Create transaction record
-    const transaction = new Transaction({
-      user: userId,
-      transactionId: Transaction.generateTransactionId(),
-      type: 'withdrawal',
-      amount: -amount, // Negative for withdrawal
-      currency: currency,
-      balanceBefore: user.balance[currency],
-      balanceAfter: user.balance[currency] - amount,
-      description: `Withdrawal ${amount} ${currency} to card ${card.slice(-4)}`,
-      status: 'pending',
-      paymentMethod: 'lava_top',
-      paymentId: orderId,
-      metadata: { card: card },
-      ipAddress: req.ip
-    });
-
-    // Update user balance (hold the amount)
-    user.updateBalance(currency, -amount);
-    user.totalWithdrawn += amount;
-
-    await Promise.all([transaction.save(), user.save()]);
-
-    // Create Lava Top payout
-    try {
-      const payout = await lavaTopService.createPayout(amount, currency, card, userId, orderId);
-      
-      transaction.metadata.payoutId = payout.id;
-      await transaction.save();
-
-      res.json({
-        success: true,
-        data: {
-          transactionId: transaction.transactionId,
-          amount: amount,
-          currency: currency,
-          orderId: orderId,
-          status: 'pending'
-        }
-      });
-    } catch (payoutError) {
-      // Revert balance if payout creation failed
-      user.updateBalance(currency, amount);
-      user.totalWithdrawn -= amount;
-      await user.save();
-
-      transaction.fail('Payout creation failed');
-      await transaction.save();
-
-      throw payoutError;
-    }
-  } catch (error) {
-    console.error('Create withdrawal error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to create withdrawal'
-    });
-  }
-});
-
-// Get payment methods and limits
-router.get('/methods', auth, async (req, res) => {
-  try {
-    const methods = {
-      deposit: {
-        lava_top: {
-          name: 'Lava Top',
-          currencies: ['RUB', 'USD', 'EUR'],
-          minAmount: { RUB: 100, USD: 2, EUR: 2 },
-          maxAmount: { RUB: 500000, USD: 7000, EUR: 6000 },
-          fee: 0, // No fee for deposits
-          processingTime: '1-5 minutes'
-        }
-      },
-      withdrawal: {
-        lava_top: {
-          name: 'Lava Top',
-          currencies: ['RUB', 'USD', 'EUR'],
-          minAmount: { RUB: 500, USD: 7, EUR: 6 },
-          maxAmount: { RUB: 500000, USD: 7000, EUR: 6000 },
-          fee: { RUB: 50, USD: 1, EUR: 1 },
-          processingTime: '1-24 hours'
-        }
-      }
-    };
-
+    
+    const tx = txResult.rows[0];
+    
+    // Обновляем статус транзакции
+    await pool.query(
+      "UPDATE transactions SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [id]
+    );
+    
+    // Добавляем на баланс
+    await pool.query(
+      'UPDATE users SET balance = balance + $1, deposit_count = deposit_count + 1 WHERE id = $2',
+      [parseFloat(tx.amount), req.user.id]
+    );
+    
+    // Получаем обновлённый баланс
+    const userResult = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
+    
     res.json({
       success: true,
-      data: methods
+      message: 'Депозит подтверждён',
+      data: {
+        amount: parseFloat(tx.amount),
+        newBalance: parseFloat(userResult.rows[0].balance)
+      }
     });
   } catch (error) {
-    console.error('Get payment methods error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get payment methods'
-    });
+    console.error('Confirm deposit error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Lava Top deposit callback
-router.post('/lava-callback', async (req, res) => {
+// Создать заявку на вывод
+router.post('/withdraw', auth, async (req, res) => {
   try {
-    const { signature, ...data } = req.body;
-
-    // Verify signature
-    if (!lavaTopService.verifySignature(data, signature)) {
-      console.error('Invalid Lava Top signature');
-      return res.status(400).send('Invalid signature');
+    const { amount, paymentMethod, walletAddress, currency = 'RUB' } = req.body;
+    
+    if (!amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
-
-    const { orderId, status, amount, currency } = data;
-    const additionalData = JSON.parse(data.additionalData || '{}');
-    const userId = additionalData.userId;
-
-    // Find transaction
-    const transaction = await Transaction.findOne({ paymentId: orderId });
-    if (!transaction) {
-      console.error('Transaction not found for orderId:', orderId);
-      return res.status(404).send('Transaction not found');
+    
+    // Получаем баланс пользователя
+    const userResult = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
+    const balance = parseFloat(userResult.rows[0].balance);
+    
+    if (amount > balance) {
+      return res.status(400).json({ success: false, message: 'Недостаточно средств' });
     }
-
-    if (status === 'success' && transaction.status === 'pending') {
-      // Payment successful
-      const user = await User.findById(userId);
-      if (user) {
-        // Update user balance
-        user.updateBalance(currency, amount);
-        user.totalDeposited += amount;
-        await user.save();
-
-        // Complete transaction
-        transaction.complete();
-        transaction.balanceAfter = user.balance[currency];
-        await transaction.save();
-
-        console.log(`Deposit completed: ${amount} ${currency} for user ${userId}`);
-        
-        // Process referral commission if user was referred
-        const referredBy = user.referredBy || user.referral?.referredBy;
-        if (referredBy) {
-          try {
-            const referrer = await User.findById(referredBy);
-            if (referrer) {
-              // Calculate commission based on referral tier (10-20%)
-              const referralCount = referrer.referralCount || referrer.referral?.referralCount || 0;
-              let commissionPercent = 10;
-              if (referralCount >= 50) commissionPercent = 20;
-              else if (referralCount >= 30) commissionPercent = 18;
-              else if (referralCount >= 15) commissionPercent = 15;
-              else if (referralCount >= 5) commissionPercent = 12;
-              
-              const commission = Math.floor(amount * commissionPercent / 100);
-              
-              // Add commission to referrer's balance
-              if (referrer.balance && typeof referrer.balance === 'object') {
-                referrer.balance[currency] = (referrer.balance[currency] || 0) + commission;
-              }
-              if (referrer.referral) {
-                referrer.referral.referralEarnings = (referrer.referral.referralEarnings || 0) + commission;
-              } else {
-                referrer.referralEarnings = (referrer.referralEarnings || 0) + commission;
-              }
-              
-              // Save referrer
-              if (typeof referrer.save === 'function') {
-                await referrer.save();
-              } else {
-                await User.findByIdAndUpdate(referrer._id, referrer);
-              }
-              
-              console.log(`Referral commission: ${commission} ${currency} to user ${referrer._id}`);
-            }
-          } catch (refError) {
-            console.error('Referral commission error:', refError);
-          }
-        }
+    
+    // Минимальные суммы вывода
+    const minWithdraw = {
+      btc: 1000, eth: 1000, usdt: 1000, ltc: 1000,
+      card: 2000, sbp: 1000, qiwi: 1000, yoomoney: 1000
+    };
+    
+    if (amount < (minWithdraw[paymentMethod] || 1000)) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Минимальная сумма вывода: ₽${minWithdraw[paymentMethod] || 1000}` 
+      });
+    }
+    
+    // Блокируем средства (списываем с баланса сразу)
+    await pool.query(
+      'UPDATE users SET balance = balance - $1 WHERE id = $2',
+      [amount, req.user.id]
+    );
+    
+    // Создаём транзакцию
+    const result = await pool.query(
+      `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
+       VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, 'Вывод средств')
+       RETURNING *`,
+      [req.user.id, -amount, currency, paymentMethod, walletAddress]
+    );
+    
+    res.json({
+      success: true,
+      message: 'Заявка на вывод создана',
+      data: {
+        transaction: result.rows[0],
+        estimatedTime: '1-24 часа'
       }
-    } else if (status === 'failed') {
-      // Payment failed
-      transaction.fail('Payment failed');
-      await transaction.save();
-
-      console.log(`Deposit failed for orderId: ${orderId}`);
-    }
-
-    res.status(200).send('OK');
+    });
   } catch (error) {
-    console.error('Lava Top callback error:', error);
-    res.status(500).send('Internal server error');
+    console.error('Create withdrawal error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Lava Top withdrawal callback
-router.post('/lava-payout-callback', async (req, res) => {
+// Отменить заявку на вывод
+router.post('/withdraw/:id/cancel', auth, async (req, res) => {
   try {
-    const { signature, ...data } = req.body;
-
-    // Verify signature
-    if (!lavaTopService.verifySignature(data, signature)) {
-      console.error('Invalid Lava Top payout signature');
-      return res.status(400).send('Invalid signature');
+    const { id } = req.params;
+    
+    const txResult = await pool.query(
+      "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'withdrawal' AND status = 'pending'",
+      [id, req.user.id]
+    );
+    
+    if (txResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Транзакция не найдена' });
     }
-
-    const { orderId, status } = data;
-
-    // Find transaction
-    const transaction = await Transaction.findOne({ paymentId: orderId });
-    if (!transaction) {
-      console.error('Withdrawal transaction not found for orderId:', orderId);
-      return res.status(404).send('Transaction not found');
-    }
-
-    if (status === 'success' && transaction.status === 'pending') {
-      // Withdrawal successful
-      transaction.complete();
-      await transaction.save();
-
-      console.log(`Withdrawal completed for orderId: ${orderId}`);
-    } else if (status === 'failed') {
-      // Withdrawal failed - return money to user
-      const user = await User.findById(transaction.user);
-      if (user) {
-        user.updateBalance(transaction.currency, Math.abs(transaction.amount));
-        user.totalWithdrawn -= Math.abs(transaction.amount);
-        await user.save();
-      }
-
-      transaction.fail('Withdrawal failed');
-      await transaction.save();
-
-      console.log(`Withdrawal failed for orderId: ${orderId}`);
-    }
-
-    res.status(200).send('OK');
+    
+    const tx = txResult.rows[0];
+    
+    // Отменяем транзакцию
+    await pool.query(
+      "UPDATE transactions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      [id]
+    );
+    
+    // Возвращаем деньги
+    await pool.query(
+      'UPDATE users SET balance = balance + $1 WHERE id = $2',
+      [Math.abs(parseFloat(tx.amount)), req.user.id]
+    );
+    
+    res.json({ success: true, message: 'Заявка отменена, средства возвращены' });
   } catch (error) {
-    console.error('Lava Top payout callback error:', error);
-    res.status(500).send('Internal server error');
+    console.error('Cancel withdrawal error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Получить статистику платежей
+router.get('/stats', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT 
+        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed'), 0) as total_deposits,
+        COUNT(*) FILTER (WHERE type = 'deposit' AND status = 'completed') as deposit_count,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'completed'), 0) as total_withdrawals,
+        COUNT(*) FILTER (WHERE type = 'withdrawal' AND status = 'completed') as withdrawal_count,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'pending'), 0) as pending_withdrawals
+      FROM transactions
+      WHERE user_id = $1
+    `, [req.user.id]);
+    
+    const stats = result.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        totalDeposits: parseFloat(stats.total_deposits),
+        depositCount: parseInt(stats.deposit_count),
+        totalWithdrawals: parseFloat(stats.total_withdrawals),
+        withdrawalCount: parseInt(stats.withdrawal_count),
+        pendingWithdrawals: parseFloat(stats.pending_withdrawals)
+      }
+    });
+  } catch (error) {
+    console.error('Get payment stats error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 

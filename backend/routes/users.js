@@ -1,487 +1,287 @@
 const express = require('express');
-const { body, validationResult } = require('express-validator');
-const { User, GameSession, Transaction } = require('../models/temp-models');
-const { auth } = require('../middleware/auth');
 const router = express.Router();
+const pool = require('../config/database');
+const { auth, adminAuth } = require('../middleware/auth');
 
-// Get user profile
+// Получить профиль пользователя
 router.get('/profile', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user.id)
-      .select('-password')
-      .populate('referredBy', 'username');
-
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    const result = await pool.query('SELECT * FROM users WHERE id = $1', [req.user.id]);
+    
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
     }
-
-    // Get referral count
-    const referralCount = await User.countDocuments({ referredBy: user._id });
-
-    // Get recent activity
-    const recentTransactions = await Transaction.find({ user: user._id })
-      .sort({ createdAt: -1 })
-      .limit(5)
-      .select('type amount currency status createdAt');
-
+    
+    const u = result.rows[0];
+    
     res.json({
       success: true,
       data: {
-        user: {
-          ...user.toObject(),
-          referralCount
-        },
-        recentTransactions
+        id: u.id,
+        odid: u.odid,
+        username: u.username,
+        email: u.email,
+        balance: parseFloat(u.balance),
+        bonusBalance: parseFloat(u.bonus_balance),
+        vipLevel: u.vip_level,
+        vipPoints: u.vip_points,
+        isVerified: u.is_verified,
+        referralCode: u.referral_code,
+        avatar: u.avatar,
+        createdAt: u.created_at,
+        lastLogin: u.last_login
       }
     });
   } catch (error) {
-    console.error('Get user profile error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get user profile'
-    });
+    console.error('Get profile error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Update user settings
-router.put('/settings', auth, [
-  body('notifications.email').optional().isBoolean(),
-  body('notifications.push').optional().isBoolean(),
-  body('notifications.sms').optional().isBoolean(),
-  body('privacy.showOnline').optional().isBoolean(),
-  body('privacy.showStats').optional().isBoolean(),
-  body('limits.dailyDeposit').optional().isFloat({ min: 0 }),
-  body('limits.sessionTime').optional().isInt({ min: 0 })
-], async (req, res) => {
+// Обновить профиль
+router.put('/profile', auth, async (req, res) => {
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({
-        success: false,
-        error: 'Validation failed',
-        details: errors.array()
-      });
+    const { username, email, avatar } = req.body;
+    
+    const updates = [];
+    const values = [];
+    
+    if (username) {
+      // Проверяем уникальность
+      const existing = await pool.query(
+        'SELECT id FROM users WHERE username = $1 AND id != $2',
+        [username, req.user.id]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(400).json({ success: false, message: 'Имя пользователя занято' });
+      }
+      values.push(username);
+      updates.push(`username = $${values.length}`);
     }
-
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
+    
+    if (email) {
+      const existing = await pool.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email, req.user.id]
+      );
+      if (existing.rows.length > 0) {
+        return res.status(400).json({ success: false, message: 'Email уже используется' });
+      }
+      values.push(email);
+      updates.push(`email = $${values.length}`);
     }
-
-    // Update settings
-    if (req.body.notifications) {
-      Object.assign(user.settings.notifications, req.body.notifications);
+    
+    if (avatar) {
+      values.push(avatar);
+      updates.push(`avatar = $${values.length}`);
     }
-    if (req.body.privacy) {
-      Object.assign(user.settings.privacy, req.body.privacy);
+    
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, message: 'Нет данных для обновления' });
     }
-    if (req.body.limits) {
-      Object.assign(user.settings.limits, req.body.limits);
-    }
-
-    await user.save();
-
-    res.json({
-      success: true,
-      message: 'Settings updated successfully',
-      data: { settings: user.settings }
-    });
+    
+    values.push(req.user.id);
+    const result = await pool.query(
+      `UPDATE users SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING *`,
+      values
+    );
+    
+    res.json({ success: true, message: 'Профиль обновлён', data: result.rows[0] });
   } catch (error) {
-    console.error('Update user settings error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to update settings'
-    });
+    console.error('Update profile error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get user statistics
-router.get('/statistics', auth, async (req, res) => {
+// Получить баланс
+router.get('/balance', auth, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { period = 'all' } = req.query;
-
-    let dateFilter = {};
-    if (period !== 'all') {
-      const date = new Date();
-      switch (period) {
-        case 'today':
-          date.setHours(0, 0, 0, 0);
-          break;
-        case 'week':
-          date.setDate(date.getDate() - 7);
-          break;
-        case 'month':
-          date.setMonth(date.getMonth() - 1);
-          break;
-      }
-      dateFilter = { createdAt: { $gte: date } };
-    }
-
-    // Game statistics
-    const gameStats = await GameSession.aggregate([
-      { $match: { user: userId, ...dateFilter } },
-      {
-        $group: {
-          _id: null,
-          totalSessions: { $sum: 1 },
-          totalBet: { $sum: '$totalBet' },
-          totalWin: { $sum: '$totalWin' },
-          totalSpins: { $sum: '$spinsCount' },
-          avgBet: { $avg: '$totalBet' },
-          maxWin: { $max: '$totalWin' },
-          maxBet: { $max: '$totalBet' }
-        }
-      }
-    ]);
-
-    // Payment statistics
-    const paymentStats = await Transaction.aggregate([
-      { 
-        $match: { 
-          user: userId, 
-          type: { $in: ['deposit', 'withdrawal'] },
-          status: 'completed',
-          ...dateFilter 
-        } 
-      },
-      {
-        $group: {
-          _id: '$type',
-          total: { $sum: '$amount' },
-          count: { $sum: 1 }
-        }
-      }
-    ]);
-
-    // Top games
-    const topGames = await GameSession.aggregate([
-      { $match: { user: userId, ...dateFilter } },
-      {
-        $group: {
-          _id: '$gameCode',
-          gameName: { $first: '$gameName' },
-          sessions: { $sum: 1 },
-          totalBet: { $sum: '$totalBet' },
-          totalWin: { $sum: '$totalWin' },
-          totalSpins: { $sum: '$spinsCount' }
-        }
-      },
-      { $sort: { sessions: -1 } },
-      { $limit: 10 }
-    ]);
-
-    // Monthly statistics for chart
-    const monthlyStats = await GameSession.aggregate([
-      { $match: { user: userId } },
-      {
-        $group: {
-          _id: {
-            year: { $year: '$createdAt' },
-            month: { $month: '$createdAt' }
-          },
-          totalBet: { $sum: '$totalBet' },
-          totalWin: { $sum: '$totalWin' },
-          sessions: { $sum: 1 }
-        }
-      },
-      { $sort: { '_id.year': 1, '_id.month': 1 } },
-      { $limit: 12 }
-    ]);
-
-    const stats = gameStats.length > 0 ? gameStats[0] : {
-      totalSessions: 0,
-      totalBet: 0,
-      totalWin: 0,
-      totalSpins: 0,
-      avgBet: 0,
-      maxWin: 0,
-      maxBet: 0
-    };
-
-    const deposits = paymentStats.find(p => p._id === 'deposit') || { total: 0, count: 0 };
-    const withdrawals = paymentStats.find(p => p._id === 'withdrawal') || { total: 0, count: 0 };
-
+    const result = await pool.query(
+      'SELECT balance, bonus_balance FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
     res.json({
       success: true,
       data: {
-        period,
-        gameStats: {
-          ...stats,
-          profit: stats.totalWin - stats.totalBet,
-          rtp: stats.totalBet > 0 ? (stats.totalWin / stats.totalBet * 100) : 0
-        },
-        paymentStats: {
-          totalDeposited: deposits.total,
-          depositCount: deposits.count,
-          totalWithdrawn: Math.abs(withdrawals.total),
-          withdrawalCount: withdrawals.count,
-          netDeposit: deposits.total + withdrawals.total
-        },
-        topGames,
-        monthlyStats
+        balance: parseFloat(result.rows[0].balance),
+        bonusBalance: parseFloat(result.rows[0].bonus_balance),
+        total: parseFloat(result.rows[0].balance) + parseFloat(result.rows[0].bonus_balance)
       }
     });
   } catch (error) {
-    console.error('Get user statistics error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get user statistics'
-    });
+    console.error('Get balance error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// Get referral information
-router.get('/referrals', auth, async (req, res) => {
+// Получить VIP статус
+router.get('/vip', auth, async (req, res) => {
   try {
-    const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
-
-    // Get referred users
-    const referrals = await User.find({ referredBy: userId })
-      .select('username createdAt totalDeposited gamesPlayed')
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const totalReferrals = await User.countDocuments({ referredBy: userId });
-
-    // Calculate referral earnings (5% commission on deposits)
-    const referralEarnings = await Transaction.aggregate([
-      {
-        $lookup: {
-          from: 'users',
-          localField: 'user',
-          foreignField: '_id',
-          as: 'userInfo'
-        }
-      },
-      {
-        $match: {
-          'userInfo.referredBy': userId,
-          type: 'deposit',
-          status: 'completed'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          totalCommission: { $sum: { $multiply: ['$amount', 0.05] } },
-          totalDeposits: { $sum: '$amount' }
-        }
-      }
-    ]);
-
-    const earnings = referralEarnings.length > 0 ? referralEarnings[0] : {
-      totalCommission: 0,
-      totalDeposits: 0
-    };
-
-    res.json({
-      success: true,
-      data: {
-        referrals,
-        totalReferrals,
-        earnings,
-        referralCode: req.user.referralCode,
-        referralLink: `${process.env.FRONTEND_URL}/register?ref=${req.user.referralCode}`,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: totalReferrals,
-          pages: Math.ceil(totalReferrals / limit)
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get referrals error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get referral information'
-    });
-  }
-});
-
-// Get user's bonuses
-router.get('/bonuses', auth, async (req, res) => {
-  try {
-    const userId = req.user.id;
-    const { page = 1, limit = 20 } = req.query;
-
-    const bonusTransactions = await Transaction.find({
-      user: userId,
-      type: 'bonus'
-    })
-      .sort({ createdAt: -1 })
-      .limit(limit * 1)
-      .skip((page - 1) * limit);
-
-    const totalBonuses = await Transaction.countDocuments({
-      user: userId,
-      type: 'bonus'
-    });
-
-    const totalBonusAmount = await Transaction.aggregate([
-      {
-        $match: {
-          user: userId,
-          type: 'bonus',
-          status: 'completed'
-        }
-      },
-      {
-        $group: {
-          _id: null,
-          total: { $sum: '$amount' }
-        }
-      }
-    ]);
-
-    res.json({
-      success: true,
-      data: {
-        bonuses: bonusTransactions,
-        totalBonusAmount: totalBonusAmount.length > 0 ? totalBonusAmount[0].total : 0,
-        currentBonusBalance: req.user.bonusBalance,
-        pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
-          total: totalBonuses,
-          pages: Math.ceil(totalBonuses / limit)
-        }
-      }
-    });
-  } catch (error) {
-    console.error('Get bonuses error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get bonus information'
-    });
-  }
-});
-
-// Claim daily bonus
-router.post('/claim-daily-bonus', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    // Check if user already claimed bonus today
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const lastBonus = await Transaction.findOne({
-      user: user._id,
-      type: 'bonus',
-      description: { $regex: /Daily bonus/ },
-      createdAt: { $gte: today }
-    });
-
-    if (lastBonus) {
-      return res.status(400).json({
-        success: false,
-        error: 'Daily bonus already claimed today'
-      });
-    }
-
-    // Calculate bonus amount based on VIP level
-    const bonusAmount = 50 + (user.vipLevel * 10);
-
-    // Create bonus transaction
-    const transaction = new Transaction({
-      user: user._id,
-      transactionId: Transaction.generateTransactionId(),
-      type: 'bonus',
-      amount: bonusAmount,
-      currency: 'RUB',
-      balanceBefore: user.bonusBalance,
-      balanceAfter: user.bonusBalance + bonusAmount,
-      description: `Daily bonus - VIP Level ${user.vipLevel}`,
-      status: 'completed',
-      ipAddress: req.ip
-    });
-
-    // Update user bonus balance
-    user.bonusBalance += bonusAmount;
-
-    await Promise.all([transaction.save(), user.save()]);
-
-    res.json({
-      success: true,
-      message: 'Daily bonus claimed successfully',
-      data: {
-        bonusAmount,
-        newBonusBalance: user.bonusBalance
-      }
-    });
-  } catch (error) {
-    console.error('Claim daily bonus error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to claim daily bonus'
-    });
-  }
-});
-
-// Get VIP status and progress
-router.get('/vip-status', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user.id);
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
-      });
-    }
-
-    // VIP levels and requirements
+    const result = await pool.query(
+      'SELECT vip_level, vip_points FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    
+    const user = result.rows[0];
+    
     const vipLevels = [
-      { level: 0, required: 0, benefits: ['Welcome bonus'] },
-      { level: 1, required: 10000, benefits: ['5% deposit bonus', 'Priority support'] },
-      { level: 2, required: 50000, benefits: ['10% deposit bonus', 'Weekly cashback'] },
-      { level: 3, required: 100000, benefits: ['15% deposit bonus', 'Monthly bonus'] },
-      { level: 4, required: 250000, benefits: ['20% deposit bonus', 'Personal manager'] },
-      { level: 5, required: 500000, benefits: ['25% deposit bonus', 'Exclusive games'] },
-      { level: 6, required: 1000000, benefits: ['30% deposit bonus', 'VIP tournaments'] },
-      { level: 7, required: 2500000, benefits: ['35% deposit bonus', 'Premium support'] },
-      { level: 8, required: 5000000, benefits: ['40% deposit bonus', 'Custom limits'] },
-      { level: 9, required: 10000000, benefits: ['45% deposit bonus', 'VIP events'] },
-      { level: 10, required: 25000000, benefits: ['50% deposit bonus', 'Ultimate VIP'] }
+      { level: 1, name: 'Bronze', pointsRequired: 0, cashbackPercent: 5 },
+      { level: 2, name: 'Silver', pointsRequired: 1000, cashbackPercent: 7 },
+      { level: 3, name: 'Gold', pointsRequired: 5000, cashbackPercent: 10 },
+      { level: 4, name: 'Platinum', pointsRequired: 20000, cashbackPercent: 12 },
+      { level: 5, name: 'Emperor', pointsRequired: 100000, cashbackPercent: 15 }
     ];
-
-    const currentLevel = vipLevels.find(level => level.level === user.vipLevel);
-    const nextLevel = vipLevels.find(level => level.level === user.vipLevel + 1);
-
-    const progressToNext = nextLevel ? 
-      (user.totalWagered / nextLevel.required) * 100 : 100;
-
+    
+    const currentLevel = vipLevels.find(l => l.level === user.vip_level) || vipLevels[0];
+    const nextLevel = vipLevels.find(l => l.level === user.vip_level + 1);
+    
     res.json({
       success: true,
       data: {
-        currentLevel,
-        nextLevel,
-        totalWagered: user.totalWagered,
-        progressToNext: Math.min(progressToNext, 100),
-        remainingToNext: nextLevel ? Math.max(nextLevel.required - user.totalWagered, 0) : 0
+        level: user.vip_level,
+        levelName: currentLevel.name,
+        points: user.vip_points,
+        cashbackPercent: currentLevel.cashbackPercent,
+        nextLevel: nextLevel ? {
+          level: nextLevel.level,
+          name: nextLevel.name,
+          pointsRequired: nextLevel.pointsRequired,
+          pointsNeeded: nextLevel.pointsRequired - user.vip_points
+        } : null
       }
     });
   } catch (error) {
     console.error('Get VIP status error:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Failed to get VIP status'
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Получить статистику пользователя
+router.get('/stats', auth, async (req, res) => {
+  try {
+    // Статистика транзакций
+    const txResult = await pool.query(`
+      SELECT 
+        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed'), 0) as total_deposits,
+        COUNT(*) FILTER (WHERE type = 'deposit' AND status = 'completed') as deposit_count,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'completed'), 0) as total_withdrawals
+      FROM transactions
+      WHERE user_id = $1
+    `, [req.user.id]);
+    
+    // Статистика игр
+    const gameResult = await pool.query(`
+      SELECT 
+        COUNT(*) as total_sessions,
+        COALESCE(SUM(bet_amount), 0) as total_wagered,
+        COALESCE(SUM(win_amount), 0) as total_won,
+        COALESCE(MAX(win_amount), 0) as biggest_win
+      FROM game_sessions
+      WHERE user_id = $1
+    `, [req.user.id]);
+    
+    const tx = txResult.rows[0];
+    const game = gameResult.rows[0];
+    
+    res.json({
+      success: true,
+      data: {
+        finance: {
+          totalDeposits: parseFloat(tx.total_deposits),
+          depositCount: parseInt(tx.deposit_count),
+          totalWithdrawals: parseFloat(tx.total_withdrawals),
+          netDeposits: parseFloat(tx.total_deposits) - parseFloat(tx.total_withdrawals)
+        },
+        gaming: {
+          totalSessions: parseInt(game.total_sessions),
+          totalWagered: parseFloat(game.total_wagered),
+          totalWon: parseFloat(game.total_won),
+          biggestWin: parseFloat(game.biggest_win),
+          netResult: parseFloat(game.total_won) - parseFloat(game.total_wagered)
+        }
+      }
     });
+  } catch (error) {
+    console.error('Get user stats error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Получить историю транзакций
+router.get('/transactions', auth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, type } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    let query = 'SELECT * FROM transactions WHERE user_id = $1';
+    const values = [req.user.id];
+    
+    if (type && type !== 'all') {
+      values.push(type);
+      query += ` AND type = $${values.length}`;
+    }
+    
+    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    
+    const result = await pool.query(query, values);
+    
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Get transactions error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Получить рефералов
+router.get('/referrals', auth, async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT id, username, created_at, deposit_count
+      FROM users
+      WHERE referred_by = $1
+      ORDER BY created_at DESC
+    `, [req.user.id]);
+    
+    const referrals = result.rows.map(r => ({
+      id: r.id,
+      username: r.username.substring(0, 2) + '***',
+      registeredAt: r.created_at,
+      isActive: r.deposit_count > 0
+    }));
+    
+    res.json({ success: true, data: referrals });
+  } catch (error) {
+    console.error('Get referrals error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Получить активные бонусы пользователя
+router.get('/bonuses', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "SELECT * FROM bonuses WHERE user_id = $1 AND status = 'active' ORDER BY created_at DESC",
+      [req.user.id]
+    );
+    
+    res.json({
+      success: true,
+      data: result.rows.map(b => ({
+        id: b.id,
+        type: b.bonus_type,
+        amount: parseFloat(b.amount),
+        wageringRequired: parseFloat(b.wagering_requirement),
+        wageringCompleted: parseFloat(b.wagering_completed),
+        progress: b.wagering_requirement > 0 
+          ? Math.min(100, (parseFloat(b.wagering_completed) / parseFloat(b.wagering_requirement)) * 100)
+          : 100,
+        expiresAt: b.expires_at
+      }))
+    });
+  } catch (error) {
+    console.error('Get user bonuses error:', error);
+    res.status(500).json({ success: false, message: error.message });
   }
 });
 
