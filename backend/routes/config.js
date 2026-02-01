@@ -606,7 +606,7 @@ global.promotionsConfig = global.promotionsConfig || {
       bonusType: 'crypto',
       maxBonus: 'без лимита',
       wagering: 'x25',
-      image: '/images/promos/bonus.png',
+      image: '/images/promos/crypto.jpg',
       gradient: 'from-orange-500 via-amber-500 to-yellow-500',
       features: ['Bitcoin, Ethereum, USDT', 'Мгновенное зачисление', 'Дополнительно к основному бонусу'],
       isCrypto: true
