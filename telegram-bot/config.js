@@ -12,8 +12,8 @@ module.exports = {
   // Database
   databaseUrl: process.env.DATABASE_URL,
   
-  // Links (Railway default for now)
-  websiteUrl: process.env.WEBSITE_URL || 'https://vantor-production.up.railway.app',
+  // Links
+  websiteUrl: process.env.WEBSITE_URL || 'https://zonal-insight-production-32f9.up.railway.app',
   channelUrl: process.env.CHANNEL_URL || 'https://t.me/aurex_official',
   
   // Bot Settings
