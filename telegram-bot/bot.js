@@ -70,8 +70,8 @@ bot.start(async (ctx) => {
     greeting += `\n\n👑 <b>Босс на связи!</b> /admin — панель управления.`;
   }
 
-  await ctx.replyWithHTML(greeting, keyboards.mainMenuInline);
-  await ctx.reply('Или выбери из меню:', keyboards.mainMenu);
+  await ctx.replyWithHTML(greeting, keyboards.linksInline);
+  await ctx.reply('👇 Выбери из меню или просто напиши вопрос:', keyboards.mainMenu);
 });
 
 // ==================== FAQ HANDLERS ====================

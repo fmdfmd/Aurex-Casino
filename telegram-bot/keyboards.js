@@ -9,21 +9,10 @@ const mainMenu = Markup.keyboard([
   ['👤 Позвать оператора', '🔄 Новый диалог']
 ]).resize();
 
-const mainMenuInline = Markup.inlineKeyboard([
-  [
-    Markup.button.callback('❓ FAQ', 'faq'),
-    Markup.button.callback('💰 Пополнить', 'deposit')
-  ],
-  [
-    Markup.button.callback('🎁 Бонусы', 'bonuses'),
-    Markup.button.callback('💳 Вывод', 'withdraw')
-  ],
-  [
-    Markup.button.callback('👤 Позвать оператора', 'call_operator')
-  ],
+const linksInline = Markup.inlineKeyboard([
   [
     Markup.button.url('📢 Канал', config.channelUrl),
-    Markup.button.url('🌐 Сайт', config.websiteUrl)
+    Markup.button.url('🎰 Играть', config.websiteUrl)
   ]
 ]);
 
@@ -71,7 +60,7 @@ const adminMenu = Markup.keyboard([
 
 module.exports = {
   mainMenu,
-  mainMenuInline,
+  linksInline,
   cancelTicket,
   rateSupport,
   managerMenu,
