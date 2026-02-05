@@ -54,24 +54,28 @@ bot.start(async (ctx) => {
   
   let greeting = `Привет, <b>${escapeHtml(firstName)}</b>! 👋
 
-Меня зовут <b>Стефани</b> — я AI-ассистент онлайн-казино <b>AUREX</b> 💎
+Меня зовут <b>Стефани</b> — я AI-ассистент казино <b>AUREX</b> 💎
 
-Напиши мне, что тебя интересует, и я моментально отвечу!
+<b>Просто напиши свой вопрос прямо сюда</b> — я отвечу моментально!
 
-<i>Депозиты, выводы, бонусы, верификация — спрашивай что угодно.</i>
+Например:
+• <i>"Как пополнить счёт?"</i>
+• <i>"Какие бонусы есть?"</i>
+• <i>"Не пришёл депозит"</i>
 
-Если вдруг не смогу помочь — позовём живого оператора 👤`;
+Или выбери готовый вопрос из меню ниже 👇`;
 
-  if (isUserManager) {
-    greeting += `\n\n🛡 <b>Ты в команде!</b> /manager — панель оператора.`;
+  // Только для менеджеров и админов - скрытое меню
+  if (isUserManager && !isUserAdmin) {
+    greeting += `\n\n🛡 /manager — панель оператора`;
   }
   
   if (isUserAdmin) {
-    greeting += `\n\n👑 <b>Босс на связи!</b> /admin — панель управления.`;
+    greeting += `\n\n👑 /admin — управление`;
   }
 
   await ctx.replyWithHTML(greeting, keyboards.linksInline);
-  await ctx.reply('👇 Выбери из меню или просто напиши вопрос:', keyboards.mainMenu);
+  await ctx.reply('Меню:', keyboards.mainMenu);
 });
 
 // ==================== FAQ HANDLERS ====================
@@ -249,6 +253,22 @@ bot.action('cancel_ticket', async (ctx) => {
 bot.hears('🔄 Новый диалог', async (ctx) => {
   await ai.clearHistory(ctx.from.id);
   await ctx.reply('🔄 История диалога очищена. Можете начать новый разговор!');
+});
+
+// ==================== DEPOSIT NOT RECEIVED ====================
+
+bot.hears('⚠️ Депозит не пришёл', async (ctx) => {
+  userState.set(ctx.from.id, { 
+    state: 'awaiting_deposit_account_id',
+    depositData: {}
+  });
+  
+  await ctx.reply(`⚠️ <b>Депозит не поступил?</b>
+
+Не переживай, сейчас разберёмся! 
+
+<b>Шаг 1 из 2:</b>
+Напиши свой <b>ID аккаунта</b> или <b>email</b>, на который регистрировался на сайте.`, { parse_mode: 'HTML' });
 });
 
 // ==================== MANAGER PANEL ====================
@@ -434,6 +454,105 @@ bot.hears('🔙 Выход из админки', async (ctx) => {
   await ctx.reply('👋 Вы вышли из админки.', keyboards.mainMenu);
 });
 
+// ==================== PHOTO HANDLER (for deposit screenshots) ====================
+
+bot.on('photo', async (ctx) => {
+  const userId = ctx.from.id;
+  const state = userState.get(userId);
+  
+  if (state?.state === 'awaiting_deposit_screenshot') {
+    const depositData = state.depositData;
+    const photo = ctx.message.photo[ctx.message.photo.length - 1]; // Largest photo
+    
+    // Create ticket with deposit issue
+    const subject = `💰 Депозит не поступил | Аккаунт: ${depositData.accountId}`;
+    const ticket = await db.createTicket(
+      userId,
+      ctx.from.username,
+      ctx.from.first_name,
+      subject
+    );
+    
+    await db.addTicketMessage(ticket.id, userId, 'user', `Аккаунт: ${depositData.accountId}\n[Скриншот прикреплён]`);
+    userState.delete(userId);
+    
+    await ctx.reply(`✅ <b>Заявка #${ticket.ticket_number} создана!</b>
+
+Мы получили:
+• Аккаунт: <b>${escapeHtml(depositData.accountId)}</b>
+• Скриншот оплаты: ✅
+
+⏳ Оператор проверит платёж и свяжется с тобой в ближайшее время.
+
+<i>Обычно это занимает 5-15 минут.</i>`, { parse_mode: 'HTML' });
+    
+    // Notify managers with photo
+    const managers = await db.getActiveManagers();
+    for (const manager of managers) {
+      try {
+        await bot.telegram.sendPhoto(manager.telegram_id, photo.file_id, {
+          caption: `🆕 <b>Тикет #${ticket.ticket_number}</b>\n\n💰 <b>Депозит не поступил</b>\n👤 ${ctx.from.first_name} (@${ctx.from.username || 'нет'})\n🔑 Аккаунт: ${depositData.accountId}`,
+          parse_mode: 'HTML',
+          ...keyboards.getTicketActions(ticket.id)
+        });
+      } catch (e) {
+        console.error(`Failed to notify manager ${manager.telegram_id}:`, e.message);
+      }
+    }
+    return;
+  }
+  
+  // If photo received but not in deposit flow - just acknowledge
+  await ctx.reply('📷 Фото получено! Если у тебя вопрос — просто напиши его текстом.');
+});
+
+// ==================== DOCUMENT HANDLER (for deposit screenshots as files) ====================
+
+bot.on('document', async (ctx) => {
+  const userId = ctx.from.id;
+  const state = userState.get(userId);
+  
+  if (state?.state === 'awaiting_deposit_screenshot') {
+    const depositData = state.depositData;
+    const doc = ctx.message.document;
+    
+    // Create ticket with deposit issue
+    const subject = `💰 Депозит не поступил | Аккаунт: ${depositData.accountId}`;
+    const ticket = await db.createTicket(
+      userId,
+      ctx.from.username,
+      ctx.from.first_name,
+      subject
+    );
+    
+    await db.addTicketMessage(ticket.id, userId, 'user', `Аккаунт: ${depositData.accountId}\n[Документ прикреплён: ${doc.file_name}]`);
+    userState.delete(userId);
+    
+    await ctx.reply(`✅ <b>Заявка #${ticket.ticket_number} создана!</b>
+
+Мы получили:
+• Аккаунт: <b>${escapeHtml(depositData.accountId)}</b>
+• Документ: ✅
+
+⏳ Оператор проверит платёж и свяжется с тобой.`, { parse_mode: 'HTML' });
+    
+    // Notify managers with document
+    const managers = await db.getActiveManagers();
+    for (const manager of managers) {
+      try {
+        await bot.telegram.sendDocument(manager.telegram_id, doc.file_id, {
+          caption: `🆕 <b>Тикет #${ticket.ticket_number}</b>\n\n💰 <b>Депозит не поступил</b>\n👤 ${ctx.from.first_name} (@${ctx.from.username || 'нет'})\n🔑 Аккаунт: ${depositData.accountId}`,
+          parse_mode: 'HTML',
+          ...keyboards.getTicketActions(ticket.id)
+        });
+      } catch (e) {
+        console.error(`Failed to notify manager ${manager.telegram_id}:`, e.message);
+      }
+    }
+    return;
+  }
+});
+
 // ==================== MESSAGE HANDLER ====================
 
 bot.on('message', async (ctx) => {
@@ -485,6 +604,22 @@ bot.on('message', async (ctx) => {
     await db.removeManager(targetId);
     userState.delete(userId);
     await ctx.reply(`✅ Менеджер удален.`, keyboards.adminMenu);
+    return;
+  }
+  
+  // ===== Deposit issue - step 1: account ID =====
+  if (state?.state === 'awaiting_deposit_account_id') {
+    userState.set(userId, {
+      state: 'awaiting_deposit_screenshot',
+      depositData: { accountId: text }
+    });
+    
+    await ctx.reply(`✅ Аккаунт: <b>${escapeHtml(text)}</b>
+
+<b>Шаг 2 из 2:</b>
+Теперь отправь <b>скриншот оплаты</b> (чек из банка или криптокошелька).
+
+📎 Просто прикрепи фото или файл.`, { parse_mode: 'HTML' });
     return;
   }
   
