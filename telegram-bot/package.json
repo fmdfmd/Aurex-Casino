@@ -1,0 +1,20 @@
+{
+  "name": "aurex-support-bot",
+  "version": "1.0.0",
+  "description": "AUREX Casino AI-powered Support Bot with Ticket System",
+  "main": "bot.js",
+  "scripts": {
+    "start": "node bot.js",
+    "dev": "nodemon bot.js",
+    "migrate": "node migrations/run.js"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3",
+    "pg": "^8.18.0",
+    "axios": "^1.7.2",
+    "dotenv": "^16.4.5"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.0"
+  }
+}

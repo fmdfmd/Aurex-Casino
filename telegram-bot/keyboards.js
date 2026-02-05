@@ -1,0 +1,81 @@
+const { Markup } = require('telegraf');
+const config = require('./config');
+
+// ==================== USER KEYBOARDS ====================
+
+const mainMenu = Markup.keyboard([
+  ['❓ FAQ', '💰 Как пополнить?'],
+  ['🎁 Бонусы', '💳 Вывод средств'],
+  ['👤 Позвать оператора', '🔄 Новый диалог']
+]).resize();
+
+const mainMenuInline = Markup.inlineKeyboard([
+  [
+    Markup.button.callback('❓ FAQ', 'faq'),
+    Markup.button.callback('💰 Пополнить', 'deposit')
+  ],
+  [
+    Markup.button.callback('🎁 Бонусы', 'bonuses'),
+    Markup.button.callback('💳 Вывод', 'withdraw')
+  ],
+  [
+    Markup.button.callback('👤 Позвать оператора', 'call_operator')
+  ],
+  [
+    Markup.button.url('📢 Канал', config.channelUrl),
+    Markup.button.url('🌐 Сайт', config.websiteUrl)
+  ]
+]);
+
+const cancelTicket = Markup.inlineKeyboard([
+  [Markup.button.callback('❌ Отменить запрос', 'cancel_ticket')]
+]);
+
+const rateSupport = Markup.inlineKeyboard([
+  [
+    Markup.button.callback('⭐️', 'rate_1'),
+    Markup.button.callback('⭐️⭐️', 'rate_2'),
+    Markup.button.callback('⭐️⭐️⭐️', 'rate_3'),
+    Markup.button.callback('⭐️⭐️⭐️⭐️', 'rate_4'),
+    Markup.button.callback('⭐️⭐️⭐️⭐️⭐️', 'rate_5')
+  ]
+]);
+
+// ==================== MANAGER KEYBOARDS ====================
+
+const managerMenu = Markup.keyboard([
+  ['📋 Мои тикеты', '📊 Статистика'],
+  ['🟢 Я онлайн', '🔴 Я офлайн'],
+  ['📜 Открытые тикеты']
+]).resize();
+
+const getTicketActions = (ticketId) => Markup.inlineKeyboard([
+  [
+    Markup.button.callback('✅ Взять тикет', `take_ticket:${ticketId}`)
+  ]
+]);
+
+const getActiveTicketActions = (ticketId) => Markup.inlineKeyboard([
+  [
+    Markup.button.callback('✅ Закрыть тикет', `close_ticket:${ticketId}`)
+  ]
+]);
+
+// ==================== ADMIN KEYBOARDS ====================
+
+const adminMenu = Markup.keyboard([
+  ['👥 Менеджеры', '📊 Статистика'],
+  ['➕ Добавить менеджера', '➖ Удалить менеджера'],
+  ['📋 Все тикеты', '🔙 Выход из админки']
+]).resize();
+
+module.exports = {
+  mainMenu,
+  mainMenuInline,
+  cancelTicket,
+  rateSupport,
+  managerMenu,
+  getTicketActions,
+  getActiveTicketActions,
+  adminMenu
+};
