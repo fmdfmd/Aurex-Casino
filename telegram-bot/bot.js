@@ -659,17 +659,18 @@ bot.command('cancel', async (ctx) => {
   await ctx.reply('❌ Действие отменено.');
 });
 
-// ==================== PHOTO HANDLER (for deposit screenshots) ====================
+// ==================== PHOTO HANDLER ====================
 
 bot.on('photo', async (ctx) => {
   const userId = ctx.from.id;
   const state = userState.get(userId);
+  const photo = ctx.message.photo[ctx.message.photo.length - 1]; // Largest photo
+  const caption = ctx.message.caption || '';
   
+  // Deposit screenshot flow
   if (state?.state === 'awaiting_deposit_screenshot') {
     const depositData = state.depositData;
-    const photo = ctx.message.photo[ctx.message.photo.length - 1]; // Largest photo
     
-    // Create ticket with deposit issue
     const subject = `💰 Депозит не поступил | Аккаунт: ${depositData.accountId}`;
     const ticket = await db.createTicket(
       userId,
@@ -687,9 +688,7 @@ bot.on('photo', async (ctx) => {
 • Аккаунт: <b>${escapeHtml(depositData.accountId)}</b>
 • Скриншот оплаты: ✅
 
-⏳ Оператор проверит платёж и свяжется с тобой в ближайшее время.
-
-<i>Обычно это занимает 5-15 минут.</i>`, { parse_mode: 'HTML' });
+⏳ Оператор проверит платёж и свяжется с тобой.`, { parse_mode: 'HTML' });
     
     // Notify managers with photo
     const managers = await db.getActiveManagers();
@@ -707,21 +706,61 @@ bot.on('photo', async (ctx) => {
     return;
   }
   
-  // If photo received but not in deposit flow - just acknowledge
-  await ctx.reply('📷 Фото получено! Если у тебя вопрос — просто напиши его текстом.');
+  // Check if user has active ticket - forward photo to manager
+  const userTicket = await db.getOpenTicketByUser(userId);
+  if (userTicket && userTicket.status === 'assigned') {
+    await db.addTicketMessage(userTicket.id, userId, 'user', '[📷 Фото]' + (caption ? ': ' + caption : ''));
+    
+    try {
+      await bot.telegram.sendPhoto(userTicket.manager_telegram_id, photo.file_id, {
+        caption: `📷 <b>Тикет #${userTicket.ticket_number}</b>\n👤 @${ctx.from.username || ctx.from.first_name}${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+        parse_mode: 'HTML',
+        ...keyboards.getActiveTicketActions(userTicket.id)
+      });
+      await ctx.reply('📷 Фото отправлено оператору!');
+    } catch (e) {
+      await ctx.reply('❌ Не удалось отправить фото оператору.');
+    }
+    return;
+  }
+  
+  // Check if manager is replying with photo
+  if (await isManager(ctx)) {
+    const managerTicketId = managerReplies.get(userId);
+    if (managerTicketId) {
+      const ticket = await db.getTicketById(managerTicketId);
+      if (ticket && ticket.status === 'assigned') {
+        await db.addTicketMessage(managerTicketId, userId, 'manager', '[📷 Фото]' + (caption ? ': ' + caption : ''));
+        
+        try {
+          await bot.telegram.sendPhoto(ticket.user_telegram_id, photo.file_id, {
+            caption: `📷 <b>Оператор:</b>${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+            parse_mode: 'HTML'
+          });
+          await ctx.reply('📷 Фото отправлено пользователю!');
+        } catch (e) {
+          await ctx.reply('❌ Не удалось отправить фото пользователю.');
+        }
+        return;
+      }
+    }
+  }
+  
+  await ctx.reply('📷 Фото получено! Если нужна помощь — нажми "👤 Позвать оператора".');
 });
 
-// ==================== DOCUMENT HANDLER (for deposit screenshots as files) ====================
+// ==================== DOCUMENT HANDLER (PDF, files) ====================
 
 bot.on('document', async (ctx) => {
   const userId = ctx.from.id;
   const state = userState.get(userId);
+  const doc = ctx.message.document;
+  const caption = ctx.message.caption || '';
   
+  // Deposit screenshot flow
   if (state?.state === 'awaiting_deposit_screenshot') {
     const depositData = state.depositData;
-    const doc = ctx.message.document;
     
-    // Create ticket with deposit issue
     const subject = `💰 Депозит не поступил | Аккаунт: ${depositData.accountId}`;
     const ticket = await db.createTicket(
       userId,
@@ -730,7 +769,7 @@ bot.on('document', async (ctx) => {
       subject
     );
     
-    await db.addTicketMessage(ticket.id, userId, 'user', `Аккаунт: ${depositData.accountId}\n[Документ прикреплён: ${doc.file_name}]`);
+    await db.addTicketMessage(ticket.id, userId, 'user', `Аккаунт: ${depositData.accountId}\n[Документ: ${doc.file_name}]`);
     userState.delete(userId);
     
     await ctx.reply(`✅ <b>Заявка #${ticket.ticket_number} создана!</b>
@@ -741,7 +780,6 @@ bot.on('document', async (ctx) => {
 
 ⏳ Оператор проверит платёж и свяжется с тобой.`, { parse_mode: 'HTML' });
     
-    // Notify managers with document
     const managers = await db.getActiveManagers();
     for (const manager of managers) {
       try {
@@ -756,6 +794,196 @@ bot.on('document', async (ctx) => {
     }
     return;
   }
+  
+  // Check if user has active ticket - forward document to manager
+  const userTicket = await db.getOpenTicketByUser(userId);
+  if (userTicket && userTicket.status === 'assigned') {
+    await db.addTicketMessage(userTicket.id, userId, 'user', `[📎 ${doc.file_name}]` + (caption ? ': ' + caption : ''));
+    
+    try {
+      await bot.telegram.sendDocument(userTicket.manager_telegram_id, doc.file_id, {
+        caption: `📎 <b>Тикет #${userTicket.ticket_number}</b>\n👤 @${ctx.from.username || ctx.from.first_name}\n📄 ${doc.file_name}${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+        parse_mode: 'HTML',
+        ...keyboards.getActiveTicketActions(userTicket.id)
+      });
+      await ctx.reply('📎 Файл отправлен оператору!');
+    } catch (e) {
+      await ctx.reply('❌ Не удалось отправить файл оператору.');
+    }
+    return;
+  }
+  
+  // Check if manager is replying with document
+  if (await isManager(ctx)) {
+    const managerTicketId = managerReplies.get(userId);
+    if (managerTicketId) {
+      const ticket = await db.getTicketById(managerTicketId);
+      if (ticket && ticket.status === 'assigned') {
+        await db.addTicketMessage(managerTicketId, userId, 'manager', `[📎 ${doc.file_name}]` + (caption ? ': ' + caption : ''));
+        
+        try {
+          await bot.telegram.sendDocument(ticket.user_telegram_id, doc.file_id, {
+            caption: `📎 <b>Оператор:</b>\n📄 ${doc.file_name}${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+            parse_mode: 'HTML'
+          });
+          await ctx.reply('📎 Файл отправлен пользователю!');
+        } catch (e) {
+          await ctx.reply('❌ Не удалось отправить файл пользователю.');
+        }
+        return;
+      }
+    }
+  }
+  
+  await ctx.reply('📎 Файл получен! Если нужна помощь — нажми "👤 Позвать оператора".');
+});
+
+// ==================== VIDEO HANDLER ====================
+
+bot.on('video', async (ctx) => {
+  const userId = ctx.from.id;
+  const video = ctx.message.video;
+  const caption = ctx.message.caption || '';
+  
+  // Check if user has active ticket - forward video to manager
+  const userTicket = await db.getOpenTicketByUser(userId);
+  if (userTicket && userTicket.status === 'assigned') {
+    await db.addTicketMessage(userTicket.id, userId, 'user', '[🎥 Видео]' + (caption ? ': ' + caption : ''));
+    
+    try {
+      await bot.telegram.sendVideo(userTicket.manager_telegram_id, video.file_id, {
+        caption: `🎥 <b>Тикет #${userTicket.ticket_number}</b>\n👤 @${ctx.from.username || ctx.from.first_name}${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+        parse_mode: 'HTML',
+        ...keyboards.getActiveTicketActions(userTicket.id)
+      });
+      await ctx.reply('🎥 Видео отправлено оператору!');
+    } catch (e) {
+      await ctx.reply('❌ Не удалось отправить видео оператору.');
+    }
+    return;
+  }
+  
+  // Check if manager is replying with video
+  if (await isManager(ctx)) {
+    const managerTicketId = managerReplies.get(userId);
+    if (managerTicketId) {
+      const ticket = await db.getTicketById(managerTicketId);
+      if (ticket && ticket.status === 'assigned') {
+        await db.addTicketMessage(managerTicketId, userId, 'manager', '[🎥 Видео]' + (caption ? ': ' + caption : ''));
+        
+        try {
+          await bot.telegram.sendVideo(ticket.user_telegram_id, video.file_id, {
+            caption: `🎥 <b>Оператор:</b>${caption ? '\n\n' + escapeHtml(caption) : ''}`,
+            parse_mode: 'HTML'
+          });
+          await ctx.reply('🎥 Видео отправлено пользователю!');
+        } catch (e) {
+          await ctx.reply('❌ Не удалось отправить видео пользователю.');
+        }
+        return;
+      }
+    }
+  }
+  
+  await ctx.reply('🎥 Видео получено! Если нужна помощь — нажми "👤 Позвать оператора".');
+});
+
+// ==================== VIDEO NOTE (круглые видео) ====================
+
+bot.on('video_note', async (ctx) => {
+  const userId = ctx.from.id;
+  const videoNote = ctx.message.video_note;
+  
+  // Check if user has active ticket
+  const userTicket = await db.getOpenTicketByUser(userId);
+  if (userTicket && userTicket.status === 'assigned') {
+    await db.addTicketMessage(userTicket.id, userId, 'user', '[🔴 Видеосообщение]');
+    
+    try {
+      await bot.telegram.sendVideoNote(userTicket.manager_telegram_id, videoNote.file_id);
+      await bot.telegram.sendMessage(userTicket.manager_telegram_id, 
+        `🔴 <b>Тикет #${userTicket.ticket_number}</b>\n👤 @${ctx.from.username || ctx.from.first_name}\n<i>Видеосообщение выше</i>`,
+        { parse_mode: 'HTML', ...keyboards.getActiveTicketActions(userTicket.id) }
+      );
+      await ctx.reply('🔴 Видеосообщение отправлено оператору!');
+    } catch (e) {
+      await ctx.reply('❌ Не удалось отправить видеосообщение.');
+    }
+    return;
+  }
+  
+  // Check if manager is replying
+  if (await isManager(ctx)) {
+    const managerTicketId = managerReplies.get(userId);
+    if (managerTicketId) {
+      const ticket = await db.getTicketById(managerTicketId);
+      if (ticket && ticket.status === 'assigned') {
+        await db.addTicketMessage(managerTicketId, userId, 'manager', '[🔴 Видеосообщение]');
+        
+        try {
+          await bot.telegram.sendVideoNote(ticket.user_telegram_id, videoNote.file_id);
+          await bot.telegram.sendMessage(ticket.user_telegram_id, 
+            `🔴 <b>Видеосообщение от оператора</b>`,
+            { parse_mode: 'HTML' }
+          );
+          await ctx.reply('🔴 Видеосообщение отправлено пользователю!');
+        } catch (e) {
+          await ctx.reply('❌ Не удалось отправить видеосообщение.');
+        }
+        return;
+      }
+    }
+  }
+  
+  await ctx.reply('🔴 Видеосообщение получено!');
+});
+
+// ==================== VOICE MESSAGE ====================
+
+bot.on('voice', async (ctx) => {
+  const userId = ctx.from.id;
+  const voice = ctx.message.voice;
+  
+  // Check if user has active ticket
+  const userTicket = await db.getOpenTicketByUser(userId);
+  if (userTicket && userTicket.status === 'assigned') {
+    await db.addTicketMessage(userTicket.id, userId, 'user', '[🎤 Голосовое сообщение]');
+    
+    try {
+      await bot.telegram.sendVoice(userTicket.manager_telegram_id, voice.file_id, {
+        caption: `🎤 <b>Тикет #${userTicket.ticket_number}</b>\n👤 @${ctx.from.username || ctx.from.first_name}`,
+        parse_mode: 'HTML'
+      });
+      await ctx.reply('🎤 Голосовое отправлено оператору!');
+    } catch (e) {
+      await ctx.reply('❌ Не удалось отправить голосовое.');
+    }
+    return;
+  }
+  
+  // Check if manager is replying
+  if (await isManager(ctx)) {
+    const managerTicketId = managerReplies.get(userId);
+    if (managerTicketId) {
+      const ticket = await db.getTicketById(managerTicketId);
+      if (ticket && ticket.status === 'assigned') {
+        await db.addTicketMessage(managerTicketId, userId, 'manager', '[🎤 Голосовое сообщение]');
+        
+        try {
+          await bot.telegram.sendVoice(ticket.user_telegram_id, voice.file_id, {
+            caption: `🎤 <b>Голосовое от оператора</b>`,
+            parse_mode: 'HTML'
+          });
+          await ctx.reply('🎤 Голосовое отправлено пользователю!');
+        } catch (e) {
+          await ctx.reply('❌ Не удалось отправить голосовое.');
+        }
+        return;
+      }
+    }
+  }
+  
+  await ctx.reply('🎤 Голосовое получено! Если нужна помощь — напиши текстом или нажми "👤 Позвать оператора".');
 });
 
 // ==================== MESSAGE HANDLER ====================
