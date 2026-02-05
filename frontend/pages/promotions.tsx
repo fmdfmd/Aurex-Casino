@@ -112,8 +112,8 @@ export default function PromotionsPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) {
-        setActiveBonuses(data.data.map((b: any) => b.bonusId));
+      if (data.success && Array.isArray(data.data)) {
+        setActiveBonuses(data.data.map((b: any) => b.bonusId || b.id));
       }
     } catch (error) {
       console.error('Failed to fetch active bonuses:', error);

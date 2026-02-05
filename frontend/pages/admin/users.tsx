@@ -285,10 +285,10 @@ export default function AdminUsersPage() {
                               </div>
                               <span className="text-sm text-aurex-platinum-500">{user.email}</span>
                               <button 
-                                onClick={() => copyToClipboard(user.odid)}
+                                onClick={() => copyToClipboard(user.odid || user._id || '')}
                                 className="flex items-center space-x-1 text-xs text-aurex-gold-500 hover:text-aurex-gold-400 mt-1"
                               >
-                                <span>{user.odid}</span>
+                                <span>{user.odid || user._id}</span>
                                 <Copy className="w-3 h-3" />
                               </button>
                             </div>

@@ -15,7 +15,7 @@ export default function LicensePage() {
       try {
         const res = await fetch('/api/config/providers');
         const data = await res.json();
-        if (data.success) {
+        if (data.success && Array.isArray(data.data)) {
           // Handle both string[] and {id, name, logo}[] formats
           const providerNames = data.data.map((p: any) => 
             typeof p === 'string' ? p : p.name

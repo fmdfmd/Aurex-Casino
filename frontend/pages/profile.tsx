@@ -107,7 +107,7 @@ export default function ProfilePage() {
           headers: { Authorization: `Bearer ${token}` }
         });
         const data = await res.json();
-        if (data.success && data.data.sessions.length > 0) {
+        if (data.success && data.data?.sessions?.length > 0) {
           setGameHistory(data.data.sessions.map((s: any) => ({
             game: s.gameName || s.game || 'Unknown Game',
             date: new Date(s.createdAt).toLocaleString('ru-RU'),

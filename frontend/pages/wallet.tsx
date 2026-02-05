@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import AuthGuard from '../components/AuthGuard';
+import ActiveBonusWidget from '../components/ActiveBonusWidget';
 import { useAuthStore } from '../store/authStore';
 import { useTranslation, useCurrency } from '../hooks/useTranslation';
 import toast from 'react-hot-toast';
@@ -137,7 +138,7 @@ export default function WalletPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success && data.data.transactions.length > 0) {
+      if (data.success && data.data?.transactions?.length > 0) {
         setTransactions(data.data.transactions.map((t: any) => ({
           id: t.id || t._id,
           type: t.type,
@@ -479,6 +480,9 @@ export default function WalletPage() {
                 </div>
               </motion.div>
             )}
+
+            {/* Active Bonuses Widget */}
+            <ActiveBonusWidget />
 
             {/* Tabs */}
             <div className="flex gap-2 mb-6">
@@ -922,7 +926,7 @@ export default function WalletPage() {
                         }
                         setIsActivatingPromo(true);
                         try {
-                          const response = await fetch('/api/promocode/activate', {
+                          const response = await fetch('/api/promocodes/activate', {
                             method: 'POST',
                             headers: { 
                               'Content-Type': 'application/json',

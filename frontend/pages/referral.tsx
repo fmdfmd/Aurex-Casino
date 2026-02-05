@@ -99,7 +99,7 @@ export default function ReferralPage() {
       });
       const listData = await listRes.json();
       
-      if (listData.success) {
+      if (listData.success && Array.isArray(listData.data)) {
         setReferrals(listData.data.map((r: any) => ({
           id: r.odid,
           username: r.username,

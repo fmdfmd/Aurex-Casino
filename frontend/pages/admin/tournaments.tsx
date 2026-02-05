@@ -142,8 +142,8 @@ export default function AdminTournamentsPage() {
 
   const handleUpdateStatus = async (tournamentId: string, newStatus: string) => {
     try {
-      const res = await fetch(`/api/tournaments/${tournamentId}/status`, {
-        method: 'PATCH',
+      const res = await fetch(`/api/tournaments/${tournamentId}`, {
+        method: 'PUT',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`

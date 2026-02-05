@@ -19,7 +19,9 @@ import {
   Sparkles,
   Award,
   HeadphonesIcon,
-  Loader2
+  Loader2,
+  ShoppingBag,
+  Coins
 } from 'lucide-react';
 import Layout from '../components/Layout';
 import AuthGuard from '../components/AuthGuard';
@@ -75,7 +77,7 @@ export default function VipPage() {
       try {
         const res = await fetch('/api/config/vip');
         const data = await res.json();
-        if (data.success) {
+        if (data.success && data.data?.levels) {
           const mappedLevels = data.data.levels.map((l: any) => ({
             level: l.level,
             name: l.name,
@@ -120,6 +122,66 @@ export default function VipPage() {
     if (token) fetchUserVip();
   }, [token]);
   const [selectedLevel, setSelectedLevel] = useState<VipLevel | null>(null);
+  const [shopItems, setShopItems] = useState<any[]>([]);
+  const [isPurchasing, setIsPurchasing] = useState<string | null>(null);
+  const [purchaseMessage, setPurchaseMessage] = useState<{type: 'success' | 'error', text: string} | null>(null);
+
+  // Fetch loyalty shop
+  useEffect(() => {
+    const fetchShop = async () => {
+      if (!token) return;
+      try {
+        const res = await fetch('/api/loyalty/shop', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.data?.items) {
+          setShopItems(data.data.items);
+        }
+      } catch (error) {
+        console.error('Failed to fetch loyalty shop:', error);
+      }
+    };
+    fetchShop();
+  }, [token, user?.vipPoints]);
+
+  // Purchase item
+  const handlePurchase = async (itemId: string) => {
+    setIsPurchasing(itemId);
+    setPurchaseMessage(null);
+    try {
+      const res = await fetch('/api/loyalty/purchase', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ itemId })
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPurchaseMessage({ type: 'success', text: data.message });
+        // Обновляем очки в UI
+        if (user) {
+          user.vipPoints = data.data.remainingPoints;
+        }
+        // Обновляем магазин
+        const shopRes = await fetch('/api/loyalty/shop', {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const shopData = await shopRes.json();
+        if (shopData.success) {
+          setShopItems(shopData.data.items);
+        }
+      } else {
+        setPurchaseMessage({ type: 'error', text: data.message });
+      }
+    } catch (error) {
+      setPurchaseMessage({ type: 'error', text: 'Ошибка при покупке' });
+    }
+    setIsPurchasing(null);
+    setTimeout(() => setPurchaseMessage(null), 5000);
+  };
 
   // Default level for when vipLevels is not yet loaded
   const defaultLevel: VipLevel = {
@@ -474,6 +536,79 @@ export default function VipPage() {
                     </div>
                   </div>
                 </div>
+              </div>
+            </div>
+
+            {/* Loyalty Shop */}
+            <div className="mb-12">
+              <div className="flex items-center justify-between mb-6">
+                <h2 className="text-2xl font-bold text-white flex items-center space-x-3">
+                  <ShoppingBag className="w-7 h-7 text-aurex-gold-500" />
+                  <span>Магазин VIP очков</span>
+                </h2>
+                <div className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-800 rounded-xl border border-aurex-gold-500/30">
+                  <Coins className="w-5 h-5 text-aurex-gold-500" />
+                  <span className="text-white font-bold">{userPoints.toLocaleString('ru-RU')}</span>
+                  <span className="text-aurex-platinum-400 text-sm">очков</span>
+                </div>
+              </div>
+
+              {purchaseMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className={`mb-4 p-4 rounded-xl ${
+                    purchaseMessage.type === 'success' 
+                      ? 'bg-green-500/20 border border-green-500/50 text-green-400'
+                      : 'bg-red-500/20 border border-red-500/50 text-red-400'
+                  }`}
+                >
+                  {purchaseMessage.text}
+                </motion.div>
+              )}
+
+              <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                {shopItems.map((item, index) => (
+                  <motion.div
+                    key={item.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className={`relative p-5 bg-aurex-obsidian-800 border rounded-2xl transition-all ${
+                      item.canAfford 
+                        ? 'border-aurex-gold-500/30 hover:border-aurex-gold-500/60 hover:shadow-lg hover:shadow-aurex-gold-500/10' 
+                        : 'border-aurex-platinum-700/30 opacity-60'
+                    }`}
+                  >
+                    <div className="text-3xl mb-3">{item.icon}</div>
+                    <h3 className="text-lg font-bold text-white mb-1">{item.name}</h3>
+                    <p className="text-sm text-aurex-platinum-400 mb-4 min-h-[40px]">{item.description}</p>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1">
+                        <Coins className="w-4 h-4 text-aurex-gold-500" />
+                        <span className="text-aurex-gold-400 font-bold">{item.pointsCost.toLocaleString('ru-RU')}</span>
+                      </div>
+                      <button
+                        onClick={() => handlePurchase(item.id)}
+                        disabled={!item.canAfford || isPurchasing === item.id}
+                        className={`px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                          item.canAfford
+                            ? 'bg-aurex-gold-500 text-aurex-obsidian-900 hover:bg-aurex-gold-400'
+                            : 'bg-aurex-obsidian-700 text-aurex-platinum-500 cursor-not-allowed'
+                        }`}
+                      >
+                        {isPurchasing === item.id ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : item.canAfford ? (
+                          'Купить'
+                        ) : (
+                          'Мало очков'
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                ))}
               </div>
             </div>
 

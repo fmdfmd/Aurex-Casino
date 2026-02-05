@@ -70,8 +70,8 @@ export default function AdminBonusesPage() {
           totalActiveBonuses: data.data.stats?.activeCount || 0,
           totalBonusAmount: data.data.stats?.totalBonusAmount || 0,
           averageWager: 32, // Calculate from data
-          conversionRate: data.data.stats?.usedCount > 0 
-            ? Math.round((data.data.stats.usedCount / (data.data.stats.usedCount + data.data.stats.activeCount)) * 100)
+          conversionRate: data.data?.stats?.usedCount > 0 
+            ? Math.round((data.data.stats.usedCount / (data.data.stats.usedCount + (data.data.stats?.activeCount || 0))) * 100)
             : 0
         });
 

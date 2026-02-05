@@ -6,12 +6,19 @@ async function runMigrations() {
   try {
     console.log('🚀 Running database migrations...');
     
-    const migrationFile = path.join(__dirname, '../migrations/001_init.sql');
-    const sql = fs.readFileSync(migrationFile, 'utf8');
+    const migrationsDir = path.join(__dirname, '../migrations');
+    const files = fs.readdirSync(migrationsDir)
+      .filter(f => f.endsWith('.sql'))
+      .sort(); // Сортируем чтобы 001, 002, 003, 004...
     
-    await pool.query(sql);
+    for (const file of files) {
+      console.log(`📄 Running ${file}...`);
+      const sql = fs.readFileSync(path.join(migrationsDir, file), 'utf8');
+      await pool.query(sql);
+      console.log(`✅ ${file} completed`);
+    }
     
-    console.log('✅ Migrations completed successfully');
+    console.log('✅ All migrations completed successfully');
     process.exit(0);
   } catch (error) {
     console.error('❌ Migration error:', error);

@@ -61,7 +61,7 @@ export default function SupportPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) {
+      if (data.success && Array.isArray(data.data)) {
         setMyTickets(data.data.map((t: any) => ({
           id: t.id,
           subject: t.subject,

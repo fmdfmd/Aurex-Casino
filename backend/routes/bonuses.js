@@ -146,6 +146,87 @@ router.post('/update-wager', auth, async (req, res) => {
   }
 });
 
+// Reload бонус - ОТКЛЮЧЕНО (слишком щедрый)
+// TODO: Пересмотреть условия и включить позже
+// router.post('/activate-reload', auth, async (req, res) => { ... });
+
+// Получить доступные бонусы для пользователя
+router.get('/available', auth, async (req, res) => {
+  try {
+    const user = await pool.query('SELECT deposit_count FROM users WHERE id = $1', [req.user.id]);
+    const depositCount = user.rows[0]?.deposit_count || 0;
+    
+    const available = [];
+    
+    // Приветственные бонусы (депозиты 1-4)
+    const depositBonuses = [
+      { depositNumber: 1, percent: 200, maxBonus: 70000, wager: 35, title: '1-й депозит' },
+      { depositNumber: 2, percent: 150, maxBonus: 50000, wager: 30, title: '2-й депозит' },
+      { depositNumber: 3, percent: 100, maxBonus: 30000, wager: 25, title: '3-й депозит' },
+      { depositNumber: 4, percent: 75, maxBonus: 20000, wager: 20, title: '4-й депозит' }
+    ];
+    
+    for (const bonus of depositBonuses) {
+      if (depositCount < bonus.depositNumber) {
+        available.push({
+          type: `deposit_${bonus.depositNumber}`,
+          title: bonus.title,
+          percent: bonus.percent,
+          maxBonus: bonus.maxBonus,
+          wager: bonus.wager,
+          available: depositCount + 1 === bonus.depositNumber,
+          locked: depositCount + 1 < bonus.depositNumber
+        });
+      }
+    }
+    
+    // Reload бонус - ОТКЛЮЧЕНО
+    // if (depositCount >= 4) { ... }
+    
+    res.json({ success: true, data: available });
+  } catch (error) {
+    console.error('Get available bonuses error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Активировать бонус (пометить как выбранный для следующего депозита)
+router.post('/:id/activate', auth, async (req, res) => {
+  try {
+    const bonusId = req.params.id;
+    
+    // Сохраняем выбранный бонус в used_bonuses пользователя
+    await pool.query(
+      `UPDATE users SET used_bonuses = used_bonuses || $1 WHERE id = $2`,
+      [JSON.stringify({ selectedBonus: bonusId }), req.user.id]
+    );
+    
+    res.json({ 
+      success: true, 
+      message: 'Бонус активирован! Он будет применён при следующем депозите.' 
+    });
+  } catch (error) {
+    console.error('Activate bonus error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Деактивировать выбранный бонус
+router.post('/:id/deactivate', auth, async (req, res) => {
+  try {
+    // Убираем selectedBonus из used_bonuses
+    await pool.query(
+      `UPDATE users SET used_bonuses = used_bonuses - 'selectedBonus' WHERE id = $1`,
+      [req.user.id]
+    );
+    
+    res.json({ success: true, message: 'Бонус деактивирован' });
+  } catch (error) {
+    console.error('Deactivate bonus error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Отменить бонус
 router.post('/:id/cancel', auth, async (req, res) => {
   try {
@@ -174,6 +255,41 @@ router.post('/:id/cancel', auth, async (req, res) => {
 });
 
 // ============ ADMIN ROUTES ============
+
+// Получить все бонусы (для админки)
+router.get('/admin/all', adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 50, status } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+    
+    let query = `
+      SELECT b.*, u.username, u.email 
+      FROM bonuses b
+      LEFT JOIN users u ON b.user_id = u.id
+    `;
+    const params = [];
+    
+    if (status) {
+      query += ` WHERE b.status = $1`;
+      params.push(status);
+    }
+    
+    query += ` ORDER BY b.created_at DESC LIMIT $${params.length + 1} OFFSET $${params.length + 2}`;
+    params.push(parseInt(limit), offset);
+    
+    const result = await pool.query(query, params);
+    
+    res.json({ 
+      success: true, 
+      data: { 
+        bonuses: result.rows 
+      } 
+    });
+  } catch (error) {
+    console.error('Get all bonuses error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // Выдать бонус пользователю
 router.post('/admin/grant', adminAuth, async (req, res) => {

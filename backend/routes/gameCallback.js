@@ -28,8 +28,8 @@ router.post('/do-auth-user-ingame', async (req, res) => {
       if (demoResult.rows.length === 0) {
         // Создаём демо пользователя
         const insertResult = await pool.query(
-          `INSERT INTO users (username, email, password_hash, balance, odid, is_demo)
-           VALUES ('demo_player', 'demo@aurex.casino', 'demo', 10000, 'AUREX-DEMO', true)
+          `INSERT INTO users (username, email, password, balance, odid)
+           VALUES ('demo_player', 'demo@aurex.casino', 'demo_no_login', 10000, 'AUREX-DEMO')
            RETURNING *`
         );
         user = insertResult.rows[0];

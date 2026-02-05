@@ -26,6 +26,7 @@ const cashbackRoutes = require('./routes/cashback');
 const bonusRoutes = require('./routes/bonuses');
 const configRoutes = require('./routes/config');
 const vaultRoutes = require('./routes/vault');
+const loyaltyRoutes = require('./routes/loyalty');
 
 const app = express();
 const server = http.createServer(app);
@@ -100,6 +101,7 @@ app.use('/api/cashback', cashbackRoutes);
 app.use('/api/bonuses', bonusRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/vault', vaultRoutes);
+app.use('/api/loyalty', loyaltyRoutes);
 
 // Game callback routes (специфический путь для callback от провайдера)
 app.use('/api/callback', gameCallbackRoutes);

@@ -162,6 +162,9 @@ router.post('/withdraw', auth, async (req, res) => {
     
     // Получаем баланс пользователя
     const userResult = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+    }
     const balance = parseFloat(userResult.rows[0].balance);
     
     if (amount > balance) {

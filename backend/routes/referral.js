@@ -100,7 +100,11 @@ router.post('/claim', auth, async (req, res) => {
       [req.user.id]
     );
     
-    const earnings = parseFloat(userResult.rows[0].referral_earnings) || 0;
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+    }
+    
+    const earnings = parseFloat(userResult.rows[0]?.referral_earnings) || 0;
     
     if (earnings < 100) {
       return res.status(400).json({ 

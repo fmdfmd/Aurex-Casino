@@ -98,11 +98,74 @@ const defaultPaymentMethodsConfig = {
 
 const defaultPromotionsConfig = {
   welcomePackage: [
-    { id: 'first-deposit', title: 'Первый Депозит', bonus: '200%', maxBonus: 'до ₽50,000', minDeposit: '₽1,000', wagering: 'x35', isHot: true },
-    { id: 'second-deposit', title: 'Второй Депозит', bonus: '150%', maxBonus: 'до ₽40,000', minDeposit: '₽1,000', wagering: 'x35' },
-    { id: 'third-deposit', title: 'Третий Депозит', bonus: '100%', maxBonus: 'до ₽30,000', minDeposit: '₽1,000', wagering: 'x30' },
-    { id: 'fourth-deposit', title: 'Четвёртый Депозит', bonus: '75%', maxBonus: 'до ₽20,000', minDeposit: '₽1,000', wagering: 'x30' }
-  ]
+    { 
+      id: 'first-deposit', 
+      title: 'Первый Депозит', 
+      subtitle: 'Приветственный бонус',
+      description: 'Получите 200% на первый депозит и начните своё путешествие в мир больших выигрышей!',
+      bonus: '200%', 
+      maxBonus: 'до ₽50,000', 
+      minDeposit: '₽1,000', 
+      wagering: 'x35',
+      validDays: 30,
+      features: ['200% на депозит', 'До ₽50,000 бонуса', '30 дней на отыгрыш'],
+      isHot: true,
+      isNew: true
+    },
+    { 
+      id: 'second-deposit', 
+      title: 'Второй Депозит',
+      subtitle: 'Продолжение пакета',
+      description: 'Второй шаг к богатству! Получите 150% бонуса на второй депозит.',
+      bonus: '150%', 
+      maxBonus: 'до ₽40,000', 
+      minDeposit: '₽1,000', 
+      wagering: 'x35',
+      validDays: 30,
+      features: ['150% на депозит', 'До ₽40,000 бонуса', '30 дней на отыгрыш']
+    },
+    { 
+      id: 'third-deposit', 
+      title: 'Третий Депозит',
+      subtitle: 'Бонусный пакет',
+      description: 'Третий депозит — ещё больше возможностей! 100% бонус ждёт вас.',
+      bonus: '100%', 
+      maxBonus: 'до ₽30,000', 
+      minDeposit: '₽1,000', 
+      wagering: 'x30',
+      validDays: 30,
+      features: ['100% на депозит', 'До ₽30,000 бонуса', 'Сниженный вейджер x30']
+    },
+    { 
+      id: 'fourth-deposit', 
+      title: 'Четвёртый Депозит',
+      subtitle: 'Финальный бонус',
+      description: 'Завершите приветственный пакет и получите 75% на четвёртый депозит!',
+      bonus: '75%', 
+      maxBonus: 'до ₽20,000', 
+      minDeposit: '₽1,000', 
+      wagering: 'x30',
+      validDays: 30,
+      features: ['75% на депозит', 'До ₽20,000 бонуса', 'Лояльный вейджер x30']
+    }
+  ],
+  reloadBonuses: [],
+  cashbackBonuses: [
+    {
+      id: 'weekly-cashback',
+      title: 'Еженедельный кэшбэк',
+      subtitle: 'Возврат проигрышей',
+      description: 'Получайте до 15% кэшбэка каждую неделю в зависимости от вашего VIP уровня.',
+      bonus: 'до 15%',
+      maxBonus: 'без лимита',
+      minDeposit: '₽500',
+      wagering: 'x5',
+      validDays: 7,
+      features: ['Начисляется по понедельникам', 'Процент зависит от VIP', 'Низкий вейджер x5']
+    }
+  ],
+  cryptoBonuses: [],
+  vipBonuses: []
 };
 
 const defaultReferralConfig = {

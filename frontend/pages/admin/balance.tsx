@@ -65,7 +65,7 @@ export default function AdminBalancePage() {
 
     setIsSearching(true);
     try {
-      const res = await fetch(`/api/admin/users/find/${encodeURIComponent(searchQuery)}`, {
+      const res = await fetch(`/api/admin/users/${encodeURIComponent(searchQuery)}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();

@@ -118,6 +118,25 @@ class SlotsApiService {
     return crypto.randomBytes(16).toString('hex');
   }
 
+  // Update VIP level based on points
+  async updateVipLevel(userId) {
+    try {
+      const userResult = await pool.query('SELECT vip_points FROM users WHERE id = $1', [userId]);
+      const points = userResult.rows[0]?.vip_points || 0;
+      
+      // VIP уровни: Bronze(1) 0, Silver(2) 5000, Gold(3) 25000, Platinum(4) 100000, Emperor(5) 500000
+      let newLevel = 1;
+      if (points >= 500000) newLevel = 5;
+      else if (points >= 100000) newLevel = 4;
+      else if (points >= 25000) newLevel = 3;
+      else if (points >= 5000) newLevel = 2;
+      
+      await pool.query('UPDATE users SET vip_level = $1 WHERE id = $2', [newLevel, userId]);
+    } catch (error) {
+      console.error('Update VIP level error:', error);
+    }
+  }
+
   // Process bet transaction
   async processBet(transactionData) {
     const { user_id, session_id, bet_amount, currency, game_code, round_id, transaction_id } = transactionData;
@@ -139,10 +158,35 @@ class SlotsApiService {
         throw new Error('Insufficient balance');
       }
 
-      // Update user balance
+      // Update user balance + начисляем VIP очки (1 очко за каждые 100₽ ставки)
+      const loyaltyPoints = Math.floor(bet_amount / 100);
       await pool.query(
-        'UPDATE users SET balance = balance - $1, total_wagered = total_wagered + $1, games_played = games_played + 1 WHERE id = $2',
+        `UPDATE users SET 
+          balance = balance - $1, 
+          total_wagered = total_wagered + $1, 
+          games_played = games_played + 1,
+          vip_points = COALESCE(vip_points, 0) + $3
+        WHERE id = $2`,
+        [bet_amount, user_id, loyaltyPoints]
+      );
+      
+      // Обновляем VIP уровень если набрали достаточно очков
+      await this.updateVipLevel(user_id);
+      
+      // Обновляем прогресс вейджера активных бонусов
+      await pool.query(
+        `UPDATE bonuses 
+         SET wagering_completed = wagering_completed + $1
+         WHERE user_id = $2 AND status = 'active'`,
         [bet_amount, user_id]
+      );
+      
+      // Проверяем завершённые бонусы (отыгранные)
+      await pool.query(
+        `UPDATE bonuses 
+         SET status = 'completed', completed_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND status = 'active' AND wagering_completed >= wagering_requirement`,
+        [user_id]
       );
 
       // Update game session

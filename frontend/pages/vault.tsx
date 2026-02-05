@@ -92,7 +92,7 @@ export default function VaultPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const bonusesData = await bonusesRes.json();
-      if (bonusesData.success) {
+      if (bonusesData.success && Array.isArray(bonusesData.data)) {
         setBonuses(bonusesData.data.map((b: any) => ({
           id: b.id,
           type: b.type,

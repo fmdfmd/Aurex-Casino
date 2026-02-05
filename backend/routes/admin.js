@@ -531,4 +531,15 @@ router.put('/settings/:key', adminAuth, async (req, res) => {
   }
 });
 
+// Сбросить все настройки (удалить из БД - вернутся дефолтные)
+router.post('/settings/reset', adminAuth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM site_config');
+    res.json({ success: true, message: 'Настройки сброшены до значений по умолчанию' });
+  } catch (error) {
+    console.error('Reset settings error:', error);
+    res.status(500).json({ success: false, error: 'Failed to reset settings' });
+  }
+});
+
 module.exports = router;
