@@ -117,7 +117,7 @@ class ReferralService {
       SELECT u.telegram_id, u.username, u.first_name, u.tickets,
         (SELECT COUNT(*) FROM users r WHERE r.referred_by = u.id) as referrals
       FROM users u
-      HAVING referrals > 0
+      WHERE (SELECT COUNT(*) FROM users r WHERE r.referred_by = u.id) > 0
       ORDER BY referrals DESC
       LIMIT ?
     `).all(limit);
