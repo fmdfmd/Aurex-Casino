@@ -28,14 +28,8 @@ ADMIN_IDS.forEach(id => {
 // =============================================
 
 function getUserName(user) {
-  if (user.username) return `@${escMd(user.username)}`;
-  return escMd(user.first_name || 'Участник');
-}
-
-/** Экранируем символы Markdown: _ * [ ] ( ) ~ ` > # + - = | { } . ! */
-function escMd(text) {
-  if (!text) return '';
-  return String(text).replace(/([_*\[\]()~`>#+\-=|{}.!])/g, '\\$1');
+  if (user.username) return `@${user.username}`;
+  return user.first_name || 'Участник';
 }
 
 function formatTickets(count) {
@@ -55,6 +49,17 @@ function isAdmin(ctx) {
   return ADMIN_IDS.includes(ctx.from.id) || referral.isAdmin(ctx.from.id);
 }
 
+/** Безопасная отправка с HTML */
+async function safeReply(ctx, text, extra = {}) {
+  try {
+    return await ctx.reply(text, { parse_mode: 'HTML', ...extra });
+  } catch (e) {
+    console.error('Reply error:', e.message);
+    // Фоллбэк — отправляем без форматирования
+    return await ctx.reply(text.replace(/<[^>]+>/g, ''), extra).catch(() => {});
+  }
+}
+
 // =============================================
 // ПРОВЕРКА ПОДПИСКИ НА КАНАЛ
 // =============================================
@@ -62,25 +67,22 @@ function isAdmin(ctx) {
 async function checkChannelSubscription(ctx) {
   try {
     const member = await ctx.telegram.getChatMember(CHANNEL_ID, ctx.from.id);
-    // Статусы: 'creator', 'administrator', 'member', 'restricted' — подписан
-    // 'left', 'kicked' — не подписан
     const isSubscribed = ['creator', 'administrator', 'member', 'restricted'].includes(member.status);
     return isSubscribed;
   } catch (e) {
     console.log('Ошибка проверки подписки:', e.message);
-    // Если бот не админ канала — не можем проверить, пропускаем
     return true;
   }
 }
 
 async function sendSubscribeMessage(ctx) {
   await ctx.reply(
-    `⛔ *Для участия нужно подписаться на канал!*\n\n` +
+    `⛔ <b>Для участия нужно подписаться на канал!</b>\n\n` +
     `1️⃣ Подпишись на наш канал 👇\n` +
-    `2️⃣ Вернись сюда и нажми *«✅ Я подписался»*\n\n` +
+    `2️⃣ Вернись сюда и нажми <b>«✅ Я подписался»</b>\n\n` +
     `Без подписки участие в розыгрыше невозможно.`,
     {
-      parse_mode: 'Markdown',
+      parse_mode: 'HTML',
       ...Markup.inlineKeyboard([
         [Markup.button.url('📢 Подписаться на канал', CHANNEL_LINK)],
         [Markup.button.callback('✅ Я подписался', 'check_subscription')]
@@ -94,7 +96,6 @@ bot.action('check_subscription', async (ctx) => {
   const isSubscribed = await checkChannelSubscription(ctx);
 
   if (isSubscribed) {
-    // Обновляем в БД
     const user = referral.findByTelegramId(ctx.from.id);
     if (user) {
       const db = require('./database');
@@ -104,12 +105,11 @@ bot.action('check_subscription', async (ctx) => {
     await ctx.answerCbQuery('✅ Подписка подтверждена!');
     await ctx.deleteMessage().catch(() => {});
 
-    // Показываем главное меню
     await ctx.reply(
-      `✅ *Отлично! Подписка подтверждена!*\n\n` +
+      `✅ <b>Отлично! Подписка подтверждена!</b>\n\n` +
       `🎫 Теперь ты полноценный участник.\n` +
       `Выбирай действие 👇`,
-      { parse_mode: 'Markdown', ...mainKeyboard(ctx.from.id) }
+      { parse_mode: 'HTML', ...mainKeyboard(ctx.from.id) }
     );
   } else {
     await ctx.answerCbQuery('❌ Ты ещё не подписался!', { show_alert: true });
@@ -122,20 +122,17 @@ bot.action('check_subscription', async (ctx) => {
 
 async function checkUserBoost(ctx) {
   try {
-    // Telegram Bot API 7.0+: getUserChatBoosts
     const result = await ctx.telegram.callApi('getUserChatBoosts', {
       chat_id: CHANNEL_ID,
       user_id: ctx.from.id
     });
 
-    // result.boosts — массив активных бустов от этого юзера
     if (result && result.boosts && result.boosts.length > 0) {
       return { boosted: true, boostCount: result.boosts.length };
     }
     return { boosted: false, boostCount: 0 };
   } catch (e) {
     console.log('Ошибка проверки буста:', e.message);
-    // API может быть недоступен — фоллбэк на ручную модерацию
     return { boosted: false, boostCount: 0, error: true };
   }
 }
@@ -146,9 +143,8 @@ async function checkUserBoost(ctx) {
 
 bot.start(async (ctx) => {
   const telegramId = ctx.from.id;
-  const payload = ctx.startPayload; // ref_XXXXXXXX
+  const payload = ctx.startPayload;
 
-  // ШАГ 1: Проверяем подписку на канал
   const isSubscribed = await checkChannelSubscription(ctx);
 
   let refCode = null;
@@ -156,7 +152,6 @@ bot.start(async (ctx) => {
     refCode = payload.replace('ref_', '');
   }
 
-  // Регистрируем пользователя (даже без подписки — чтобы сохранить реферала)
   const { user, isNew, referrerId } = referral.registerUser({
     telegramId,
     username: ctx.from.username,
@@ -165,25 +160,23 @@ bot.start(async (ctx) => {
     referralCode: refCode
   });
 
-  // Делаем начального админа
   if (ADMIN_IDS.includes(telegramId) && !user.is_admin) {
     referral.setAdmin(telegramId, true);
   }
 
-  // ШАГ 2: Если НЕ подписан — требуем подписку
+  // Если НЕ подписан — требуем подписку
   if (!isSubscribed) {
-    // Уведомляем реферера что друг пришёл (но пока не подписался)
     if (isNew && referrerId) {
       const referrer = require('./database').prepare(`SELECT * FROM users WHERE id = ?`).get(referrerId);
       if (referrer) {
         try {
           await ctx.telegram.sendMessage(referrer.telegram_id,
-            `🔔 *Новый друг!*\n\n` +
+            `🔔 <b>Новый друг!</b>\n\n` +
             `${getUserName(ctx.from)} зашёл по твоей ссылке!\n\n` +
-            `🎫 *Тебе начислено: +1 билет*\n` +
-            `💰 *Твой баланс: ${formatTickets(referrer.tickets)}*\n\n` +
-            `_Твои шансы на iPhone 17 Pro Max выросли!_`,
-            { parse_mode: 'Markdown' }
+            `🎫 <b>Тебе начислено: +1 билет</b>\n` +
+            `💰 <b>Твой баланс: ${formatTickets(referrer.tickets)}</b>\n\n` +
+            `<i>Твои шансы на iPhone 17 Pro Max выросли!</i>`,
+            { parse_mode: 'HTML' }
           );
         } catch (e) {
           console.log('Не удалось уведомить реферера:', e.message);
@@ -191,16 +184,15 @@ bot.start(async (ctx) => {
       }
     }
 
-    // Показываем приветствие + требование подписки
     await ctx.reply(
-      `🎰 *Добро пожаловать в AUREX GIVEAWAY!*\n\n` +
+      `🎰 <b>Добро пожаловать в AUREX GIVEAWAY!</b>\n\n` +
       `💎 Мы разыгрываем:\n` +
       `🥇 iPhone 17 Pro Max\n` +
       `🥈 PlayStation 5 Pro\n` +
       `🥉 $500 USDT\n\n` +
-      `⚠️ *Для участия подпишись на наш канал:*`,
+      `⚠️ <b>Для участия подпишись на наш канал:</b>`,
       {
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard([
           [Markup.button.url('📢 Подписаться на AUREX', CHANNEL_LINK)],
           [Markup.button.callback('✅ Я подписался', 'check_subscription')]
@@ -210,23 +202,22 @@ bot.start(async (ctx) => {
     return;
   }
 
-  // ШАГ 3: Подписан — обновляем статус и показываем меню
+  // Подписан — обновляем статус и показываем меню
   const db = require('./database');
   db.prepare(`UPDATE users SET joined_channel = 1 WHERE telegram_id = ?`).run(telegramId);
 
   if (isNew) {
-    // Уведомляем реферера
     if (referrerId) {
       const referrer = db.prepare(`SELECT * FROM users WHERE id = ?`).get(referrerId);
       if (referrer) {
         try {
           await ctx.telegram.sendMessage(referrer.telegram_id,
-            `🔔 *Новый друг!*\n\n` +
+            `🔔 <b>Новый друг!</b>\n\n` +
             `${getUserName(ctx.from)} зашёл по твоей ссылке!\n\n` +
-            `🎫 *Тебе начислено: +1 билет*\n` +
-            `💰 *Твой баланс: ${formatTickets(referrer.tickets)}*\n\n` +
-            `_Твои шансы на iPhone 17 Pro Max только что выросли! Зови ещё!_`,
-            { parse_mode: 'Markdown' }
+            `🎫 <b>Тебе начислено: +1 билет</b>\n` +
+            `💰 <b>Твой баланс: ${formatTickets(referrer.tickets)}</b>\n\n` +
+            `<i>Твои шансы на iPhone 17 Pro Max только что выросли! Зови ещё!</i>`,
+            { parse_mode: 'HTML' }
           );
         } catch (e) {
           console.log('Не удалось уведомить реферера:', e.message);
@@ -235,28 +226,27 @@ bot.start(async (ctx) => {
     }
 
     await ctx.reply(
-      `🎰 *Добро пожаловать в AUREX GIVEAWAY!*\n\n` +
+      `🎰 <b>Добро пожаловать в AUREX GIVEAWAY!</b>\n\n` +
       `✅ Подписка подтверждена!\n` +
-      `🎫 Ты получил свой первый *билет*!\n\n` +
-      `💎 *Чем больше билетов — тем выше шанс выиграть:*\n` +
+      `🎫 Ты получил свой первый <b>билет</b>!\n\n` +
+      `💎 <b>Чем больше билетов — тем выше шанс выиграть:</b>\n` +
       `🥇 iPhone 17 Pro Max\n` +
       `🥈 PlayStation 5 Pro\n` +
       `🥉 $500 USDT\n\n` +
-      `📊 *Как заработать ещё билеты:*\n` +
-      `• Пригласи друга → *+1 🎫*\n` +
-      `• Репост в сторис → *+5 🎫*\n` +
-      `• Буст канала → *+5 🎫*\n\n` +
+      `📊 <b>Как заработать ещё билеты:</b>\n` +
+      `• Пригласи друга → <b>+1 🎫</b>\n` +
+      `• Репост в сторис → <b>+5 🎫</b>\n` +
+      `• Буст канала → <b>+5 🎫</b>\n\n` +
       `👇 Жми кнопки ниже!`,
-      { parse_mode: 'Markdown', ...mainKeyboard(telegramId) }
+      { parse_mode: 'HTML', ...mainKeyboard(telegramId) }
     );
   } else {
-    // Уже зарегистрирован
     const updatedUser = referral.findByTelegramId(telegramId);
     await ctx.reply(
-      `С возвращением, *${ctx.from.first_name}*! 🎰\n\n` +
+      `С возвращением, <b>${updatedUser.first_name || ctx.from.first_name}</b>! 🎰\n\n` +
       `${formatTickets(updatedUser.tickets)}\n\n` +
       `👇 Выбери действие:`,
-      { parse_mode: 'Markdown', ...mainKeyboard(telegramId) }
+      { parse_mode: 'HTML', ...mainKeyboard(telegramId) }
     );
   }
 });
@@ -266,13 +256,12 @@ bot.start(async (ctx) => {
 // =============================================
 
 async function subscriptionGuard(ctx, next) {
-  // Пропускаем админов и callback от кнопки подписки
   if (isAdmin(ctx)) return next();
 
   const isSubscribed = await checkChannelSubscription(ctx);
   if (!isSubscribed) {
     await sendSubscribeMessage(ctx);
-    return; // Блокируем дальнейшие действия
+    return;
   }
 
   return next();
@@ -290,7 +279,6 @@ function mainKeyboard(telegramId) {
     ['📜 История билетов', '📢 Канал AUREX']
   ];
 
-  // Добавляем кнопку админ-панели для админов
   if (ADMIN_IDS.includes(telegramId) || referral.isAdmin(telegramId)) {
     rows.push(['👑 Админ-панель']);
   }
@@ -310,7 +298,7 @@ function adminKeyboard() {
 }
 
 // =============================================
-// МОИ БИЛЕТЫ (с проверкой подписки)
+// МОИ БИЛЕТЫ
 // =============================================
 
 bot.hears('🎫 Мои билеты', subscriptionGuard, (ctx) => {
@@ -320,25 +308,24 @@ bot.hears('🎫 Мои билеты', subscriptionGuard, (ctx) => {
   const refCount = referral.getReferralCount(user.id);
   const refLink = getReferralLink(user.referral_code);
 
-  ctx.reply(
-    `🎫 *ТВОИ БИЛЕТЫ*\n\n` +
+  safeReply(ctx,
+    `🎫 <b>ТВОИ БИЛЕТЫ</b>\n\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `🎫 Баланс: *${user.tickets} ${declOfNum(user.tickets, ['билет', 'билета', 'билетов'])}*\n` +
-    `👥 Друзей приведено: *${refCount}*\n` +
+    `🎫 Баланс: <b>${user.tickets} ${declOfNum(user.tickets, ['билет', 'билета', 'билетов'])}</b>\n` +
+    `👥 Друзей приведено: <b>${refCount}</b>\n` +
     `━━━━━━━━━━━━━━━━━━\n\n` +
-    `📊 *Как заработать ещё:*\n` +
-    `├ 👤 Пригласи друга → *+1 🎫*\n` +
-    `├ 📱 Репост в сторис → *+5 🎫*\n` +
-    `└ ⚡ Забусти канал → *+5 🎫*\n\n` +
-    `🔗 *Твоя ссылка:*\n` +
-    `\`${refLink}\`\n\n` +
-    `_Каждый друг — это +1 билет к твоему шансу!_`,
-    { parse_mode: 'Markdown' }
+    `📊 <b>Как заработать ещё:</b>\n` +
+    `├ 👤 Пригласи друга → <b>+1 🎫</b>\n` +
+    `├ 📱 Репост в сторис → <b>+5 🎫</b>\n` +
+    `└ ⚡ Забусти канал → <b>+5 🎫</b>\n\n` +
+    `🔗 <b>Твоя ссылка:</b>\n` +
+    `<code>${refLink}</code>\n\n` +
+    `<i>Каждый друг — это +1 билет к твоему шансу!</i>`
   );
 });
 
 // =============================================
-// ПРИГЛАСИТЬ ДРУГА (с проверкой подписки)
+// ПРИГЛАСИТЬ ДРУГА
 // =============================================
 
 bot.hears('🔗 Пригласить друга', subscriptionGuard, (ctx) => {
@@ -348,27 +335,24 @@ bot.hears('🔗 Пригласить друга', subscriptionGuard, (ctx) => {
   const refLink = getReferralLink(user.referral_code);
   const refCount = referral.getReferralCount(user.id);
 
-  ctx.reply(
-    `🔗 *ПРИГЛАСИ ДРУГА — ПОЛУЧИ БИЛЕТ!*\n\n` +
-    `За каждого друга ты получаешь *+1 🎫 билет*.\n\n` +
-    `👥 Ты уже привёл: *${refCount}* друзей\n` +
-    `🎫 Заработано с рефералов: *${refCount}* билетов\n\n` +
+  safeReply(ctx,
+    `🔗 <b>ПРИГЛАСИ ДРУГА — ПОЛУЧИ БИЛЕТ!</b>\n\n` +
+    `За каждого друга ты получаешь <b>+1 🎫 билет</b>.\n\n` +
+    `👥 Ты уже привёл: <b>${refCount}</b> друзей\n` +
+    `🎫 Заработано с рефералов: <b>${refCount}</b> билетов\n\n` +
     `━━━━━━━━━━━━━━━━━━\n` +
-    `📎 *Твоя личная ссылка (жми и копируй):*\n\n` +
-    `\`${refLink}\`\n\n` +
+    `📎 <b>Твоя личная ссылка (жми и копируй):</b>\n\n` +
+    `<code>${refLink}</code>\n\n` +
     `━━━━━━━━━━━━━━━━━━\n\n` +
-    `_Кинь в чат друзьям, в сторис, в комменты — каждый переход = билет!_`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('📢 Поделиться', `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('🎰 AUREX Casino разыгрывает iPhone 17 Pro Max! Заходи, бесплатно участвуй 👇')}`)]
-      ])
-    }
+    `<i>Кинь в чат друзьям, в сторис, в комменты — каждый переход = билет!</i>`,
+    Markup.inlineKeyboard([
+      [Markup.button.url('📢 Поделиться', `https://t.me/share/url?url=${encodeURIComponent(refLink)}&text=${encodeURIComponent('🎰 AUREX Casino разыгрывает iPhone 17 Pro Max! Заходи, бесплатно участвуй 👇')}`)]
+    ])
   );
 });
 
 // =============================================
-// РОЗЫГРЫШ — УЧАСТВОВАТЬ (с проверкой подписки)
+// РОЗЫГРЫШ — УЧАСТВОВАТЬ
 // =============================================
 
 bot.hears('🎁 Розыгрыш', subscriptionGuard, (ctx) => {
@@ -377,11 +361,10 @@ bot.hears('🎁 Розыгрыш', subscriptionGuard, (ctx) => {
 
   const active = giveaway.getActiveGiveaway();
   if (!active) {
-    return ctx.reply(
-      `🎁 *Сейчас нет активных розыгрышей*\n\n` +
+    return safeReply(ctx,
+      `🎁 <b>Сейчас нет активных розыгрышей</b>\n\n` +
       `Следи за каналом — скоро запустим!\n` +
-      `А пока — собирай билеты! 🎫`,
-      { parse_mode: 'Markdown' }
+      `А пока — собирай билеты! 🎫`
     );
   }
 
@@ -390,29 +373,25 @@ bot.hears('🎁 Розыгрыш', subscriptionGuard, (ctx) => {
 
   let prizesText = prizes.map((p, i) => {
     const medals = ['🥇', '🥈', '🥉', '🏅', '🏅'];
-    return `${medals[i] || '🎁'} *${i + 1} место:* ${p}`;
+    return `${medals[i] || '🎁'} <b>${i + 1} место:</b> ${p}`;
   }).join('\n');
 
-  ctx.reply(
-    `🎁 *${active.title}*\n\n` +
+  safeReply(ctx,
+    `🎁 <b>${active.title}</b>\n\n` +
     `${active.description || ''}\n\n` +
-    `🏆 *Призы:*\n${prizesText}\n\n` +
-    `👥 Участников: *${participantCount}*\n` +
-    `🎫 Твоих билетов: *${user.tickets}*\n\n` +
+    `🏆 <b>Призы:</b>\n${prizesText}\n\n` +
+    `👥 Участников: <b>${participantCount}</b>\n` +
+    `🎫 Твоих билетов: <b>${user.tickets}</b>\n\n` +
     `👇 Нажми кнопку, чтобы участвовать!`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.callback('🎰 УЧАСТВУЮ!', `join_giveaway_${active.id}`)],
-        [Markup.button.callback('📊 Мои шансы', `my_chances_${active.id}`)]
-      ])
-    }
+    Markup.inlineKeyboard([
+      [Markup.button.callback('🎰 УЧАСТВУЮ!', `join_giveaway_${active.id}`)],
+      [Markup.button.callback('📊 Мои шансы', `my_chances_${active.id}`)]
+    ])
   );
 });
 
-// Кнопка "Участвую" (с проверкой подписки)
+// Кнопка "Участвую"
 bot.action(/join_giveaway_(\d+)/, async (ctx) => {
-  // Проверяем подписку
   const isSubscribed = await checkChannelSubscription(ctx);
   if (!isSubscribed) {
     return ctx.answerCbQuery('❌ Сначала подпишись на канал!', { show_alert: true });
@@ -426,12 +405,11 @@ bot.action(/join_giveaway_(\d+)/, async (ctx) => {
 
   if (result.success) {
     ctx.answerCbQuery('✅ Ты участвуешь!');
-    ctx.reply(
-      `✅ *Ты в деле!*\n\n` +
-      `🎫 Твоих билетов: *${user.tickets}*\n` +
+    safeReply(ctx,
+      `✅ <b>Ты в деле!</b>\n\n` +
+      `🎫 Твоих билетов: <b>${user.tickets}</b>\n` +
       `Чем больше билетов — тем выше шанс победить!\n\n` +
-      `🔗 Приглашай друзей, чтобы увеличить шансы!`,
-      { parse_mode: 'Markdown' }
+      `🔗 Приглашай друзей, чтобы увеличить шансы!`
     );
   } else {
     ctx.answerCbQuery(result.error);
@@ -450,19 +428,18 @@ bot.action(/my_chances_(\d+)/, (ctx) => {
   const myRank = participants.findIndex(p => p.telegram_id === ctx.from.id) + 1;
 
   ctx.answerCbQuery();
-  ctx.reply(
-    `📊 *ТВОИ ШАНСЫ*\n\n` +
-    `🎫 Твоих билетов: *${user.tickets}*\n` +
-    `🎰 Шанс на главный приз: *${myChance}%*\n` +
-    `📈 Место в рейтинге: *${myRank || '—'}* из ${participants.length}\n` +
-    `🎫 Всего билетов в пуле: *${totalTickets}*\n\n` +
-    `_Пригласи ещё друзей, чтобы поднять шансы!_`,
-    { parse_mode: 'Markdown' }
+  safeReply(ctx,
+    `📊 <b>ТВОИ ШАНСЫ</b>\n\n` +
+    `🎫 Твоих билетов: <b>${user.tickets}</b>\n` +
+    `🎰 Шанс на главный приз: <b>${myChance}%</b>\n` +
+    `📈 Место в рейтинге: <b>${myRank || '—'}</b> из ${participants.length}\n` +
+    `🎫 Всего билетов в пуле: <b>${totalTickets}</b>\n\n` +
+    `<i>Пригласи ещё друзей, чтобы поднять шансы!</i>`
   );
 });
 
 // =============================================
-// ТОП УЧАСТНИКОВ (с проверкой подписки)
+// ТОП УЧАСТНИКОВ
 // =============================================
 
 bot.hears('🏆 ТОП участников', subscriptionGuard, (ctx) => {
@@ -473,28 +450,28 @@ bot.hears('🏆 ТОП участников', subscriptionGuard, (ctx) => {
     return ctx.reply('Пока нет участников с рефералами. Будь первым! 🔥');
   }
 
-  let text = `🏆 *ТОП-10 УЧАСТНИКОВ*\n\n`;
+  let text = `🏆 <b>ТОП-10 УЧАСТНИКОВ</b>\n\n`;
   const medals = ['🥇', '🥈', '🥉'];
 
   top.forEach((t, i) => {
     const medal = medals[i] || `${i + 1}.`;
-    const name = t.username ? `@${escMd(t.username)}` : escMd(t.first_name);
-    text += `${medal} ${name} — *${t.tickets}* 🎫 (${t.referrals} друзей)\n`;
+    const name = t.username ? `@${t.username}` : (t.first_name || 'User');
+    text += `${medal} ${name} — <b>${t.tickets}</b> 🎫 (${t.referrals} друзей)\n`;
   });
 
   if (user) {
     const myRank = top.findIndex(t => t.telegram_id === ctx.from.id);
     text += `\n━━━━━━━━━━━━━━━━━━\n`;
-    text += `📍 *Ты:* ${formatTickets(user.tickets)}`;
+    text += `📍 <b>Ты:</b> ${formatTickets(user.tickets)}`;
     if (myRank === -1) text += ` (не в ТОП-10)`;
-    text += `\n\n_Приглашай друзей, чтобы войти в топ!_`;
+    text += `\n\n<i>Приглашай друзей, чтобы войти в топ!</i>`;
   }
 
-  ctx.reply(text, { parse_mode: 'Markdown' });
+  safeReply(ctx, text);
 });
 
 // =============================================
-// ИСТОРИЯ БИЛЕТОВ (с проверкой подписки)
+// ИСТОРИЯ БИЛЕТОВ
 // =============================================
 
 bot.hears('📜 История билетов', subscriptionGuard, (ctx) => {
@@ -504,11 +481,10 @@ bot.hears('📜 История билетов', subscriptionGuard, (ctx) => {
   const history = referral.getTicketHistory(user.id);
 
   if (history.length === 0) {
-    return ctx.reply(
-      `📜 *История билетов*\n\n` +
+    return safeReply(ctx,
+      `📜 <b>История билетов</b>\n\n` +
       `У тебя пока только стартовый билет.\n` +
-      `Приглашай друзей, чтобы заработать ещё! 🔗`,
-      { parse_mode: 'Markdown' }
+      `Приглашай друзей, чтобы заработать ещё! 🔗`
     );
   }
 
@@ -521,17 +497,17 @@ bot.hears('📜 История билетов', subscriptionGuard, (ctx) => {
     screenshot: '📱 Скриншот сторис'
   };
 
-  let text = `📜 *ИСТОРИЯ БИЛЕТОВ*\n\n`;
-  text += `💰 Баланс: *${formatTickets(user.tickets)}*\n\n`;
+  let text = `📜 <b>ИСТОРИЯ БИЛЕТОВ</b>\n\n`;
+  text += `💰 Баланс: <b>${formatTickets(user.tickets)}</b>\n\n`;
 
   history.forEach(h => {
     const reason = reasonNames[h.reason] || h.reason;
-    const relatedName = h.related_username ? ` (@${escMd(h.related_username)})` : (h.related_first_name ? ` (${escMd(h.related_first_name)})` : '');
+    const relatedName = h.related_username ? ` (@${h.related_username})` : (h.related_first_name ? ` (${h.related_first_name})` : '');
     const date = new Date(h.created_at).toLocaleDateString('ru-RU');
-    text += `${reason} → *+${h.amount}* 🎫${relatedName} _(${date})_\n`;
+    text += `${reason} → <b>+${h.amount}</b> 🎫${relatedName} <i>(${date})</i>\n`;
   });
 
-  ctx.reply(text, { parse_mode: 'Markdown' });
+  safeReply(ctx, text);
 });
 
 // =============================================
@@ -539,16 +515,13 @@ bot.hears('📜 История билетов', subscriptionGuard, (ctx) => {
 // =============================================
 
 bot.hears('📢 Канал AUREX', (ctx) => {
-  ctx.reply(
-    `📢 *Официальный канал AUREX Casino*\n\n` +
+  safeReply(ctx,
+    `📢 <b>Официальный канал AUREX Casino</b>\n\n` +
     `Следи за новостями, розыгрышами и акциями!\n` +
     `Подписчики первыми узнают о запуске 🚀`,
-    {
-      parse_mode: 'Markdown',
-      ...Markup.inlineKeyboard([
-        [Markup.button.url('📢 Открыть канал', CHANNEL_LINK)]
-      ])
-    }
+    Markup.inlineKeyboard([
+      [Markup.button.url('📢 Открыть канал', CHANNEL_LINK)]
+    ])
   );
 });
 
@@ -560,61 +533,49 @@ async function handleBoost(ctx) {
   const user = referral.findByTelegramId(ctx.from.id);
   if (!user) return ctx.reply('Нажми /start для регистрации');
 
-  // Проверяем, уже получал бонус?
   const db = require('./database');
   const existingBoost = db.prepare(`SELECT * FROM channel_boosts WHERE user_id = ?`).get(user.id);
   if (existingBoost) {
-    return ctx.reply(
+    return safeReply(ctx,
       `⚡ Ты уже получил бонус за буст!\n` +
-      `🎫 Твой баланс: ${formatTickets(user.tickets)}`,
-      { parse_mode: 'Markdown' }
+      `🎫 Твой баланс: ${formatTickets(user.tickets)}`
     );
   }
 
-  // Проверяем реальный буст через Telegram API
   const boostResult = await checkUserBoost(ctx);
 
   if (boostResult.error) {
-    // API недоступен — предлагаем забустить + скриншот для модерации
-    return ctx.reply(
-      `⚡ *БОНУС ЗА БУСТ КАНАЛА (+5 🎫)*\n\n` +
+    return safeReply(ctx,
+      `⚡ <b>БОНУС ЗА БУСТ КАНАЛА (+5 🎫)</b>\n\n` +
       `Нажми кнопку ниже, чтобы забустить канал.\n` +
-      `После буста отправь сюда *скриншот* с подписью: *буст*\n\n` +
+      `После буста отправь сюда <b>скриншот</b> с подписью: <b>буст</b>\n\n` +
       `Модерация проверит и начислит +5 билетов.`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url('🚀 Забустить канал', BOOST_LINK)],
-          [Markup.button.callback('🔄 Я забустил — проверить', 'recheck_boost')]
-        ])
-      }
+      Markup.inlineKeyboard([
+        [Markup.button.url('🚀 Забустить канал', BOOST_LINK)],
+        [Markup.button.callback('🔄 Я забустил — проверить', 'recheck_boost')]
+      ])
     );
   }
 
   if (boostResult.boosted) {
-    // Реально забустил! Начисляем автоматически
     const result = referral.processBoost(ctx.from.id);
-    ctx.reply(
-      `⚡ *БУСТ ПОДТВЕРЖДЁН АВТОМАТИЧЕСКИ!* ✅\n\n` +
+    safeReply(ctx,
+      `⚡ <b>БУСТ ПОДТВЕРЖДЁН АВТОМАТИЧЕСКИ!</b> ✅\n\n` +
       `Мы проверили через Telegram — ты реально забустил канал!\n\n` +
-      `🎫 Тебе начислено: *+${result.bonus} билетов*\n` +
-      `💰 Твой баланс: *${formatTickets(result.tickets)}*\n\n` +
-      `_Спасибо за буст!_ 💎`,
-      { parse_mode: 'Markdown' }
+      `🎫 Тебе начислено: <b>+${result.bonus} билетов</b>\n` +
+      `💰 Твой баланс: <b>${formatTickets(result.tickets)}</b>\n\n` +
+      `<i>Спасибо за буст!</i> 💎`
     );
   } else {
-    ctx.reply(
-      `❌ *Буст не найден!*\n\n` +
+    safeReply(ctx,
+      `❌ <b>Буст не найден!</b>\n\n` +
       `Мы проверили — ты ещё не бустил канал.\n` +
       `Нажми кнопку ниже, чтобы забустить 👇\n\n` +
-      `_После буста нажми «Я забустил — проверить»_`,
-      {
-        parse_mode: 'Markdown',
-        ...Markup.inlineKeyboard([
-          [Markup.button.url('🚀 Забустить канал', BOOST_LINK)],
-          [Markup.button.callback('🔄 Я забустил — проверить', 'recheck_boost')]
-        ])
-      }
+      `<i>После буста нажми «Я забустил — проверить»</i>`,
+      Markup.inlineKeyboard([
+        [Markup.button.url('🚀 Забустить канал', BOOST_LINK)],
+        [Markup.button.callback('🔄 Я забустил — проверить', 'recheck_boost')]
+      ])
     );
   }
 }
@@ -638,11 +599,10 @@ bot.action('recheck_boost', async (ctx) => {
   if (boostResult.boosted) {
     const result = referral.processBoost(ctx.from.id);
     ctx.answerCbQuery('✅ Буст подтверждён! +5 билетов');
-    ctx.reply(
-      `⚡ *БУСТ ПОДТВЕРЖДЁН!* ✅\n\n` +
-      `🎫 Тебе начислено: *+${result.bonus} билетов*\n` +
-      `💰 Твой баланс: *${formatTickets(result.tickets)}*`,
-      { parse_mode: 'Markdown' }
+    safeReply(ctx,
+      `⚡ <b>БУСТ ПОДТВЕРЖДЁН!</b> ✅\n\n` +
+      `🎫 Тебе начислено: <b>+${result.bonus} билетов</b>\n` +
+      `💰 Твой баланс: <b>${formatTickets(result.tickets)}</b>`
     );
   } else {
     ctx.answerCbQuery('❌ Буст пока не найден. Попробуй позже.', { show_alert: true });
@@ -654,7 +614,7 @@ bot.action('recheck_boost', async (ctx) => {
 // =============================================
 
 function handleScreenshot(ctx) {
-  ctx.reply(
+  safeReply(ctx,
     `📱 <b>БОНУС ЗА РЕПОСТ В СТОРИС (+5 🎫)</b>\n\n` +
     `📝 <b>Инструкция:</b>\n` +
     `1. Сделай репост нашего поста из канала @aurex_casino в свои <b>сторис</b>\n` +
@@ -666,19 +626,17 @@ function handleScreenshot(ctx) {
     `• Сторис должна быть публичной\n` +
     `• Один бонус на человека\n\n` +
     `👨‍💼 <b>Как проходит проверка:</b>\n` +
-    `Модератор получит ваш скриншот, перейдёт в ваш профиль, проверит сторис и начислит <b>+5 билетов</b> ✅`,
-    { parse_mode: 'HTML' }
+    `Модератор получит ваш скриншот, перейдёт в ваш профиль, проверит сторис и начислит <b>+5 билетов</b> ✅`
   );
 }
 
 bot.command('screenshot', subscriptionGuard, (ctx) => handleScreenshot(ctx));
 bot.hears('📱 Репост в сторис', subscriptionGuard, (ctx) => handleScreenshot(ctx));
 
-// Обработка фото (скриншоты) — с проверкой подписки
+// Обработка фото (скриншоты)
 bot.on('photo', async (ctx) => {
-  if (isAdmin(ctx)) return; // Админы шлют фото для розыгрышей
+  if (isAdmin(ctx)) return;
 
-  // Проверяем подписку
   const isSubscribed = await checkChannelSubscription(ctx);
   if (!isSubscribed) {
     return sendSubscribeMessage(ctx);
@@ -687,30 +645,25 @@ bot.on('photo', async (ctx) => {
   const user = referral.findByTelegramId(ctx.from.id);
   if (!user) return ctx.reply('Нажми /start для регистрации');
 
-  // Определяем тип скриншота (буст или сторис)
   const caption = (ctx.message.caption || '').toLowerCase();
   const isBoostScreenshot = caption.includes('буст') || caption.includes('boost');
-  const ticketAmount = isBoostScreenshot ? 5 : 5;
+  const ticketAmount = 5;
   const ticketReason = isBoostScreenshot ? 'boost' : 'screenshot';
   const typeLabel = isBoostScreenshot ? '⚡ Буст канала' : '📱 Скриншот сторис';
 
-  // Формируем ссылку на профиль юзера для проверки сторис
   const profileLink = ctx.from.username
     ? `https://t.me/${ctx.from.username}`
     : null;
 
-  // Уведомляем всех админов с подробностями
+  // Уведомляем всех админов
   for (const adminId of ADMIN_IDS) {
     try {
-      // Формируем кнопки для админа
       const adminButtons = [];
 
-      // Если есть юзернейм — кнопка для перехода в профиль (проверить сторис)
       if (profileLink) {
         adminButtons.push([Markup.button.url('👁 Проверить сторис → @' + ctx.from.username, profileLink)]);
       }
 
-      // Кнопки одобрения/отклонения
       adminButtons.push([
         Markup.button.callback(`✅ Одобрить (+${ticketAmount} 🎫)`, `approve_${ticketReason}_${ctx.from.id}`),
         Markup.button.callback('❌ Отклонить', `reject_${ticketReason}_${ctx.from.id}`)
@@ -719,16 +672,16 @@ bot.on('photo', async (ctx) => {
       await ctx.telegram.sendPhoto(adminId, ctx.message.photo[ctx.message.photo.length - 1].file_id, {
         caption:
           `━━━━━━━━━━━━━━━━━━━━\n` +
-          `${typeLabel} — *МОДЕРАЦИЯ*\n` +
+          `${typeLabel} — <b>МОДЕРАЦИЯ</b>\n` +
           `━━━━━━━━━━━━━━━━━━━━\n\n` +
-          `👤 *Пользователь:* ${ctx.from.first_name || 'Без имени'}${ctx.from.last_name ? ' ' + ctx.from.last_name : ''}\n` +
-          `🆔 *Telegram ID:* \`${ctx.from.id}\`\n` +
-          `📎 *Username:* ${ctx.from.username ? '@' + ctx.from.username : '❌ нет username'}\n` +
-          `🎫 *Текущий баланс:* ${user.tickets} билетов\n` +
-          `📝 *Подпись к фото:* ${ctx.message.caption || '(без подписи)'}\n\n` +
-          `${profileLink ? '👆 *Нажми кнопку выше, перейди в профиль и проверь сторис!*' : '⚠️ *У пользователя нет username — проверка сторис невозможна, решай по скриншоту.*'}\n\n` +
+          `👤 <b>Пользователь:</b> ${ctx.from.first_name || 'Без имени'}${ctx.from.last_name ? ' ' + ctx.from.last_name : ''}\n` +
+          `🆔 <b>Telegram ID:</b> <code>${ctx.from.id}</code>\n` +
+          `📎 <b>Username:</b> ${ctx.from.username ? '@' + ctx.from.username : '❌ нет username'}\n` +
+          `🎫 <b>Текущий баланс:</b> ${user.tickets} билетов\n` +
+          `📝 <b>Подпись к фото:</b> ${ctx.message.caption || '(без подписи)'}\n\n` +
+          `${profileLink ? '👆 <b>Нажми кнопку выше, перейди в профиль и проверь сторис!</b>' : '⚠️ <b>У пользователя нет username — проверка сторис невозможна, решай по скриншоту.</b>'}\n\n` +
           `Если всё ок — нажми «Одобрить»`,
-        parse_mode: 'Markdown',
+        parse_mode: 'HTML',
         ...Markup.inlineKeyboard(adminButtons)
       });
     } catch (e) {
@@ -736,16 +689,15 @@ bot.on('photo', async (ctx) => {
     }
   }
 
-  ctx.reply(
-    `📱 *Скриншот получен!*\n\n` +
-    `📋 Тип: *${typeLabel}*\n` +
+  safeReply(ctx,
+    `📱 <b>Скриншот получен!</b>\n\n` +
+    `📋 Тип: <b>${typeLabel}</b>\n` +
     `⏳ Модерация проверит ваш скриншот и начислит билеты.\n\n` +
-    `Обычно это занимает несколько минут. Мы пришлём уведомление! 🔔`,
-    { parse_mode: 'Markdown' }
+    `Обычно это занимает несколько минут. Мы пришлём уведомление! 🔔`
   );
 });
 
-// Одобрение скриншота сторис (с защитой от повторного начисления)
+// Одобрение скриншота сторис
 bot.action(/approve_screenshot_(\d+)/, (ctx) => {
   if (!isAdmin(ctx)) return ctx.answerCbQuery('Нет доступа');
 
@@ -753,7 +705,6 @@ bot.action(/approve_screenshot_(\d+)/, (ctx) => {
   const user = referral.findByTelegramId(targetId);
   if (!user) return ctx.answerCbQuery('Пользователь не найден');
 
-  // Проверяем, уже получал ли бонус за сторис
   const db = require('./database');
   const alreadyGot = db.prepare(
     `SELECT * FROM ticket_log WHERE user_id = ? AND reason = 'screenshot'`
@@ -771,15 +722,15 @@ bot.action(/approve_screenshot_(\d+)/, (ctx) => {
   ctx.editMessageCaption(`✅ ОДОБРЕНО!\n+5 🎫 → пользователю ${targetId}\nНовый баланс: ${newTotal} 🎫`);
 
   ctx.telegram.sendMessage(targetId,
-    `🎉 *Сторис проверена и одобрена!*\n\n` +
-    `🎫 Вам начислено: *+5 билетов*\n` +
-    `💰 Ваш баланс: *${formatTickets(newTotal)}*\n\n` +
-    `_Спасибо за репост! Продолжай собирать билеты!_ 💎`,
-    { parse_mode: 'Markdown' }
+    `🎉 <b>Сторис проверена и одобрена!</b>\n\n` +
+    `🎫 Вам начислено: <b>+5 билетов</b>\n` +
+    `💰 Ваш баланс: <b>${formatTickets(newTotal)}</b>\n\n` +
+    `<i>Спасибо за репост! Продолжай собирать билеты!</i> 💎`,
+    { parse_mode: 'HTML' }
   ).catch(() => {});
 });
 
-// Одобрение буста (ручное, если API недоступен)
+// Одобрение буста (ручное)
 bot.action(/approve_boost_(\d+)/, (ctx) => {
   if (!isAdmin(ctx)) return ctx.answerCbQuery('Нет доступа');
 
@@ -798,11 +749,11 @@ bot.action(/approve_boost_(\d+)/, (ctx) => {
   ctx.editMessageCaption(`✅ Буст одобрен! +5 билетов → ${targetId}\nНовый баланс: ${result.tickets} 🎫`);
 
   ctx.telegram.sendMessage(targetId,
-    `⚡ *Буст канала подтверждён!*\n\n` +
-    `🎫 Тебе начислено: *+5 билетов*\n` +
-    `💰 Твой баланс: *${formatTickets(result.tickets)}*\n\n` +
-    `_Спасибо за поддержку!_ 💎`,
-    { parse_mode: 'Markdown' }
+    `⚡ <b>Буст канала подтверждён!</b>\n\n` +
+    `🎫 Тебе начислено: <b>+5 билетов</b>\n` +
+    `💰 Твой баланс: <b>${formatTickets(result.tickets)}</b>\n\n` +
+    `<i>Спасибо за поддержку!</i> 💎`,
+    { parse_mode: 'HTML' }
   ).catch(() => {});
 });
 
@@ -818,12 +769,12 @@ bot.action(/reject_(screenshot|boost)_(\d+)/, (ctx) => {
 
   ctx.telegram.sendMessage(targetId,
     `😔 К сожалению, ваш ${typeLabel} не прошёл модерацию.\n\n` +
-    `*Возможные причины:*\n` +
+    `<b>Возможные причины:</b>\n` +
     `• Не виден ваш ник на скриншоте\n` +
     `• Скриншот нечитаемый\n` +
     `• Повторная отправка\n\n` +
     `Попробуйте отправить новый скриншот.`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   ).catch(() => {});
 });
 
@@ -835,9 +786,8 @@ bot.command('admin', (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('❌ Нет доступа');
 
   ctx.reply(
-    `👑 *АДМИН-ПАНЕЛЬ AUREX GIVEAWAY*\n\n` +
-    `Выбери действие:`,
-    { parse_mode: 'Markdown', ...adminKeyboard() }
+    `👑 <b>АДМИН-ПАНЕЛЬ AUREX GIVEAWAY</b>\n\nВыбери действие:`,
+    { parse_mode: 'HTML', ...adminKeyboard() }
   );
 });
 
@@ -845,9 +795,8 @@ bot.hears('👑 Админ-панель', (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('❌ Нет доступа');
 
   ctx.reply(
-    `👑 *АДМИН-ПАНЕЛЬ AUREX GIVEAWAY*\n\n` +
-    `Выбери действие:`,
-    { parse_mode: 'Markdown', ...adminKeyboard() }
+    `👑 <b>АДМИН-ПАНЕЛЬ AUREX GIVEAWAY</b>\n\nВыбери действие:`,
+    { parse_mode: 'HTML', ...adminKeyboard() }
   );
 });
 
@@ -894,20 +843,20 @@ bot.action('admin_create_giveaway', (ctx) => {
   ctx.answerCbQuery();
 
   ctx.reply(
-    `🎁 *СОЗДАНИЕ РОЗЫГРЫША*\n\n` +
+    `🎁 <b>СОЗДАНИЕ РОЗЫГРЫША</b>\n\n` +
     `Отправь данные в формате:\n\n` +
     `/newgiveaway Название\n` +
     `Описание розыгрыша\n` +
     `Приз 1\n` +
     `Приз 2\n` +
     `Приз 3\n\n` +
-    `*Пример:*\n` +
+    `<b>Пример:</b>\n` +
     `/newgiveaway AUREX GENESIS\n` +
     `Главный розыгрыш в честь открытия!\n` +
     `iPhone 17 Pro Max 1TB\n` +
     `PlayStation 5 Pro\n` +
     `$500 USDT`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -933,13 +882,13 @@ bot.command('newgiveaway', (ctx) => {
   });
 
   ctx.reply(
-    `✅ *Розыгрыш создан!*\n\n` +
-    `📝 Название: *${titleLine}*\n` +
-    `🎁 Призов: *${prizes.length}*\n` +
-    `🆔 ID: *${id}*\n` +
-    `📌 Статус: *Черновик*\n\n` +
+    `✅ <b>Розыгрыш создан!</b>\n\n` +
+    `📝 Название: <b>${titleLine}</b>\n` +
+    `🎁 Призов: <b>${prizes.length}</b>\n` +
+    `🆔 ID: <b>${id}</b>\n` +
+    `📌 Статус: <b>Черновик</b>\n\n` +
     `Чтобы запустить: /startgiveaway ${id}`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -955,12 +904,12 @@ bot.action('admin_start_giveaway', (ctx) => {
     return ctx.reply('Нет черновиков. Сначала создай розыгрыш.');
   }
 
-  let text = `🚀 *Черновики:*\n\n`;
+  let text = `🚀 <b>Черновики:</b>\n\n`;
   drafts.forEach(d => {
-    text += `🆔 ${d.id} — *${d.title}*\nЗапустить: /startgiveaway ${d.id}\n\n`;
+    text += `🆔 ${d.id} — <b>${d.title}</b>\nЗапустить: /startgiveaway ${d.id}\n\n`;
   });
 
-  ctx.reply(text, { parse_mode: 'Markdown' });
+  ctx.reply(text, { parse_mode: 'HTML' });
 });
 
 bot.command('startgiveaway', (ctx) => {
@@ -973,7 +922,7 @@ bot.command('startgiveaway', (ctx) => {
   if (g.status === 'active') return ctx.reply('Уже запущен!');
 
   giveaway.startGiveaway(id);
-  ctx.reply(`🚀 *Розыгрыш "${g.title}" ЗАПУЩЕН!*\n\nТеперь участники могут нажать «🎁 Розыгрыш» для участия.`, { parse_mode: 'Markdown' });
+  ctx.reply(`🚀 <b>Розыгрыш "${g.title}" ЗАПУЩЕН!</b>\n\nТеперь участники могут нажать «🎁 Розыгрыш» для участия.`, { parse_mode: 'HTML' });
 });
 
 // Выбор победителей
@@ -986,12 +935,12 @@ bot.action('admin_pick_winners', (ctx) => {
 
   const prizes = JSON.parse(active.prizes);
   ctx.reply(
-    `🏆 *Выбор победителей*\n\n` +
-    `Розыгрыш: *${active.title}*\n` +
-    `Призов: *${prizes.length}*\n` +
-    `Участников: *${giveaway.getParticipantCount(active.id)}*\n\n` +
+    `🏆 <b>Выбор победителей</b>\n\n` +
+    `Розыгрыш: <b>${active.title}</b>\n` +
+    `Призов: <b>${prizes.length}</b>\n` +
+    `Участников: <b>${giveaway.getParticipantCount(active.id)}</b>\n\n` +
     `Отправь: /pickwinners ${active.id} ${prizes.length}`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -1015,29 +964,29 @@ bot.command('pickwinners', async (ctx) => {
   giveaway.finishGiveaway(giveawayId);
 
   const medals = ['🥇', '🥈', '🥉', '🏅', '🏅'];
-  let text = `🏆 *ПОБЕДИТЕЛИ "${g.title}"*\n\n`;
+  let text = `🏆 <b>ПОБЕДИТЕЛИ "${g.title}"</b>\n\n`;
 
   for (let i = 0; i < winners.length; i++) {
     const w = winners[i];
-    const name = w.username ? `@${escMd(w.username)}` : escMd(w.first_name);
+    const name = w.username ? `@${w.username}` : (w.first_name || 'User');
     const prize = prizes[i] || 'Утешительный приз';
-    text += `${medals[i] || '🎁'} *${prize}*\n`;
+    text += `${medals[i] || '🎁'} <b>${prize}</b>\n`;
     text += `└ ${name} (${w.tickets} 🎫)\n\n`;
 
     try {
       await ctx.telegram.sendMessage(w.telegram_id,
-        `🎉🎉🎉 *ПОЗДРАВЛЯЕМ!* 🎉🎉🎉\n\n` +
-        `Ты выиграл в розыгрыше *"${g.title}"*!\n\n` +
-        `🏆 *Твой приз:* ${prize}\n\n` +
+        `🎉🎉🎉 <b>ПОЗДРАВЛЯЕМ!</b> 🎉🎉🎉\n\n` +
+        `Ты выиграл в розыгрыше <b>"${g.title}"</b>!\n\n` +
+        `🏆 <b>Твой приз:</b> ${prize}\n\n` +
         `Напиши нам для получения приза! 💎`,
-        { parse_mode: 'Markdown' }
+        { parse_mode: 'HTML' }
       );
     } catch (e) {
       console.log(`Не удалось уведомить победителя ${w.telegram_id}:`, e.message);
     }
   }
 
-  ctx.reply(text, { parse_mode: 'Markdown' });
+  ctx.reply(text, { parse_mode: 'HTML' });
 });
 
 // Рассылка
@@ -1045,11 +994,11 @@ bot.action('admin_broadcast', (ctx) => {
   if (!isAdmin(ctx)) return ctx.answerCbQuery('Нет доступа');
   ctx.answerCbQuery();
   ctx.reply(
-    `📨 *РАССЫЛКА*\n\n` +
+    `📨 <b>РАССЫЛКА</b>\n\n` +
     `Отправь текст сообщения командой:\n` +
     `/broadcast Текст сообщения\n\n` +
     `⚠️ Сообщение уйдёт ВСЕМ пользователям бота.`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -1076,7 +1025,7 @@ bot.command('broadcast', async (ctx) => {
     if (sent % 30 === 0) await new Promise(r => setTimeout(r, 1000));
   }
 
-  ctx.reply(`✅ *Рассылка завершена!*\n\n📨 Отправлено: ${sent}\n❌ Ошибок: ${failed}`, { parse_mode: 'Markdown' });
+  ctx.reply(`✅ <b>Рассылка завершена!</b>\n\n📨 Отправлено: ${sent}\n❌ Ошибок: ${failed}`, { parse_mode: 'HTML' });
 });
 
 // Начисление билетов
@@ -1084,10 +1033,10 @@ bot.action('admin_add_tickets', (ctx) => {
   if (!isAdmin(ctx)) return ctx.answerCbQuery('Нет доступа');
   ctx.answerCbQuery();
   ctx.reply(
-    `🎫 *Начисление билетов*\n\n` +
-    `Формат: /addtickets [telegram\\_id] [кол-во]\n\n` +
+    `🎫 <b>Начисление билетов</b>\n\n` +
+    `Формат: /addtickets [telegram_id] [кол-во]\n\n` +
     `Пример: /addtickets 123456789 10`,
-    { parse_mode: 'Markdown' }
+    { parse_mode: 'HTML' }
   );
 });
 
@@ -1103,11 +1052,11 @@ bot.command('addtickets', (ctx) => {
   const newTotal = referral.addTicketsByTelegramId(targetId, amount, 'admin');
   if (newTotal === null) return ctx.reply('❌ Пользователь не найден');
 
-  ctx.reply(`✅ Начислено *${amount}* 🎫 пользователю ${targetId}\nНовый баланс: *${newTotal}* 🎫`, { parse_mode: 'Markdown' });
+  ctx.reply(`✅ Начислено <b>${amount}</b> 🎫 пользователю ${targetId}\nНовый баланс: <b>${newTotal}</b> 🎫`, { parse_mode: 'HTML' });
 
   ctx.telegram.sendMessage(targetId,
-    `🎁 *Бонус от администрации!*\n\n🎫 Тебе начислено: *+${amount} билетов*\n💰 Твой баланс: *${formatTickets(newTotal)}*`,
-    { parse_mode: 'Markdown' }
+    `🎁 <b>Бонус от администрации!</b>\n\n🎫 Тебе начислено: <b>+${amount} билетов</b>\n💰 Твой баланс: <b>${formatTickets(newTotal)}</b>`,
+    { parse_mode: 'HTML' }
   ).catch(() => {});
 });
 
@@ -1142,7 +1091,6 @@ server.listen(PORT, () => {
 
 bot.catch((err, ctx) => {
   console.error('❌ Bot error:', err.message);
-  // НЕ крашим бот — просто логируем
   if (ctx) {
     ctx.reply('⚠️ Произошла ошибка, попробуйте ещё раз.').catch(() => {});
   }
@@ -1152,12 +1100,10 @@ bot.catch((err, ctx) => {
 process.on('uncaughtException', (err) => {
   console.error('💀 Uncaught Exception:', err.message);
   console.error(err.stack);
-  // НЕ завершаем процесс — бот продолжает работать
 });
 
 process.on('unhandledRejection', (err) => {
   console.error('💀 Unhandled Rejection:', err.message || err);
-  // НЕ завершаем процесс — бот продолжает работать
 });
 
 bot.launch()
