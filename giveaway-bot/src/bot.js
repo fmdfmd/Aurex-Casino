@@ -103,7 +103,7 @@ bot.action('check_subscription', async (ctx) => {
       `✅ *Отлично! Подписка подтверждена!*\n\n` +
       `🎫 Теперь ты полноценный участник.\n` +
       `Выбирай действие 👇`,
-      { parse_mode: 'Markdown', ...mainKeyboard() }
+      { parse_mode: 'Markdown', ...mainKeyboard(ctx.from.id) }
     );
   } else {
     await ctx.answerCbQuery('❌ Ты ещё не подписался!', { show_alert: true });
@@ -241,7 +241,7 @@ bot.start(async (ctx) => {
       `• Репост в сторис → *+5 🎫*\n` +
       `• Буст канала → *+5 🎫*\n\n` +
       `👇 Жми кнопки ниже!`,
-      { parse_mode: 'Markdown', ...mainKeyboard() }
+      { parse_mode: 'Markdown', ...mainKeyboard(telegramId) }
     );
   } else {
     // Уже зарегистрирован
@@ -250,7 +250,7 @@ bot.start(async (ctx) => {
       `С возвращением, *${ctx.from.first_name}*! 🎰\n\n` +
       `${formatTickets(updatedUser.tickets)}\n\n` +
       `👇 Выбери действие:`,
-      { parse_mode: 'Markdown', ...mainKeyboard() }
+      { parse_mode: 'Markdown', ...mainKeyboard(telegramId) }
     );
   }
 });
@@ -276,12 +276,19 @@ async function subscriptionGuard(ctx, next) {
 // ГЛАВНОЕ МЕНЮ (Клавиатура)
 // =============================================
 
-function mainKeyboard() {
-  return Markup.keyboard([
+function mainKeyboard(telegramId) {
+  const rows = [
     ['🎫 Мои билеты', '🔗 Пригласить друга'],
     ['🎁 Розыгрыш', '🏆 ТОП участников'],
     ['📜 История билетов', '📢 Канал AUREX']
-  ]).resize();
+  ];
+
+  // Добавляем кнопку админ-панели для админов
+  if (ADMIN_IDS.includes(telegramId) || referral.isAdmin(telegramId)) {
+    rows.push(['👑 Админ-панель']);
+  }
+
+  return Markup.keyboard(rows).resize();
 }
 
 function adminKeyboard() {
@@ -812,6 +819,16 @@ bot.action(/reject_(screenshot|boost)_(\d+)/, (ctx) => {
 // =============================================
 
 bot.command('admin', (ctx) => {
+  if (!isAdmin(ctx)) return ctx.reply('❌ Нет доступа');
+
+  ctx.reply(
+    `👑 *АДМИН-ПАНЕЛЬ AUREX GIVEAWAY*\n\n` +
+    `Выбери действие:`,
+    { parse_mode: 'Markdown', ...adminKeyboard() }
+  );
+});
+
+bot.hears('👑 Админ-панель', (ctx) => {
   if (!isAdmin(ctx)) return ctx.reply('❌ Нет доступа');
 
   ctx.reply(
