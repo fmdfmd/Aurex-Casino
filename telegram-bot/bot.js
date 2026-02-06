@@ -149,7 +149,7 @@ bot.hears('💰 Как пополнить?', async (ctx) => {
 
 ⚡️ Зачисление моментальное!
 
-🌐 <a href="${config.websiteUrl}">Перейти на сайт</a>`;
+🚀 <b>Сайт AUREX Casino скоро откроется! Следи за каналом @aurex_casino</b>`;
   await ctx.replyWithHTML(text, { disable_web_page_preview: true });
 });
 
@@ -161,7 +161,8 @@ bot.action('deposit', async (ctx) => {
 • СБП
 
 Минимальный депозит: 500 ₽
-🌐 <a href="${config.websiteUrl}">Пополнить на сайте</a>`, { disable_web_page_preview: true });
+
+🚀 <b>Скоро открытие! Следи за @aurex_casino</b>`, { disable_web_page_preview: true });
 });
 
 bot.hears('🎁 Бонусы', async (ctx) => {
@@ -308,13 +309,9 @@ bot.hears('🔗 Привязать аккаунт', async (ctx) => {
 
 Чтобы получать уведомления о тикетах и выводах прямо в Telegram:
 
-1️⃣ Зайди на сайт → Профиль → Настройки
-2️⃣ Нажми "Привязать Telegram"
-3️⃣ Скопируй код и отправь его сюда
+🚀 <b>Привязка аккаунта будет доступна после открытия AUREX Casino!</b>
 
-<i>Код действует 10 минут</i>
-
-🌐 <a href="${config.websiteUrl}">Перейти на сайт</a>`, { 
+Следи за новостями: @aurex_casino`, { 
     parse_mode: 'HTML',
     disable_web_page_preview: true 
   });
@@ -350,7 +347,7 @@ bot.command('account', async (ctx) => {
 🎁 Бонусы: <b>${parseFloat(linkedUser.bonus_balance).toLocaleString()} ₽</b>
 ⭐️ VIP Level: ${linkedUser.vip_level}
 
-🌐 <a href="${config.websiteUrl}">Перейти на сайт</a>`, { 
+🚀 <b>Сайт скоро откроется! Следи за @aurex_casino</b>`, { 
     parse_mode: 'HTML',
     disable_web_page_preview: true 
   });
