@@ -12,8 +12,8 @@ const mainMenu = Markup.keyboard([
 
 const linksInline = Markup.inlineKeyboard([
   [
-    Markup.button.url('📢 Канал', config.channelUrl),
-    Markup.button.url('🎰 Играть', config.websiteUrl)
+    Markup.button.url('📢 Канал AUREX', config.channelUrl),
+    Markup.button.url('🎁 Розыгрыш', 'https://t.me/aurex_giveaway_bot')
   ]
 ]);
 
