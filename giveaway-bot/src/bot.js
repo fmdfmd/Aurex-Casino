@@ -175,7 +175,7 @@ bot.start(async (ctx) => {
             `🔔 *Новый друг!*\n\n` +
             `${getUserName(ctx.from)} зашёл по твоей ссылке!\n\n` +
             `🎫 *Тебе начислено: +1 билет*\n` +
-            `💰 *Твой баланс: ${formatTickets(referrer.tickets + 1)}*\n\n` +
+            `💰 *Твой баланс: ${formatTickets(referrer.tickets)}*\n\n` +
             `_Твои шансы на iPhone 17 Pro Max выросли!_`,
             { parse_mode: 'Markdown' }
           );
@@ -218,7 +218,7 @@ bot.start(async (ctx) => {
             `🔔 *Новый друг!*\n\n` +
             `${getUserName(ctx.from)} зашёл по твоей ссылке!\n\n` +
             `🎫 *Тебе начислено: +1 билет*\n` +
-            `💰 *Твой баланс: ${formatTickets(referrer.tickets + 1)}*\n\n` +
+            `💰 *Твой баланс: ${formatTickets(referrer.tickets)}*\n\n` +
             `_Твои шансы на iPhone 17 Pro Max только что выросли! Зови ещё!_`,
             { parse_mode: 'Markdown' }
           );
@@ -725,13 +725,27 @@ bot.on('photo', async (ctx) => {
   );
 });
 
-// Одобрение скриншота сторис
+// Одобрение скриншота сторис (с защитой от повторного начисления)
 bot.action(/approve_screenshot_(\d+)/, (ctx) => {
   if (!isAdmin(ctx)) return ctx.answerCbQuery('Нет доступа');
 
   const targetId = parseInt(ctx.match[1]);
+  const user = referral.findByTelegramId(targetId);
+  if (!user) return ctx.answerCbQuery('Пользователь не найден');
+
+  // Проверяем, уже получал ли бонус за сторис
+  const db = require('./database');
+  const alreadyGot = db.prepare(
+    `SELECT * FROM ticket_log WHERE user_id = ? AND reason = 'screenshot'`
+  ).get(user.id);
+
+  if (alreadyGot) {
+    ctx.answerCbQuery('⚠️ Этот пользователь уже получал бонус за сторис!', { show_alert: true });
+    ctx.editMessageCaption(`⚠️ ДУБЛИКАТ! Пользователь ${targetId} уже получал +5 за сторис ранее. Повторно не начислено.`);
+    return;
+  }
+
   const newTotal = referral.addTicketsByTelegramId(targetId, 5, 'screenshot');
-  if (newTotal === null) return ctx.answerCbQuery('Пользователь не найден');
 
   ctx.answerCbQuery('✅ Начислено +5 билетов');
   ctx.editMessageCaption(`✅ ОДОБРЕНО!\n+5 🎫 → пользователю ${targetId}\nНовый баланс: ${newTotal} 🎫`);
