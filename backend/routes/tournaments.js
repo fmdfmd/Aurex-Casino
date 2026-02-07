@@ -5,6 +5,30 @@ const { auth, adminAuth } = require('../middleware/auth');
 
 // ============ PUBLIC ROUTES ============
 
+// Расписание турниров (MUST be before /:id to avoid being caught)
+router.get('/schedule', async (req, res) => {
+  try {
+    const result = await pool.query(`
+      SELECT name, start_date, prize_pool, currency
+      FROM tournaments
+      WHERE status IN ('active', 'upcoming')
+      ORDER BY start_date ASC
+      LIMIT 10
+    `);
+    
+    const schedule = result.rows.map(t => ({
+      type: t.name,
+      time: new Date(t.start_date).toLocaleString('ru-RU'),
+      prize: `${t.currency}${parseFloat(t.prize_pool).toLocaleString('ru-RU')}`
+    }));
+    
+    res.json({ success: true, data: schedule });
+  } catch (error) {
+    console.error('Get schedule error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Получить активные турниры
 router.get('/active', async (req, res) => {
   try {
@@ -290,35 +314,6 @@ router.get('/admin/stats', adminAuth, async (req, res) => {
 // Лидерборд турнира
 router.get('/:id/leaderboard', async (req, res) => {
   try {
-    const leaderboardResult = await pool.query(`
-      SELECT tp.*, u.username, u.odid
-      FROM tournament_participants tp
-      JOIN users u ON tp.user_id = u.id
-      WHERE tp.tournament_id = $1
-      ORDER BY tp.points DESC
-      LIMIT 100
-    `, [req.params.id]);
-    
-    res.json({
-      success: true,
-      data: leaderboardResult.rows.map((p, idx) => ({
-        rank: idx + 1,
-        odid: p.odid,
-        username: p.username,
-        points: p.points,
-        totalWagered: parseFloat(p.total_wagered || 0),
-        prizeWon: p.prize_won ? parseFloat(p.prize_won) : null
-      }))
-    });
-  } catch (error) {
-    console.error('Get leaderboard error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Лидерборд турнира
-router.get('/:id/leaderboard', async (req, res) => {
-  try {
     const tournamentResult = await pool.query('SELECT * FROM tournaments WHERE id = $1', [req.params.id]);
     if (tournamentResult.rows.length === 0) {
       return res.status(404).json({ success: false, message: 'Турнир не найден' });
@@ -351,30 +346,6 @@ router.get('/:id/leaderboard', async (req, res) => {
     });
   } catch (error) {
     console.error('Get leaderboard error:', error);
-    res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Расписание турниров
-router.get('/schedule', async (req, res) => {
-  try {
-    const result = await pool.query(`
-      SELECT name, start_date, prize_pool, currency
-      FROM tournaments
-      WHERE status IN ('active', 'upcoming')
-      ORDER BY start_date ASC
-      LIMIT 10
-    `);
-    
-    const schedule = result.rows.map(t => ({
-      type: t.name,
-      time: new Date(t.start_date).toLocaleString('ru-RU'),
-      prize: `${t.currency}${parseFloat(t.prize_pool).toLocaleString('ru-RU')}`
-    }));
-    
-    res.json({ success: true, data: schedule });
-  } catch (error) {
-    console.error('Get schedule error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });
