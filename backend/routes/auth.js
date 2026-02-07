@@ -83,7 +83,7 @@ router.post('/register', [
       });
     }
 
-    const { username, email, password, referralCode, phone } = req.body;
+    const { username, email, password, referralCode, phone, firstName, lastName } = req.body;
     const normalizedPhone = normalizePhone(phone);
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
@@ -147,9 +147,9 @@ router.post('/register', [
 
     // Create user
     const result = await pool.query(
-      `INSERT INTO users (odid, username, email, password, phone, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 1, true) RETURNING *`,
-      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, userReferralCode, referredBy]
+      `INSERT INTO users (odid, username, email, password, phone, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true) RETURNING *`,
+      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, firstName || null, lastName || null, userReferralCode, referredBy]
     );
 
     const user = result.rows[0];
