@@ -13,7 +13,8 @@ import {
   Crown,
   Gift,
   Zap,
-  Shield
+  Shield,
+  User
 } from 'lucide-react';
 import Image from 'next/image';
 import { useAuthStore } from '../store/authStore';
@@ -120,19 +121,19 @@ export default function LoginPage() {
                     {/* Login (Email or Username) */}
                     <div>
                       <label className="block text-sm font-medium text-gray-300 mb-2">
-                        {t('auth.emailOrLogin')}
+                        Логин / Email / Телефон
                       </label>
                       <div className="relative">
-                        <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <User className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
                         <input
                           type="text"
                           {...register('login', {
-                            required: 'Введите email или логин'
+                            required: 'Введите логин, email или телефон'
                           })}
                           className={`w-full pl-10 pr-4 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
                             errors.login ? 'border-red-500' : 'border-gray-700'
                           }`}
-                          placeholder="admin или email@example.com"
+                          placeholder="Логин, email или телефон"
                         />
                       </div>
                       {errors.login && (

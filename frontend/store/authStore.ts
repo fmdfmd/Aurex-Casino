@@ -26,7 +26,8 @@ interface User {
   id: string;
   odid: string; // Unique AUREX ID (e.g., AUREX-000001)
   username: string;
-  email: string;
+  email?: string;
+  phone?: string;
   firstName?: string;
   lastName?: string;
   fullName?: string;
@@ -118,7 +119,8 @@ interface AuthState {
 
 interface RegisterData {
   username: string;
-  email: string;
+  email?: string;
+  phone?: string;
   password: string;
   firstName?: string;
   lastName?: string;
