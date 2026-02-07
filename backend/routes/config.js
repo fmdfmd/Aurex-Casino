@@ -170,11 +170,11 @@ const defaultPromotionsConfig = {
 
 const defaultReferralConfig = {
   tiers: [
-    { level: 1, name: 'Новичок', requiredReferrals: 0, commissionPercent: 10 },
-    { level: 2, name: 'Партнёр', requiredReferrals: 5, commissionPercent: 12 },
-    { level: 3, name: 'Эксперт', requiredReferrals: 15, commissionPercent: 15 },
-    { level: 4, name: 'Мастер', requiredReferrals: 30, commissionPercent: 18 },
-    { level: 5, name: 'Легенда', requiredReferrals: 50, commissionPercent: 20 }
+    { level: 1, name: 'Новичок', requiredReferrals: 0, commissionPercent: 10, bonus: 0 },
+    { level: 2, name: 'Партнёр', requiredReferrals: 5, commissionPercent: 12, bonus: 1000 },
+    { level: 3, name: 'Эксперт', requiredReferrals: 15, commissionPercent: 15, bonus: 5000 },
+    { level: 4, name: 'Мастер', requiredReferrals: 30, commissionPercent: 18, bonus: 15000 },
+    { level: 5, name: 'Легенда', requiredReferrals: 50, commissionPercent: 20, bonus: 50000 }
   ],
   minWithdrawal: 500
 };
