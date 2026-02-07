@@ -79,7 +79,7 @@ export default function RegisterPage() {
   const password = watch('password');
   const phoneValue = watch('phone');
 
-  const sendSmsCode = async () => {
+  const sendCallCode = async () => {
     const phone = phoneValue?.replace(/\D/g, '');
     if (!phone || phone.length < 10) {
       setSmsError('Введите корректный номер телефона');
@@ -89,17 +89,17 @@ export default function RegisterPage() {
     try {
       await axios.post('/api/auth/otp/sms/send', { phone });
       setSmsSent(true);
-      setSmsCountdown(60);
+      setSmsCountdown(15);
     } catch (err: any) {
-      setSmsError(err.response?.data?.error || 'Ошибка отправки SMS');
+      setSmsError(err.response?.data?.error || 'Ошибка звонка');
     }
   };
 
-  const verifySmsCode = async () => {
+  const verifyCallCode = async () => {
     const phone = phoneValue?.replace(/\D/g, '');
     const code = watch('smsCode');
     if (!code || code.length < 4) {
-      setSmsError('Введите код из SMS');
+      setSmsError('Введите последние 4 цифры номера');
       return;
     }
     setSmsError('');
@@ -270,11 +270,11 @@ export default function RegisterPage() {
                             {!smsVerified && (
                               <button
                                 type="button"
-                                onClick={sendSmsCode}
+                                onClick={sendCallCode}
                                 disabled={smsCountdown > 0}
                                 className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-casino-gold text-black text-xs font-bold rounded-md hover:bg-casino-gold-dark transition-colors disabled:opacity-50"
                               >
-                                {smsCountdown > 0 ? `${smsCountdown}с` : smsSent ? 'Ещё раз' : 'Получить код'}
+                                {smsCountdown > 0 ? `${smsCountdown}с` : smsSent ? 'Ещё раз' : 'Позвонить'}
                               </button>
                             )}
                             {smsVerified && (
@@ -285,22 +285,27 @@ export default function RegisterPage() {
                           </div>
 
                           {smsSent && !smsVerified && (
-                            <div className="relative">
-                              <input
-                                type="text"
-                                {...register('smsCode')}
-                                maxLength={6}
-                                className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
-                                placeholder="Код из SMS"
-                              />
-                              <button
-                                type="button"
-                                onClick={verifySmsCode}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
-                              >
-                                Подтвердить
-                              </button>
-                            </div>
+                            <>
+                              <p className="text-xs text-gray-400 text-center">
+                                Мы позвоним на ваш номер. Введите последние 4 цифры входящего номера.
+                              </p>
+                              <div className="relative">
+                                <input
+                                  type="text"
+                                  {...register('smsCode')}
+                                  maxLength={4}
+                                  className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
+                                  placeholder="_ _ _ _"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={verifyCallCode}
+                                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
+                                >
+                                  Подтвердить
+                                </button>
+                              </div>
+                            </>
                           )}
 
                           {smsError && <p className="text-sm text-red-400">{smsError}</p>}

@@ -10,12 +10,14 @@ const { normalizePhone } = require('../utils/phone');
 const router = express.Router();
 
 const OTP_TTL_SECONDS = parseInt(process.env.OTP_TTL_SECONDS || '300', 10); // 5 minutes
-const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || '60', 10); // 1 minute
+const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || '15', 10); // 15 sec (uCaller limit)
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10);
-const OTP_CODE_DIGITS = parseInt(process.env.OTP_CODE_DIGITS || '4', 10);
+const OTP_CODE_DIGITS = 4; // uCaller uses 4-digit codes
 
-const P1SMS_ENDPOINT = process.env.P1SMS_ENDPOINT || 'https://admin.p1sms.ru/apiSms/create';
-const P1SMS_API_KEY = process.env.P1SMS_API_KEY;
+// uCaller — верификация звонком
+const UCALLER_SERVICE_ID = process.env.UCALLER_SERVICE_ID;
+const UCALLER_SECRET_KEY = process.env.UCALLER_SECRET_KEY;
+const UCALLER_API = 'https://api.ucaller.ru/v1.0';
 
 function getOtpSecret() {
   return process.env.OTP_SECRET || config.jwt.secret;
@@ -66,29 +68,23 @@ async function createOtpRow({ destination, channel, purpose, codeHash, ipAddress
   return result.rows[0];
 }
 
-async function sendSmsViaP1sms(phone11, text) {
-  if (!P1SMS_API_KEY) {
-    throw new Error('P1SMS_API_KEY is not set');
+async function initUcallerCall(phone11, code) {
+  if (!UCALLER_SERVICE_ID || !UCALLER_SECRET_KEY) {
+    throw new Error('UCALLER_SERVICE_ID or UCALLER_SECRET_KEY is not set');
   }
 
-  const payload = {
-    apiKey: P1SMS_API_KEY,
-    sms: [
-      {
-        channel: 'digit',
-        phone: phone11,
-        text
-      }
-    ]
-  };
-
-  console.log('[P1SMS] Sending to', phone11, '| text length:', text.length);
-  const resp = await axios.post(P1SMS_ENDPOINT, payload, {
+  const resp = await axios.post(`${UCALLER_API}/initCall`, {
+    phone: Number(phone11),
+    code: Number(code)
+  }, {
     timeout: 15000,
-    headers: { 'Content-Type': 'application/json', accept: 'application/json' }
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${UCALLER_SECRET_KEY}.${UCALLER_SERVICE_ID}`
+    }
   });
 
-  console.log('[P1SMS] Response:', JSON.stringify(resp.data));
+  console.log('[uCaller] initCall response:', JSON.stringify(resp.data));
   return resp.data;
 }
 
@@ -131,48 +127,49 @@ function signOtpToken({ channel, destination, purpose, otpId }) {
 router.post('/sms/send', async (req, res) => {
   try {
     const { phone, purpose = 'register' } = req.body || {};
-    console.log('[OTP SMS] Raw phone from request:', JSON.stringify(phone));
+    console.log('[OTP Phone] Raw phone from request:', JSON.stringify(phone));
     const normalized = normalizePhone(phone);
-    console.log('[OTP SMS] Normalized phone:', normalized);
+    console.log('[OTP Phone] Normalized phone:', normalized);
     if (!normalized) {
       return res.status(400).json({ success: false, error: 'Неверный номер телефона' });
     }
 
-    const okToResend = await canResend({ destination: normalized, channel: 'sms', purpose });
+    const okToResend = await canResend({ destination: normalized, channel: 'call', purpose });
     if (!okToResend) {
-      return res.status(429).json({ success: false, error: 'Подождите перед повторной отправкой кода' });
+      return res.status(429).json({ success: false, error: 'Подождите 15 секунд перед повторным звонком' });
     }
 
     const code = generateCode();
     const codeHash = hashCode(code);
 
-    await consumePrevious({ destination: normalized, channel: 'sms', purpose });
+    await consumePrevious({ destination: normalized, channel: 'call', purpose });
     const row = await createOtpRow({
       destination: normalized,
-      channel: 'sms',
+      channel: 'call',
       purpose,
       codeHash,
       ipAddress: req.ip,
       userAgent: req.get('user-agent')
     });
 
-    const text = `AUREX: ваш код ${code}. Никому не сообщайте. ${Math.floor(OTP_TTL_SECONDS / 60)} мин.`;
     try {
-      await sendSmsViaP1sms(normalized, text);
+      const ucallerResult = await initUcallerCall(normalized, code);
+      if (!ucallerResult.status) {
+        throw new Error(ucallerResult.error || 'uCaller initCall failed');
+      }
     } catch (e) {
-      // rollback: consume the created OTP so it can't be used without delivery
       await pool.query('UPDATE otp_codes SET consumed_at = NOW() WHERE id = $1', [row.id]);
       throw e;
     }
 
     return res.json({
       success: true,
-      message: 'Код отправлен',
+      message: 'Звонок совершён',
       data: { expiresInSeconds: OTP_TTL_SECONDS }
     });
   } catch (error) {
-    console.error('OTP SMS send error:', error.response?.data || error.message);
-    return res.status(500).json({ success: false, error: 'Не удалось отправить код' });
+    console.error('OTP call send error:', error.response?.data || error.message);
+    return res.status(500).json({ success: false, error: 'Не удалось совершить звонок' });
   }
 });
 
@@ -188,7 +185,7 @@ router.post('/sms/verify', async (req, res) => {
     const result = await pool.query(
       `SELECT *
        FROM otp_codes
-       WHERE destination = $1 AND channel = 'sms' AND purpose = $2 AND consumed_at IS NULL
+       WHERE destination = $1 AND channel = 'call' AND purpose = $2 AND consumed_at IS NULL
        ORDER BY created_at DESC
        LIMIT 1`,
       [normalized, purpose]
@@ -226,7 +223,7 @@ router.post('/sms/verify', async (req, res) => {
     await pool.query('UPDATE otp_codes SET consumed_at = NOW() WHERE id = $1', [otp.id]);
 
     const otpToken = signOtpToken({
-      channel: 'sms',
+      channel: 'call',
       destination: normalized,
       purpose,
       otpId: otp.id
@@ -238,7 +235,7 @@ router.post('/sms/verify', async (req, res) => {
       data: { otpToken }
     });
   } catch (error) {
-    console.error('OTP SMS verify error:', error.message);
+    console.error('OTP call verify error:', error.message);
     return res.status(500).json({ success: false, error: 'Не удалось проверить код' });
   }
 });
