@@ -131,13 +131,15 @@ export default function AdminUsersPage() {
     try {
       // Try API call first
       const response = await fetch(`/api/admin/users/${selectedUser._id}/balance`, {
-        method: 'PUT',
+        method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json' 
         },
         body: JSON.stringify({
-          [balanceCategory === 'main' ? 'balance' : 'bonusBalance']: newBalance
+          amount: amount,
+          type: balanceAction,
+          balanceType: balanceCategory === 'main' ? 'balance' : 'bonusBalance'
         })
       });
 

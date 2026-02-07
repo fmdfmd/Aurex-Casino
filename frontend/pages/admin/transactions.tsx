@@ -67,10 +67,10 @@ export default function AdminTransactionsPage() {
           type: t.type,
           amount: Math.abs(t.amount),
           status: t.status,
-          method: t.method || t.description || 'N/A',
-          walletAddress: t.walletAddress,
-          createdAt: t.createdAt,
-          processedAt: t.processedAt
+          method: t.paymentMethod || t.method || t.description || 'N/A',
+          walletAddress: t.walletAddress || t.wallet_address,
+          createdAt: t.createdAt || t.created_at,
+          processedAt: t.processedAt || t.processed_at
         })));
       }
     } catch (error) {

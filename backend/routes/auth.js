@@ -432,7 +432,17 @@ router.get('/transactions', auth, async (req, res) => {
     res.json({
       success: true,
       data: {
-        transactions: result.rows,
+        transactions: result.rows.map(t => ({
+          id: t.id,
+          type: t.type,
+          amount: parseFloat(t.amount),
+          currency: t.currency,
+          status: t.status,
+          method: t.payment_method || t.description || 'N/A',
+          description: t.description,
+          createdAt: t.created_at,
+          updatedAt: t.updated_at
+        })),
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
@@ -475,7 +485,20 @@ router.get('/games/history', auth, async (req, res) => {
     res.json({
       success: true,
       data: {
-        sessions: result.rows,
+        sessions: result.rows.map(s => ({
+          id: s.id,
+          gameId: s.game_id,
+          gameName: s.game_name || s.game_id,
+          provider: s.provider,
+          betAmount: parseFloat(s.bet_amount || '0'),
+          totalBet: parseFloat(s.bet_amount || '0'),
+          winAmount: parseFloat(s.win_amount || '0'),
+          totalWin: parseFloat(s.win_amount || '0'),
+          currency: s.currency,
+          status: s.status,
+          createdAt: s.started_at || s.created_at,
+          endedAt: s.ended_at
+        })),
         stats: {
           totalGames: parseInt(statsResult.rows[0].total_games),
           totalBet: parseFloat(statsResult.rows[0].total_bet),

@@ -287,6 +287,74 @@ router.get('/admin/stats', adminAuth, async (req, res) => {
   }
 });
 
+// Лидерборд турнира
+router.get('/:id/leaderboard', async (req, res) => {
+  try {
+    const leaderboardResult = await pool.query(`
+      SELECT tp.*, u.username, u.odid
+      FROM tournament_participants tp
+      JOIN users u ON tp.user_id = u.id
+      WHERE tp.tournament_id = $1
+      ORDER BY tp.points DESC
+      LIMIT 100
+    `, [req.params.id]);
+    
+    res.json({
+      success: true,
+      data: leaderboardResult.rows.map((p, idx) => ({
+        rank: idx + 1,
+        odid: p.odid,
+        username: p.username,
+        points: p.points,
+        totalWagered: parseFloat(p.total_wagered || 0),
+        prizeWon: p.prize_won ? parseFloat(p.prize_won) : null
+      }))
+    });
+  } catch (error) {
+    console.error('Get leaderboard error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Лидерборд турнира
+router.get('/:id/leaderboard', async (req, res) => {
+  try {
+    const tournamentResult = await pool.query('SELECT * FROM tournaments WHERE id = $1', [req.params.id]);
+    if (tournamentResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Турнир не найден' });
+    }
+
+    const leaderboardResult = await pool.query(`
+      SELECT tp.*, u.username, u.odid
+      FROM tournament_participants tp
+      JOIN users u ON tp.user_id = u.id
+      WHERE tp.tournament_id = $1
+      ORDER BY tp.points DESC
+      LIMIT 100
+    `, [req.params.id]);
+
+    res.json({
+      success: true,
+      data: leaderboardResult.rows.map((p, idx) => ({
+        rank: idx + 1,
+        position: idx + 1,
+        odid: p.odid,
+        username: p.username,
+        name: p.username,
+        points: p.points,
+        score: p.points,
+        totalWagered: parseFloat(p.total_wagered || '0'),
+        wagered: parseFloat(p.total_wagered || '0'),
+        prize: p.prize_won ? `${parseFloat(p.prize_won).toLocaleString('ru-RU')} ₽` : '—',
+        prizeWon: p.prize_won ? parseFloat(p.prize_won) : null
+      }))
+    });
+  } catch (error) {
+    console.error('Get leaderboard error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // Расписание турниров
 router.get('/schedule', async (req, res) => {
   try {

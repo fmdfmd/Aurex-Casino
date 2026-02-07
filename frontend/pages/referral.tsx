@@ -99,14 +99,15 @@ export default function ReferralPage() {
       });
       const listData = await listRes.json();
       
-      if (listData.success && Array.isArray(listData.data)) {
-        setReferrals(listData.data.map((r: any) => ({
-          id: r.odid,
+      const referralList = listData.success ? (listData.data?.referrals || listData.data || []) : [];
+      if (Array.isArray(referralList)) {
+        setReferrals(referralList.map((r: any) => ({
+          id: r.id || r.odid,
           username: r.username,
-          joinedAt: r.registeredAt,
-          totalDeposits: r.totalDeposits || 0,
-          yourEarnings: r.yourEarnings || 0,
-          status: r.isActive ? 'active' : 'inactive',
+          joinedAt: r.registeredAt || r.registered_at || r.created_at,
+          totalDeposits: r.totalDeposits || r.total_deposits || 0,
+          yourEarnings: r.earned || r.yourEarnings || 0,
+          status: r.depositCount > 0 || r.isActive ? 'active' : 'inactive',
         })));
       }
     } catch (error) {

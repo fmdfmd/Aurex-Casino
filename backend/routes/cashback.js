@@ -312,7 +312,20 @@ router.get('/admin/all', adminAuth, async (req, res) => {
     res.json({ 
       success: true, 
       data: { 
-        cashbacks: result.rows 
+        cashbacks: result.rows.map(r => ({
+          id: r.id,
+          userId: r.user_id,
+          username: r.username,
+          email: r.email,
+          amount: parseFloat(r.amount || '0'),
+          period: r.period,
+          weeklyLoss: parseFloat(r.weekly_loss || '0'),
+          wagerRequired: parseFloat(r.wager_required || '0'),
+          wagerCompleted: parseFloat(r.wager_completed || '0'),
+          status: r.status,
+          createdAt: r.created_at,
+          claimedAt: r.claimed_at
+        }))
       } 
     });
   } catch (error) {

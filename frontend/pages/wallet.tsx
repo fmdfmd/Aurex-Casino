@@ -206,7 +206,7 @@ export default function WalletPage() {
 
       // If accepting bonus, apply it via API
       if (acceptBonus && activeBonus) {
-        const bonusRes = await fetch('/api/bonuses/apply-to-deposit', {
+        const bonusRes = await fetch('/api/bonuses/activate-deposit', {
           method: 'POST',
           headers: {
             Authorization: `Bearer ${token}`,

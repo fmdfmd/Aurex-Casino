@@ -67,9 +67,9 @@ export default function SupportPage() {
           subject: t.subject,
           category: t.category,
           status: t.status,
-          createdAt: t.createdAt,
-          lastReply: t.updatedAt,
-          messages: t.messages?.length || 0,
+          createdAt: t.created_at || t.createdAt,
+          lastReply: t.updated_at || t.updatedAt,
+          messages: parseInt(t.message_count || '0') || t.messages?.length || 0,
         })));
       }
     } catch (error) {

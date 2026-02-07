@@ -520,6 +520,24 @@ router.get('/games/sessions', adminAuth, async (req, res) => {
 });
 
 // Settings
+router.get('/settings', adminAuth, async (req, res) => {
+  try {
+    const result = await pool.query('SELECT * FROM settings');
+    const settings = {};
+    for (const row of result.rows) {
+      try {
+        settings[row.key] = typeof row.value === 'string' ? JSON.parse(row.value) : row.value;
+      } catch {
+        settings[row.key] = row.value;
+      }
+    }
+    res.json({ success: true, data: settings });
+  } catch (error) {
+    console.error('Get all settings error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get settings' });
+  }
+});
+
 router.get('/settings/:key', adminAuth, async (req, res) => {
   try {
     const result = await pool.query('SELECT * FROM settings WHERE key = $1', [req.params.key]);

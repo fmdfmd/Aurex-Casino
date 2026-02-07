@@ -23,7 +23,7 @@ export const useGameQuery = (gameId: string) => {
   return useQuery(
     ['game', gameId],
     async () => {
-      const response = await axios.get(`/api/slots/game/${gameId}`);
+      const response = await axios.get(`/api/config/games/${gameId}`);
       return response.data;
     },
     {
@@ -68,7 +68,7 @@ export const useGameSessionsQuery = () => {
   return useQuery(
     'game-sessions',
     async () => {
-      const response = await axios.get('/api/slots/sessions');
+      const response = await axios.get('/api/games/sessions');
       return response.data;
     },
     {

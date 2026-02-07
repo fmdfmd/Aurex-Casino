@@ -72,13 +72,13 @@ export default function TournamentsPage() {
             description: t.description,
             type: t.type || 'daily',
             status: t.status,
-            startTime: new Date(t.startTime),
-            endTime: new Date(t.endTime),
-            prizePool: t.prizePool,
+            startTime: new Date(t.startDate || t.startTime),
+            endTime: new Date(t.endDate || t.endTime),
+            prizePool: t.prizePool || parseFloat(t.prize_pool || '0'),
             currency: '₽',
-            entryFee: t.entryFee || 0,
-            maxParticipants: t.maxParticipants,
-            currentParticipants: t.participants?.length || 0,
+            entryFee: t.entryFee || t.minBet || 0,
+            maxParticipants: t.maxParticipants || 0,
+            currentParticipants: t.participantCount || t.participants?.length || 0,
             game: t.game || 'Все слоты',
             gameIcon: t.type === 'vip' ? '👑' : '🎰',
             prizes: t.prizes || [
@@ -111,7 +111,7 @@ export default function TournamentsPage() {
   useEffect(() => {
     const fetchSchedule = async () => {
       try {
-        const res = await fetch('/api/tournaments/schedule/all');
+        const res = await fetch('/api/tournaments/schedule');
         const data = await res.json();
         if (data.success) {
           setSchedule(data.data);

@@ -79,7 +79,7 @@ export default function VaultPage() {
   const fetchVaultData = async () => {
     try {
       // Fetch stats
-      const statsRes = await fetch('/api/vault/stats', {
+      const statsRes = await fetch('/api/vault/summary', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const statsData = await statsRes.json();
