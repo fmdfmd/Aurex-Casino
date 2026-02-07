@@ -75,6 +75,15 @@ router.post('/activate', auth, async (req, res) => {
             'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
             [creditedAmount, req.user.id]
           );
+          
+          // Создаём запись бонуса с вейджером
+          const wagerMultiplier = promo.wager || 20;
+          const wagerRequired = creditedAmount * wagerMultiplier;
+          await client.query(
+            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+             VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
+            [req.user.id, `promo_${promo.code}`, creditedAmount, wagerRequired]
+          );
         }
       } else if (promo.type === 'freespins') {
         // Добавляем фриспины
@@ -104,6 +113,15 @@ router.post('/activate', auth, async (req, res) => {
             'UPDATE users SET balance = balance + $1 WHERE id = $2',
             [creditedAmount, req.user.id]
           );
+          // Создаём вейджер если задан
+          const balanceWager = promo.wager || 0;
+          if (balanceWager > 0) {
+            await client.query(
+              `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+               VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
+              [req.user.id, `promo_${promo.code}`, creditedAmount, creditedAmount * balanceWager]
+            );
+          }
         }
       }
     });
