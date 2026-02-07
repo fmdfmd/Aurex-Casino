@@ -30,6 +30,8 @@ const vaultRoutes = require('./routes/vault');
 const loyaltyRoutes = require('./routes/loyalty');
 
 const app = express();
+// Railway / Cloudflare / Nginx стоят перед Express → доверяем первый прокси
+app.set('trust proxy', 1);
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {

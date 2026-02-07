@@ -82,11 +82,13 @@ async function sendSmsViaP1sms(phone11, text) {
     ]
   };
 
+  console.log('[P1SMS] Sending to', phone11, '| text length:', text.length);
   const resp = await axios.post(P1SMS_ENDPOINT, payload, {
     timeout: 15000,
     headers: { 'Content-Type': 'application/json', accept: 'application/json' }
   });
 
+  console.log('[P1SMS] Response:', JSON.stringify(resp.data));
   return resp.data;
 }
 
@@ -129,7 +131,9 @@ function signOtpToken({ channel, destination, purpose, otpId }) {
 router.post('/sms/send', async (req, res) => {
   try {
     const { phone, purpose = 'register' } = req.body || {};
+    console.log('[OTP SMS] Raw phone from request:', JSON.stringify(phone));
     const normalized = normalizePhone(phone);
+    console.log('[OTP SMS] Normalized phone:', normalized);
     if (!normalized) {
       return res.status(400).json({ success: false, error: 'Неверный номер телефона' });
     }
