@@ -35,7 +35,8 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   useEffect(() => {
     if (game && isOpen) {
       // Формируем URL для игры
-      const baseUrl = `https://int.apichannel.cloud/games/${game.gameUrl}`;
+      const slotsApiBase = process.env.NEXT_PUBLIC_SLOTS_API_URL || 'https://int.apichannel.cloud';
+      const baseUrl = `${slotsApiBase}/games/${game.gameUrl}`;
       
       // Определяем user_id и auth_token в зависимости от режима
       let userId = 'aurex_demo_001'; // По умолчанию демо
@@ -46,12 +47,13 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         authToken = 'demo';
       } else if (user) {
         // В реальном режиме используем данные текущего пользователя
-        userId = user.username === 'admin' ? 'aurex_admin_001' : 'aurex_user_001';
+        userId = user.odid || user.id;
         authToken = 'real_token_' + user.id;
       }
       
+      const operatorId = process.env.NEXT_PUBLIC_OPERATOR_ID || '40282';
       const params = new URLSearchParams({
-        operator_id: '40282',
+        operator_id: operatorId,
         user_id: userId,
         auth_token: authToken,
         currency: 'RUB',
@@ -100,8 +102,8 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         {/* Header */}
         <div className="flex items-center justify-between p-4 bg-dark-100 border-b border-gray-800">
           <div className="flex items-center space-x-4">
-            <h2 className="text-xl font-bold text-white">{game.name}</h2>
-            <span className="text-sm text-gray-400">{game.provider}</span>
+            <h2 className="text-xl font-bold text-white">{game?.name || 'Игра'}</h2>
+            <span className="text-sm text-gray-400">{game?.provider || ''}</span>
           </div>
           
           {/* Mode Switch */}
@@ -175,8 +177,8 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         <div className="p-3 bg-dark-100 border-t border-gray-800">
           <div className="flex items-center justify-between text-sm">
             <div className="flex items-center space-x-4 text-gray-400">
-              <span>RTP: {game.rtp}%</span>
-              <span>Линии: {game.lines}</span>
+              {game?.rtp && <span>RTP: {game.rtp}%</span>}
+              {game?.lines && <span>Линии: {game.lines}</span>}
               {mode === 'demo' && (
                 <span className="text-casino-gold">🎮 Демо режим - бесплатно</span>
               )}

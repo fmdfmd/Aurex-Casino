@@ -46,7 +46,7 @@ export default function ActiveBonusWidget() {
       });
       const data = await res.json();
       if (data.success) {
-        setBonuses(data.data);
+        setBonuses(data.data || []);
       }
     } catch (error) {
       console.error('Failed to fetch bonuses:', error);

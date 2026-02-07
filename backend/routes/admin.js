@@ -143,8 +143,11 @@ router.get('/users', adminAuth, async (req, res) => {
     const sortDir = sortOrder === 'asc' ? 'ASC' : 'DESC';
     query += ` ORDER BY ${sortColumn} ${sortDir}`;
     
-    // Pagination
-    query += ` LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    // Pagination (parameterized)
+    values.push(parseInt(limit));
+    query += ` LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     
@@ -321,43 +324,49 @@ router.post('/users/:identifier/balance', adminAuth, [
     }
     
     const column = balanceType === 'bonusBalance' ? 'bonus_balance' : 'balance';
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    let result;
-    if (type === 'set') {
-      result = await pool.query(
-        `UPDATE users SET ${column} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-        [amount, userId]
-      );
-    } else if (type === 'add') {
-      result = await pool.query(
-        `UPDATE users SET ${column} = ${column} + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-        [amount, userId]
-      );
-    } else {
-      result = await pool.query(
-        `UPDATE users SET ${column} = GREATEST(0, ${column} - $1), updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
-        [amount, userId]
-      );
-    }
-    
-    // Log transaction
-    const transactionType = type === 'add' ? 'admin_credit' : (type === 'subtract' ? 'admin_debit' : 'admin_set');
-    await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, status, description)
-       VALUES ($1, $2, $3, 'completed', $4)`,
-      [userId, transactionType, type === 'subtract' ? -amount : amount, reason || 'Admin balance adjustment']
-    );
-    
-    res.json({
-      success: true,
-      message: 'Balance updated',
-      data: {
-        newBalance: parseFloat(result.rows[0][column]),
-        balanceType,
-        amount,
-        type
+    const data = await withTransaction(pool, async (client) => {
+      // Lock row
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [userId]);
+      
+      let result;
+      if (type === 'set') {
+        result = await client.query(
+          `UPDATE users SET ${column} = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+          [amount, userId]
+        );
+      } else if (type === 'add') {
+        result = await client.query(
+          `UPDATE users SET ${column} = ${column} + $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+          [amount, userId]
+        );
+      } else {
+        // subtract — проверяем что хватает средств
+        const current = await client.query(`SELECT ${column} FROM users WHERE id = $1`, [userId]);
+        if (parseFloat(current.rows[0][column]) < amount) {
+          throw { status: 400, message: `Недостаточно средств. Текущий баланс: ${current.rows[0][column]}` };
+        }
+        result = await client.query(
+          `UPDATE users SET ${column} = ${column} - $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *`,
+          [amount, userId]
+        );
       }
+      
+      const transactionType = type === 'add' ? 'admin_credit' : (type === 'subtract' ? 'admin_debit' : 'admin_set');
+      await client.query(
+        `INSERT INTO transactions (user_id, type, amount, status, description)
+         VALUES ($1, $2, $3, 'completed', $4)`,
+        [userId, transactionType, type === 'subtract' ? -amount : amount, reason || 'Admin balance adjustment']
+      );
+      
+      return {
+        newBalance: parseFloat(result.rows[0][column]),
+        balanceType, amount, type
+      };
     });
+    
+    res.json({ success: true, message: 'Balance updated', data });
   } catch (error) {
     console.error('Update balance error:', error);
     res.status(500).json({ success: false, error: 'Failed to update balance' });
@@ -397,7 +406,10 @@ router.get('/transactions', adminAuth, async (req, res) => {
       query += ' WHERE ' + conditions.join(' AND ');
     }
     
-    query += ` ORDER BY t.created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY t.created_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     
@@ -486,7 +498,10 @@ router.get('/games/sessions', adminAuth, async (req, res) => {
       query += ' WHERE gs.status = $1';
     }
     
-    query += ` ORDER BY gs.started_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY gs.started_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     

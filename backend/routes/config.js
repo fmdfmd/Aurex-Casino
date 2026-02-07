@@ -49,10 +49,10 @@ const defaultVipConfig = {
 
 const defaultJackpotConfig = {
   pools: [
-    { id: 'emperor', name: 'EMPEROR JACKPOT', nameRu: 'Императорский', amount: 15847623, color: 'from-purple-500 to-pink-500', minBet: 100 },
-    { id: 'gold', name: 'GOLD JACKPOT', nameRu: 'Золотой', amount: 2456789, color: 'from-aurex-gold-500 to-amber-500', minBet: 50 },
-    { id: 'silver', name: 'SILVER JACKPOT', nameRu: 'Серебряный', amount: 547821, color: 'from-gray-400 to-gray-500', minBet: 20 },
-    { id: 'bronze', name: 'BRONZE JACKPOT', nameRu: 'Бронзовый', amount: 89456, color: 'from-amber-700 to-amber-800', minBet: 5 }
+    { id: 'emperor', name: 'EMPEROR JACKPOT', nameRu: 'Императорский', amount: 0, color: 'from-purple-500 to-pink-500', minBet: 100 },
+    { id: 'gold', name: 'GOLD JACKPOT', nameRu: 'Золотой', amount: 0, color: 'from-aurex-gold-500 to-amber-500', minBet: 50 },
+    { id: 'silver', name: 'SILVER JACKPOT', nameRu: 'Серебряный', amount: 0, color: 'from-gray-400 to-gray-500', minBet: 20 },
+    { id: 'bronze', name: 'BRONZE JACKPOT', nameRu: 'Бронзовый', amount: 0, color: 'from-amber-700 to-amber-800', minBet: 5 }
   ],
   lastWinners: []
 };
@@ -237,12 +237,7 @@ router.get('/jackpots', async (req, res) => {
   try {
     const config = await getConfig('jackpotConfig', defaultJackpotConfig);
     
-    // Simulate growth
-    config.pools.forEach(pool => {
-      const growth = Math.random() * (pool.id === 'emperor' ? 500 : pool.id === 'gold' ? 100 : 20);
-      pool.amount = Math.round(pool.amount + growth);
-    });
-    
+    // Jackpot amounts come from DB/config — no fake growth
     res.json({
       success: true,
       data: {

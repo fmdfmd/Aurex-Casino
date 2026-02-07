@@ -16,7 +16,17 @@ module.exports = {
 
   // JWT Configuration
   jwt: {
-    secret: process.env.JWT_SECRET || 'your-super-secret-jwt-key-change-this-in-production',
+    secret: (() => {
+      if (!process.env.JWT_SECRET) {
+        if (process.env.NODE_ENV === 'production') {
+          console.error('FATAL: JWT_SECRET is not set in production! Server cannot start safely.');
+          process.exit(1);
+        }
+        console.warn('WARNING: JWT_SECRET not set. Using random secret (dev only, tokens lost on restart).');
+        return require('crypto').randomBytes(64).toString('hex');
+      }
+      return process.env.JWT_SECRET;
+    })(),
     expiresIn: process.env.JWT_EXPIRE || '7d'
   },
 

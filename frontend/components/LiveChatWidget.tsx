@@ -72,21 +72,14 @@ export default function LiveChatWidget() {
     setInputText('');
     setIsTyping(true);
 
-    // Имитация ответа агента
+    // Автоответ — оператор подключится позже
     setTimeout(() => {
       setIsTyping(false);
       
-      const responses = [
-        'Спасибо за ваше сообщение! Наш оператор скоро подключится к чату.',
-        'Я передал информацию специалисту. Ожидайте ответа в течение 2-3 минут.',
-        'Понял вас! Сейчас уточню информацию и вернусь с ответом.',
-        'Благодарим за обращение! Для ускорения решения, уточните пожалуйста номер транзакции или ID.',
-      ];
-
       const agentMessage: Message = {
         id: (Date.now() + 1).toString(),
         type: 'agent',
-        text: responses[Math.floor(Math.random() * responses.length)],
+        text: 'Спасибо за ваше сообщение! Наш оператор скоро подключится к чату. Среднее время ответа — 2-3 минуты.',
         timestamp: new Date(),
       };
 
@@ -95,7 +88,7 @@ export default function LiveChatWidget() {
       if (!isOpen) {
         setUnreadCount(prev => prev + 1);
       }
-    }, 1500 + Math.random() * 1000);
+    }, 2000);
   };
 
   const handleKeyPress = (e: React.KeyboardEvent) => {

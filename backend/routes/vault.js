@@ -171,19 +171,20 @@ router.post('/activate/:bonusId', auth, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Срок действия бонуса истёк' });
     }
     
-    // Активируем бонус
-    await pool.query(
-      "UPDATE vault_bonuses SET status = 'used', activated_at = CURRENT_TIMESTAMP WHERE id = $1",
-      [bonusId]
-    );
-    
-    // Если это денежный бонус - добавляем на баланс
-    if (bonus.value_amount > 0 && ['reload', 'vip', 'special'].includes(bonus.type)) {
-      await pool.query(
-        'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-        [bonus.value_amount, req.user.id]
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      await client.query(
+        "UPDATE vault_bonuses SET status = 'used', activated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [bonusId]
       );
-    }
+      
+      if (bonus.value_amount > 0 && ['reload', 'vip', 'special'].includes(bonus.type)) {
+        await client.query(
+          'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+          [bonus.value_amount, req.user.id]
+        );
+      }
+    });
     
     res.json({ 
       success: true, 

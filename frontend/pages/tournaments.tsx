@@ -239,7 +239,7 @@ export default function TournamentsPage() {
     { label: 'Призовой фонд сегодня', value: formatAmount(totalPrizePool), icon: <Trophy className="w-7 h-7" />, gradient: 'from-aurex-gold-500 to-amber-500' },
     { label: 'Активных участников', value: activeParticipants.toLocaleString('ru-RU'), icon: <Users className="w-7 h-7" />, gradient: 'from-blue-500 to-indigo-500' },
     { label: 'Турниров сегодня', value: String(activeTournamentsCount || tournaments.length), icon: <Calendar className="w-7 h-7" />, gradient: 'from-green-500 to-emerald-500' },
-    { label: 'Выплачено за неделю', value: formatAmount(totalPrizePool * 3), icon: <Award className="w-7 h-7" />, gradient: 'from-purple-500 to-violet-500' },
+    { label: 'Выплачено за неделю', value: formatAmount(weeklyPaidOut), icon: <Award className="w-7 h-7" />, gradient: 'from-purple-500 to-violet-500' },
   ];
 
   return (

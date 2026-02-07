@@ -67,28 +67,27 @@ router.post('/claim', auth, async (req, res) => {
     const totalAmount = result.rows.reduce((sum, r) => sum + parseFloat(r.amount), 0);
     const totalWager = result.rows.reduce((sum, r) => sum + parseFloat(r.wager_required || 0), 0);
     
-    // Обновляем статус
-    await pool.query(
-      `UPDATE cashback_records 
-       SET status = 'claimed', claimed_at = CURRENT_TIMESTAMP
-       WHERE user_id = $1 AND status = 'pending'`,
-      [req.user.id]
-    );
-    
-    // Добавляем на бонусный баланс
-    await pool.query(
-      'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-      [totalAmount, req.user.id]
-    );
-    
-    // Создаём бонус с вейджером если нужно
-    if (totalWager > 0) {
-      await pool.query(
-        `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-         VALUES ($1, 'cashback', $2, $3, 0, 'active', NOW() + INTERVAL '7 days')`,
-        [req.user.id, totalAmount, totalWager]
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      await client.query(
+        `UPDATE cashback_records SET status = 'claimed', claimed_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND status = 'pending'`,
+        [req.user.id]
       );
-    }
+      
+      await client.query(
+        'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+        [totalAmount, req.user.id]
+      );
+      
+      if (totalWager > 0) {
+        await client.query(
+          `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+           VALUES ($1, 'cashback', $2, $3, 0, 'active', NOW() + INTERVAL '7 days')`,
+          [req.user.id, totalAmount, totalWager]
+        );
+      }
+    });
     
     res.json({ 
       success: true, 

@@ -59,27 +59,22 @@ export default function GoldenDrops() {
     setParticles(newParticles);
   }, [isAuthenticated, isDropActive]);
 
-  // Golden Drops срабатывает ТОЛЬКО при активной игре
-  // Этот компонент экспортирует функцию triggerDrop, которую вызывает GameModal при ставках
-  // Здесь НЕТ автоматических триггеров — дроп выпадает только за реальную игру
-  
-  // Экспортируем триггер через window для вызова из игр
+  // Golden Drops — будет работать через backend API (Slotegrator callback)
+  // Пока отключено: дроп должен подтверждаться сервером и реально зачисляться на баланс
+  // TODO: Подключить к backend POST /api/golden-drops/claim после интеграции слотов
   useEffect(() => {
     if (!isAuthenticated) return;
     
-    // Делаем триггер доступным глобально для вызова из игр
+    // Заглушка — дроп не срабатывает до подключения backend
     (window as any).triggerGoldenDrop = () => {
-      // 3% шанс при каждой ставке
-      const chance = Math.random();
-      if (chance < 0.03 && !isDropActive) {
-        triggerDrop();
-      }
+      // Disabled until backend integration
+      console.log('[GoldenDrops] Trigger disabled — waiting for backend API');
     };
 
     return () => {
       delete (window as any).triggerGoldenDrop;
     };
-  }, [isAuthenticated, isDropActive, triggerDrop]);
+  }, [isAuthenticated]);
 
   const handleReveal = () => {
     setIsRevealing(true);

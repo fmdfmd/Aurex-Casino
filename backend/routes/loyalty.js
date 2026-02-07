@@ -197,59 +197,61 @@ router.post('/purchase', auth, async (req, res) => {
       });
     }
     
-    // Списываем очки
-    await pool.query(
-      'UPDATE users SET vip_points = vip_points - $1 WHERE id = $2',
-      [item.pointsCost, req.user.id]
-    );
-    
-    // Записываем покупку
-    await pool.query(
-      `INSERT INTO loyalty_purchases (user_id, item_id, item_name, points_spent, item_type, item_value)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [req.user.id, item.id, item.name, item.pointsCost, item.type, item.value]
-    );
-    
-    // Выдаём награду в зависимости от типа
+    const { withTransaction } = require('../utils/dbTransaction');
     let rewardMessage = '';
     
-    switch (item.type) {
-      case 'freespins':
-        // Добавляем фриспины пользователю
-        await pool.query(
-          'UPDATE users SET freespins = COALESCE(freespins, 0) + $1 WHERE id = $2',
-          [item.value, req.user.id]
-        );
-        rewardMessage = `${item.value} фриспинов добавлены на ваш счёт!`;
-        break;
-        
-      case 'bonus':
-        // Создаём бонус с вейджером
-        const wagerRequired = item.value * (item.wager || 10);
-        await pool.query(
-          `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-           VALUES ($1, 'loyalty_shop', $2, $3, 0, 'active', NOW() + INTERVAL '7 days')`,
-          [req.user.id, item.value, wagerRequired]
-        );
-        await pool.query(
-          'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-          [item.value, req.user.id]
-        );
-        rewardMessage = `${item.value}₽ добавлены на бонусный баланс! Вейджер: x${item.wager}`;
-        break;
-        
-      case 'boost':
-      case 'wager_reduction':
-      case 'multiplier':
-        // Создаём активный буст
-        await pool.query(
-          `INSERT INTO user_boosts (user_id, boost_type, boost_value, expires_at)
-           VALUES ($1, $2, $3, NOW() + INTERVAL '7 days')`,
-          [req.user.id, item.type, item.value]
-        );
+    await withTransaction(pool, async (client) => {
+      // Lock user row
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
+      
+      // Списываем очки
+      await client.query(
+        'UPDATE users SET vip_points = vip_points - $1 WHERE id = $2',
+        [item.pointsCost, req.user.id]
+      );
+      
+      // Записываем покупку
+      await client.query(
+        `INSERT INTO loyalty_purchases (user_id, item_id, item_name, points_spent, item_type, item_value)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [req.user.id, item.id, item.name, item.pointsCost, item.type, item.value]
+      );
+      
+      switch (item.type) {
+        case 'freespins':
+          await client.query(
+            'UPDATE users SET freespins = COALESCE(freespins, 0) + $1 WHERE id = $2',
+            [item.value, req.user.id]
+          );
+          rewardMessage = `${item.value} фриспинов добавлены на ваш счёт!`;
+          break;
+          
+        case 'bonus':
+          const wagerRequired = item.value * (item.wager || 10);
+          await client.query(
+            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+             VALUES ($1, 'loyalty_shop', $2, $3, 0, 'active', NOW() + INTERVAL '7 days')`,
+            [req.user.id, item.value, wagerRequired]
+          );
+          await client.query(
+            'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+            [item.value, req.user.id]
+          );
+          rewardMessage = `${item.value}₽ добавлены на бонусный баланс! Вейджер: x${item.wager}`;
+          break;
+          
+        case 'boost':
+        case 'wager_reduction':
+        case 'multiplier':
+          await client.query(
+            `INSERT INTO user_boosts (user_id, boost_type, boost_value, expires_at)
+             VALUES ($1, $2, $3, NOW() + INTERVAL '7 days')`,
+            [req.user.id, item.type, item.value]
+          );
         rewardMessage = `${item.name} активирован на 7 дней!`;
-        break;
-    }
+          break;
+      }
+    });
     
     // Получаем обновлённый баланс очков
     const newPointsResult = await pool.query(

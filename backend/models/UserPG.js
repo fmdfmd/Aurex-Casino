@@ -159,11 +159,13 @@ class UserPG {
       query += ' ORDER BY created_at DESC';
       
       if (options.limit) {
-        query += ` LIMIT ${parseInt(options.limit)}`;
+        values.push(parseInt(options.limit));
+        query += ` LIMIT $${values.length}`;
       }
       
       if (options.offset) {
-        query += ` OFFSET ${parseInt(options.offset)}`;
+        values.push(parseInt(options.offset));
+        query += ` OFFSET $${values.length}`;
       }
       
       const result = await pool.query(query, values);

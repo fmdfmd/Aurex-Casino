@@ -153,7 +153,6 @@ export default function AdminDashboard() {
       subtitle: `Всего: ₽${stats.finance.totalDeposits.toLocaleString('ru-RU')}`,
       icon: <ArrowDownLeft className="w-6 h-6" />,
       color: 'from-green-500 to-emerald-600',
-      trend: '+12%'
     },
     {
       title: 'Выводы на рассмотрении',
@@ -169,7 +168,6 @@ export default function AdminDashboard() {
       subtitle: 'Депозиты - Выводы',
       icon: <DollarSign className="w-6 h-6" />,
       color: 'from-aurex-gold-500 to-amber-600',
-      trend: '+8%'
     },
     {
       title: 'Активные игроки',
@@ -194,7 +192,7 @@ export default function AdminDashboard() {
     },
     {
       title: 'VIP игроки',
-      value: '34',
+      value: (stats as any).vipPlayers?.toString() || '0',
       subtitle: 'Gold и выше',
       icon: <Crown className="w-6 h-6" />,
       color: 'from-aurex-gold-500 to-yellow-600'

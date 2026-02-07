@@ -41,7 +41,7 @@ const getGameGradient = (gameId: string | number) => {
   ];
   // Используем стабильную функцию для выбора градиента
   const hash = typeof gameId === 'string' 
-    ? gameId.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
+    ? String(gameId || '').split('').reduce((acc, char) => acc + char.charCodeAt(0), 0)
     : Number(gameId) || 0;
   return gradients[Math.abs(hash) % gradients.length];
 };

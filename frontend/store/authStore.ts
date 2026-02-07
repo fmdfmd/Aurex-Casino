@@ -32,23 +32,25 @@ interface User {
   lastName?: string;
   fullName?: string;
   avatar?: string;
+  country?: string;
+  birthDate?: string;
   balance: number;
   bonusBalance: number;
-  totalBalanceRUB: number;
+  totalBalanceRUB?: number;
   vipLevel: number;
   vipPoints: number;
   isVerified: boolean;
   isAdmin?: boolean;
   role?: 'user' | 'admin';
-  referralCode: string;
-  totalDeposited: number;
-  totalWithdrawn: number;
-  gamesPlayed: number;
-  totalWagered: number;
+  referralCode?: string;
+  totalDeposited?: number;
+  totalWithdrawn?: number;
+  gamesPlayed?: number;
+  totalWagered?: number;
   
   // Deposit tracking
-  depositCount: number;
-  usedBonuses: {
+  depositCount?: number;
+  usedBonuses?: {
     firstDeposit: boolean;
     secondDeposit: boolean;
     thirdDeposit: boolean;
@@ -56,11 +58,11 @@ interface User {
   };
   
   // Wager tracking
-  wager: Wager;
-  activeBonuses: ActiveBonus[];
+  wager?: Wager;
+  activeBonuses?: ActiveBonus[];
   
   // Referral
-  referral: {
+  referral?: {
     code: string;
     referredBy: string | null;
     referralCount: number;
@@ -68,7 +70,7 @@ interface User {
   };
   
   // Limits
-  limits: {
+  limits?: {
     dailyDeposit: number | null;
     weeklyDeposit: number | null;
     monthlyDeposit: number | null;
@@ -78,7 +80,7 @@ interface User {
   };
   
   // Statistics
-  statistics: {
+  statistics?: {
     totalDeposits: number;
     totalWithdrawals: number;
     totalWagered: number;
@@ -89,7 +91,7 @@ interface User {
     favoriteGame: string | null;
   };
   
-  settings: {
+  settings?: {
     notifications: {
       email: boolean;
       push: boolean;
@@ -100,8 +102,8 @@ interface User {
       showStats: boolean;
     };
   };
-  lastLogin: string;
-  createdAt: string;
+  lastLogin?: string;
+  createdAt?: string;
 }
 
 interface AuthState {
@@ -148,7 +150,11 @@ export const useAuthStore = create<AuthState>()(
             password,
           });
 
-          const { user, token } = response.data.data;
+          const resData = response.data?.data;
+          if (!resData?.user || !resData?.token) {
+            throw new Error('Invalid server response');
+          }
+          const { user, token } = resData;
           
           // Set auth header for future requests
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -174,7 +180,11 @@ export const useAuthStore = create<AuthState>()(
         try {
           const response = await axios.post('/api/auth/register', data);
 
-          const { user, token } = response.data.data;
+          const resData = response.data?.data;
+          if (!resData?.user || !resData?.token) {
+            throw new Error('Invalid server response');
+          }
+          const { user, token } = resData;
           
           // Set auth header for future requests
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
@@ -214,7 +224,7 @@ export const useAuthStore = create<AuthState>()(
 
         try {
           const response = await axios.get('/api/auth/me');
-          const { user } = response.data.data;
+          const { user } = response.data?.data || {};
           
           set({ user });
         } catch (error: any) {

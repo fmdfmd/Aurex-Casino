@@ -37,7 +37,7 @@ class SlotsApiService {
   }
 
   // Authenticate user with slots provider
-  async authenticateUser(userId, gameCode, currency = 'RUB') {
+  async authenticateUser(userId, gameCode, currency = 'RUB', reqIp = null) {
     try {
       const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
       if (userResult.rows.length === 0) throw new Error('User not found');
@@ -45,7 +45,7 @@ class SlotsApiService {
 
       const authData = {
         user_id: userId,
-        user_ip: '127.0.0.1',
+        user_ip: reqIp || '0.0.0.0',
         user_auth_token: this.generateAuthToken(userId),
         currency: currency,
         game_code: gameCode
@@ -128,129 +128,112 @@ class SlotsApiService {
     }
   }
 
-  // Process bet transaction
+  // Process bet transaction (with DB transaction + row lock)
   async processBet(transactionData) {
     const { user_id, session_id, bet_amount, currency, game_code, round_id, transaction_id } = transactionData;
+    const { withTransaction } = require('../utils/dbTransaction');
 
-    try {
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    return await withTransaction(pool, async (client) => {
+      // Lock user row
+      const userResult = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user_id]);
       if (userResult.rows.length === 0) throw new Error('User not found');
       const user = userResult.rows[0];
 
-      const sessionResult = await pool.query(
+      const sessionResult = await client.query(
         "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
         [session_id]
       );
       if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
       const gameSession = sessionResult.rows[0];
 
-      // Check balance
       if (parseFloat(user.balance) < bet_amount) {
         throw new Error('Insufficient balance');
       }
 
-      // Update user balance + начисляем VIP очки (1 очко за каждые 100₽ ставки)
       const loyaltyPoints = Math.floor(bet_amount / 100);
-      await pool.query(
+      const updatedUser = await client.query(
         `UPDATE users SET 
           balance = balance - $1, 
           total_wagered = total_wagered + $1, 
           games_played = games_played + 1,
           vip_points = COALESCE(vip_points, 0) + $3
-        WHERE id = $2`,
+        WHERE id = $2 RETURNING balance`,
         [bet_amount, user_id, loyaltyPoints]
       );
       
-      // Обновляем VIP уровень если набрали достаточно очков
-      await this.updateVipLevel(user_id);
-      
       // Обновляем прогресс вейджера активных бонусов
-      await pool.query(
-        `UPDATE bonuses 
-         SET wagering_completed = wagering_completed + $1
+      await client.query(
+        `UPDATE bonuses SET wagering_completed = wagering_completed + $1
          WHERE user_id = $2 AND status = 'active'`,
         [bet_amount, user_id]
       );
       
-      // Проверяем завершённые бонусы (отыгранные)
-      await pool.query(
-        `UPDATE bonuses 
-         SET status = 'completed', completed_at = CURRENT_TIMESTAMP
+      await client.query(
+        `UPDATE bonuses SET status = 'completed', completed_at = CURRENT_TIMESTAMP
          WHERE user_id = $1 AND status = 'active' AND wagering_completed >= wagering_requirement`,
         [user_id]
       );
 
-      // Update game session
-      await pool.query(
+      await client.query(
         'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
         [bet_amount, gameSession.id]
       );
 
-      // Create transaction
-      await pool.query(
+      await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
          VALUES ($1, 'bet', $2, $3, 'completed', $4, $5, $6)`,
         [user_id, -bet_amount, currency, `Ставка в ${game_code}`, gameSession.id, round_id]
       );
 
-      const newBalanceResult = await pool.query('SELECT balance FROM users WHERE id = $1', [user_id]);
+      // VIP level update (non-critical, outside lock is fine)
+      try { await this.updateVipLevel(user_id); } catch(e) { console.error('VIP update:', e); }
 
       return {
         success: true,
-        balance: parseFloat(newBalanceResult.rows[0].balance),
+        balance: parseFloat(updatedUser.rows[0].balance),
         transaction_id: transaction_id
       };
-    } catch (error) {
-      console.error('Process bet error:', error);
-      throw error;
-    }
+    });
   }
 
-  // Process win transaction
+  // Process win transaction (with DB transaction + row lock)
   async processWin(transactionData) {
     const { user_id, session_id, win_amount, currency, game_code, round_id, transaction_id } = transactionData;
+    const { withTransaction } = require('../utils/dbTransaction');
 
-    try {
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
+    return await withTransaction(pool, async (client) => {
+      const userResult = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user_id]);
       if (userResult.rows.length === 0) throw new Error('User not found');
 
-      const sessionResult = await pool.query(
+      const sessionResult = await client.query(
         "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
         [session_id]
       );
       if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
       const gameSession = sessionResult.rows[0];
 
-      // Update user balance
-      await pool.query(
-        'UPDATE users SET balance = balance + $1 WHERE id = $2',
+      const updatedUser = await client.query(
+        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance',
         [win_amount, user_id]
       );
 
-      // Update game session
-      await pool.query(
+      await client.query(
         'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
         [win_amount, gameSession.id]
       );
 
-      // Create transaction
-      await pool.query(
+      await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
          VALUES ($1, 'win', $2, $3, 'completed', $4, $5, $6)`,
         [user_id, win_amount, currency, `Выигрыш в ${game_code}`, gameSession.id, round_id]
       );
 
-      const newBalanceResult = await pool.query('SELECT balance FROM users WHERE id = $1', [user_id]);
-
       return {
         success: true,
-        balance: parseFloat(newBalanceResult.rows[0].balance),
+        balance: parseFloat(updatedUser.rows[0].balance),
         transaction_id: transaction_id
       };
-    } catch (error) {
-      console.error('Process win error:', error);
-      throw error;
-    }
+    });
   }
 }
 
@@ -318,9 +301,23 @@ router.post('/start-game', auth, async (req, res) => {
 });
 
 // Callback endpoints for slots provider
+// Middleware для валидации callback запросов от провайдера
+const validateProviderCallback = (req, res, next) => {
+  // TODO: Добавить проверку IP whitelist провайдера (Slotegrator)
+  // const allowedIPs = (process.env.SLOTS_PROVIDER_IPS || '').split(',').filter(Boolean);
+  // const clientIP = req.ip || req.connection.remoteAddress;
+  // if (allowedIPs.length > 0 && !allowedIPs.includes(clientIP)) {
+  //   console.warn(`[Callback] Rejected callback from unauthorized IP: ${clientIP}`);
+  //   return res.status(403).json({ error: 'Forbidden', error_code: 403 });
+  // }
+  
+  // Логируем все callback запросы для аудита
+  console.log(`[Callback] ${req.method} ${req.path} from ${req.ip}`, JSON.stringify(req.body).slice(0, 500));
+  next();
+};
 
 // Auth callback
-router.post('/callback/auth', async (req, res) => {
+router.post('/callback/auth', validateProviderCallback, async (req, res) => {
   try {
     const { user_id, user_auth_token } = req.body;
     
@@ -353,7 +350,7 @@ router.post('/callback/auth', async (req, res) => {
 });
 
 // Bet callback
-router.post('/callback/bet', async (req, res) => {
+router.post('/callback/bet', validateProviderCallback, async (req, res) => {
   try {
     const result = await slotsService.processBet(req.body);
     
@@ -388,7 +385,7 @@ router.post('/callback/bet', async (req, res) => {
 });
 
 // Win callback
-router.post('/callback/win', async (req, res) => {
+router.post('/callback/win', validateProviderCallback, async (req, res) => {
   try {
     const result = await slotsService.processWin(req.body);
     
@@ -423,7 +420,7 @@ router.post('/callback/win', async (req, res) => {
 });
 
 // Get user balance
-router.post('/callback/balance', async (req, res) => {
+router.post('/callback/balance', validateProviderCallback, async (req, res) => {
   try {
     const { user_id } = req.body;
     

@@ -113,18 +113,22 @@ router.post('/claim', auth, async (req, res) => {
       });
     }
     
-    // Переносим на основной баланс
-    await pool.query(
-      'UPDATE users SET balance = balance + $1, referral_earnings = 0 WHERE id = $2',
-      [earnings, req.user.id]
-    );
-    
-    // Логируем транзакцию
-    await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, status, description)
-       VALUES ($1, 'referral_bonus', $2, 'completed', 'Реферальное вознаграждение')`,
-      [req.user.id, earnings]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      // Блокируем строку пользователя
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
+      
+      await client.query(
+        'UPDATE users SET balance = balance + $1, referral_earnings = 0 WHERE id = $2',
+        [earnings, req.user.id]
+      );
+      
+      await client.query(
+        `INSERT INTO transactions (user_id, type, amount, status, description)
+         VALUES ($1, 'referral_bonus', $2, 'completed', 'Реферальное вознаграждение')`,
+        [req.user.id, earnings]
+      );
+    });
     
     res.json({
       success: true,
@@ -137,8 +141,10 @@ router.post('/claim', auth, async (req, res) => {
   }
 });
 
-// Начислить реферальный бонус (вызывается при депозите реферала)
-router.post('/credit', auth, async (req, res) => {
+// Начислить реферальный бонус (вызывается внутренне при депозите реферала)
+// SECURITY: Только admin может вызывать этот эндпоинт
+const { adminAuth } = require('../middleware/auth');
+router.post('/credit', adminAuth, async (req, res) => {
   try {
     const { referrerId, depositAmount } = req.body;
     

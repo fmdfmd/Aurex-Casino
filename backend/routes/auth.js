@@ -12,22 +12,31 @@ const { normalizePhone } = require('../utils/phone');
 const formatUser = (user) => {
   if (!user) return null;
   const id = user.id;
+  const balance = parseFloat(user.balance) || 0;
+  const bonusBalance = parseFloat(user.bonus_balance) || 0;
   return {
     id,
     odid: user.odid || `AUREX-${String(id).padStart(6, '0')}`,
     username: user.username,
     email: user.email,
     phone: user.phone || null,
-    firstName: user.first_name,
-    lastName: user.last_name,
-    balance: parseFloat(user.balance) || 0,
-    bonusBalance: parseFloat(user.bonus_balance) || 0,
+    firstName: user.first_name || null,
+    lastName: user.last_name || null,
+    country: user.country || null,
+    birthDate: user.birth_date || null,
+    balance,
+    bonusBalance,
+    totalBalanceRUB: balance + bonusBalance,
     vipLevel: user.vip_level || 1,
     vipPoints: user.vip_points || 0,
     isVerified: user.is_verified || false,
     isAdmin: user.is_admin || false,
     role: user.is_admin ? 'admin' : 'user',
     referralCode: user.referral_code,
+    totalDeposited: parseFloat(user.total_deposited) || 0,
+    totalWithdrawn: parseFloat(user.total_withdrawn) || 0,
+    gamesPlayed: parseInt(user.games_played) || 0,
+    totalWagered: parseFloat(user.total_wagered) || 0,
     depositCount: user.deposit_count || 0,
     lastLogin: user.last_login,
     createdAt: user.created_at
@@ -121,7 +130,8 @@ router.post('/register', [
     
     // Generate ODID and referral code
     const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
-    const userReferralCode = `REF-${username.toUpperCase().slice(0, 6)}${Math.random().toString(36).slice(2, 6).toUpperCase()}`;
+    const crypto = require('crypto');
+    const userReferralCode = `REF-${username.toUpperCase().slice(0, 6)}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
     // Find referrer if referral code provided
     let referredBy = null;
@@ -365,7 +375,10 @@ router.get('/transactions', auth, async (req, res) => {
       query += ` AND type = $${values.length}`;
     }
     
-    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY created_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     

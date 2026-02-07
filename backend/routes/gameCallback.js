@@ -148,59 +148,67 @@ router.post('/make-bet', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
     
-    const user = userResult.rows[0];
-    const currentBalance = parseFloat(user.balance);
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Проверяем баланс
-    if (currentBalance < amount) {
-      return res.status(400).json({
-        success: false,
-        error: 'Insufficient balance',
-        balance: currentBalance
-      });
-    }
-
-    // Списываем ставку
-    const newBalance = currentBalance - amount;
-    
-    await pool.query(
-      'UPDATE users SET balance = $1, total_wagered = total_wagered + $2, games_played = games_played + 1 WHERE id = $3',
-      [newBalance, amount, user.id]
-    );
-
-    // Обновляем сессию
-    await pool.query(
-      'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
-      [amount, session.id]
-    );
-
-    // Создаем транзакцию
-    const txResult = await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
-       VALUES ($1, 'bet', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
-      [user.id, -amount, `Ставка в игре`, game_round_id]
-    );
-
-    // Начисляем VIP очки: 1 очко за каждые ₽100 ставки
-    const loyaltyPoints = Math.floor(amount / 100);
-    if (loyaltyPoints > 0) {
-      await pool.query(
-        'UPDATE users SET vip_points = COALESCE(vip_points, 0) + $1 WHERE id = $2',
-        [loyaltyPoints, user.id]
+    const result = await withTransaction(pool, async (client) => {
+      // Блокируем строку пользователя
+      const lockedUser = await client.query(
+        'SELECT * FROM users WHERE id = $1 FOR UPDATE',
+        [session.user_id]
       );
-      const levelUp = await updateVipLevel(pool, user.id);
-      if (levelUp) {
-        console.log(`🏆 ${user.username} повысил VIP до ${levelUp.name}!`);
+      if (lockedUser.rows.length === 0) {
+        throw { status: 404, message: 'User not found' };
       }
-    }
-
-    console.log(`🎲 Ставка ${amount}₽ от ${user.username}. Новый баланс: ${newBalance}₽`);
+      const user = lockedUser.rows[0];
+      const currentBalance = parseFloat(user.balance);
+      
+      if (currentBalance < amount) {
+        throw { status: 400, message: 'Insufficient balance', balance: currentBalance };
+      }
+      
+      // Списываем ставку атомарно
+      const updatedUser = await client.query(
+        `UPDATE users SET balance = balance - $1, total_wagered = total_wagered + $1, games_played = games_played + 1 
+         WHERE id = $2 RETURNING balance`,
+        [amount, user.id]
+      );
+      const newBalance = parseFloat(updatedUser.rows[0].balance);
+      
+      // Обновляем сессию
+      await client.query(
+        'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
+        [amount, session.id]
+      );
+      
+      // Создаём транзакцию
+      const txResult = await client.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
+         VALUES ($1, 'bet', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
+        [user.id, -amount, 'Ставка в игре', game_round_id]
+      );
+      
+      // VIP очки
+      const loyaltyPoints = Math.floor(amount / 100);
+      if (loyaltyPoints > 0) {
+        await client.query(
+          'UPDATE users SET vip_points = COALESCE(vip_points, 0) + $1 WHERE id = $2',
+          [loyaltyPoints, user.id]
+        );
+      }
+      
+      return { newBalance, txId: txResult.rows[0].id.toString(), username: user.username };
+    });
+    
+    // VIP level update (outside transaction - non-critical)
+    try { await updateVipLevel(pool, session.user_id); } catch(e) { console.error('VIP update error:', e); }
+    
+    console.log(`🎲 Ставка ${amount}₽ от ${result.username}. Новый баланс: ${result.newBalance}₽`);
     
     res.json({
       success: true,
-      balance: newBalance,
+      balance: result.newBalance,
       currency: 'RUB',
-      transaction_id: txResult.rows[0].id.toString()
+      transaction_id: result.txId
     });
 
   } catch (error) {
@@ -234,37 +242,46 @@ router.post('/win', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
     
-    const user = userResult.rows[0];
-    const currentBalance = parseFloat(user.balance);
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Добавляем выигрыш
-    const newBalance = currentBalance + amount;
+    const result = await withTransaction(pool, async (client) => {
+      const lockedUser = await client.query(
+        'SELECT * FROM users WHERE id = $1 FOR UPDATE',
+        [session.user_id]
+      );
+      if (lockedUser.rows.length === 0) throw { status: 404, message: 'User not found' };
+      const user = lockedUser.rows[0];
+      
+      // Добавляем выигрыш атомарно
+      const updatedUser = await client.query(
+        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance',
+        [amount, user.id]
+      );
+      const newBalance = parseFloat(updatedUser.rows[0].balance);
+      
+      // Обновляем сессию
+      await client.query(
+        'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
+        [amount, session.id]
+      );
+      
+      // Создаём транзакцию
+      const txResult = await client.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
+         VALUES ($1, 'win', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
+        [user.id, amount, 'Выигрыш в игре', game_round_id]
+      );
+      
+      return { newBalance, txId: txResult.rows[0].id.toString(), username: user.username };
+    });
     
-    await pool.query(
-      'UPDATE users SET balance = $1 WHERE id = $2',
-      [newBalance, user.id]
-    );
-
-    // Обновляем сессию
-    await pool.query(
-      'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
-      [amount, session.id]
-    );
-
-    // Создаем транзакцию
-    const txResult = await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
-       VALUES ($1, 'win', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
-      [user.id, amount, `Выигрыш в игре`, game_round_id]
-    );
-
-    console.log(`🎉 Выигрыш ${amount}₽ для ${user.username}. Новый баланс: ${newBalance}₽`);
+    console.log(`🎉 Выигрыш ${amount}₽ для ${result.username}. Новый баланс: ${result.newBalance}₽`);
     
     res.json({
       success: true,
-      balance: newBalance,
+      balance: result.newBalance,
       currency: 'RUB',
-      transaction_id: txResult.rows[0].id.toString()
+      transaction_id: result.txId
     });
 
   } catch (error) {
@@ -298,34 +315,39 @@ router.post('/cancel-bet', async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
     
-    const user = userResult.rows[0];
-    const currentBalance = parseFloat(user.balance);
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Возвращаем ставку
-    const newBalance = currentBalance + amount;
-    
-    await pool.query(
-      'UPDATE users SET balance = $1 WHERE id = $2',
-      [newBalance, user.id]
-    );
+    const result = await withTransaction(pool, async (client) => {
+      const lockedUser = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [session.user_id]);
+      if (lockedUser.rows.length === 0) throw { status: 404, message: 'User not found' };
+      const user = lockedUser.rows[0];
+      
+      const updatedUser = await client.query(
+        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance',
+        [amount, user.id]
+      );
+      const newBalance = parseFloat(updatedUser.rows[0].balance);
+      
+      const txResult = await client.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description)
+         VALUES ($1, 'cancel', $2, 'RUB', 'completed', 'Отмена ставки') RETURNING id`,
+        [user.id, amount]
+      );
+      
+      return { newBalance, txId: txResult.rows[0].id.toString(), username: user.username };
+    });
 
-    // Создаем транзакцию отмены
-    const txResult = await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, currency, status, description)
-       VALUES ($1, 'cancel', $2, 'RUB', 'completed', 'Отмена ставки') RETURNING id`,
-      [user.id, amount]
-    );
-
-    console.log(`🔄 Отмена ставки ${amount}₽ для ${user.username}. Новый баланс: ${newBalance}₽`);
+    console.log(`🔄 Отмена ставки ${amount}₽ для ${result.username}. Новый баланс: ${result.newBalance}₽`);
     
     res.json({
       success: true,
-      balance: newBalance,
+      balance: result.newBalance,
       currency: 'RUB',
-      transaction_id: txResult.rows[0].id.toString()
+      transaction_id: result.txId
     });
 
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, error: error.message });
     console.error('❌ Ошибка отмены ставки:', error);
     res.status(500).json({ success: false, error: error.message });
   }

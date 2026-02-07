@@ -8,6 +8,7 @@ import { useAuthStore } from '../store/authStore';
 // import GoldenDrops from '../components/GoldenDrops'; // Временно отключен
 import LiveChatWidget from '../components/LiveChatWidget';
 import SplashScreen from '../components/SplashScreen';
+import ErrorBoundary from '../components/ErrorBoundary';
 import '../styles/globals.css';
 
 const inter = Inter({ 
@@ -100,6 +101,7 @@ export default function App({ Component, pageProps }: AppProps) {
       </Head>
       
       <QueryClientProvider client={queryClient}>
+        <ErrorBoundary>
         <div className={`${inter.variable} ${poppins.variable} font-sans`}>
           <Component {...pageProps} />
           {/* <GoldenDrops /> */}
@@ -129,6 +131,7 @@ export default function App({ Component, pageProps }: AppProps) {
             }}
           />
         </div>
+        </ErrorBoundary>
       </QueryClientProvider>
     </>
   );

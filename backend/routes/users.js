@@ -222,7 +222,10 @@ router.get('/transactions', auth, async (req, res) => {
       query += ` AND type = $${values.length}`;
     }
     
-    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY created_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     

@@ -44,25 +44,25 @@ router.post('/activate', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Вы уже использовали этот промокод' });
     }
     
-    // Активируем - добавляем использование
-    await pool.query(
-      'INSERT INTO promocode_usages (promocode_id, user_id) VALUES ($1, $2)',
-      [promo.id, req.user.id]
-    );
-    
-    // Увеличиваем счётчик
-    await pool.query(
-      'UPDATE promocodes SET used_count = used_count + 1 WHERE id = $1',
-      [promo.id]
-    );
-    
-    // Если это бонус - добавляем на баланс
-    if (promo.type === 'bonus' && promo.value_type === 'fixed') {
-      await pool.query(
-        'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-        [promo.value, req.user.id]
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      await client.query(
+        'INSERT INTO promocode_usages (promocode_id, user_id) VALUES ($1, $2)',
+        [promo.id, req.user.id]
       );
-    }
+      
+      await client.query(
+        'UPDATE promocodes SET used_count = used_count + 1 WHERE id = $1',
+        [promo.id]
+      );
+      
+      if (promo.type === 'bonus' && promo.value_type === 'fixed') {
+        await client.query(
+          'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+          [promo.value, req.user.id]
+        );
+      }
+    });
     
     res.json({ 
       success: true, 

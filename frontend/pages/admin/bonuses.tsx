@@ -69,7 +69,7 @@ export default function AdminBonusesPage() {
         setStats({
           totalActiveBonuses: data.data.stats?.activeCount || 0,
           totalBonusAmount: data.data.stats?.totalBonusAmount || 0,
-          averageWager: 32, // Calculate from data
+          averageWager: data.data.stats?.averageWager || 0,
           conversionRate: data.data?.stats?.usedCount > 0 
             ? Math.round((data.data.stats.usedCount / (data.data.stats.usedCount + (data.data.stats?.activeCount || 0))) * 100)
             : 0
@@ -209,7 +209,7 @@ export default function AdminBonusesPage() {
                 </thead>
                 <tbody>
                   {(activeBonuses || []).map((bonus) => {
-                    const wagerPercent = (bonus.wagerCompleted / bonus.wagerRequired) * 100;
+                    const wagerPercent = bonus.wagerRequired > 0 ? ((bonus.wagerCompleted || 0) / bonus.wagerRequired) * 100 : 0;
                     return (
                       <tr key={bonus.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50">
                         <td className="px-6 py-4">

@@ -162,7 +162,7 @@ export default function ReferralPage() {
     <AuthGuard>
       <Head>
         <title>Реферальная программа - AUREX Partners</title>
-        <meta name="description" content="Приглашай друзей в AUREX и зарабатывай до 20% от их депозитов!" />
+        <meta name="description" content="Приглашай друзей в AUREX и зарабатывай от их депозитов!" />
       </Head>
 
       <Layout>
@@ -191,7 +191,9 @@ export default function ReferralPage() {
                   <span className="aurex-imperial-text">{t('profile.referralProgram.heroTitle')}</span>
                 </h1>
                 
-                <p className="text-xl text-aurex-platinum-300 mb-8 max-w-2xl mx-auto" dangerouslySetInnerHTML={{ __html: t('profile.referralProgram.heroSubtitle', { percent: 20 }) }} />
+                <p className="text-xl text-aurex-platinum-300 mb-8 max-w-2xl mx-auto">
+                  {t('profile.referralProgram.heroSubtitle', { percent: tiers.length > 0 ? Math.max(...tiers.map((tier: any) => tier.percent || 0)) : 20 })}
+                </p>
 
                 {/* Referral Link Box */}
                 <div className="max-w-xl mx-auto p-6 bg-aurex-obsidian-800 border border-aurex-gold-500/30 rounded-2xl">
@@ -547,7 +549,7 @@ export default function ReferralPage() {
                 <div className="bg-gradient-to-br from-aurex-gold-500/20 to-purple-500/20 border border-aurex-gold-500/30 rounded-2xl p-6">
                   <Gift className="w-8 h-8 text-aurex-gold-500 mb-3" />
                   <h3 className="text-lg font-bold text-white mb-2">{t('profile.referralProgram.friendBonus')}</h3>
-                  <p className="text-sm text-aurex-platinum-400" dangerouslySetInnerHTML={{ __html: t('profile.referralProgram.friendBonusDesc') }} />
+                  <p className="text-sm text-aurex-platinum-400">{t('profile.referralProgram.friendBonusDesc')}</p>
                 </div>
               </div>
             </div>

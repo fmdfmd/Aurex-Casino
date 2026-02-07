@@ -17,7 +17,10 @@ router.get('/sessions', auth, async (req, res) => {
       query += ` AND status = $${values.length}`;
     }
     
-    query += ` ORDER BY started_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY started_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     
@@ -55,7 +58,10 @@ router.get('/history', auth, async (req, res) => {
       query += ` AND game_type = $${values.length}`;
     }
     
-    query += ` ORDER BY started_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY started_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     

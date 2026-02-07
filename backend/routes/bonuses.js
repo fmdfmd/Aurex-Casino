@@ -91,17 +91,21 @@ router.post('/activate-deposit', auth, async (req, res) => {
     const bonusAmount = Math.min(amount * (bonusConfig.percent / 100), bonusConfig.maxBonus);
     const wagerRequired = (amount + bonusAmount) * bonusConfig.wager;
     
-    const result = await pool.query(
-      `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-       VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days') RETURNING *`,
-      [req.user.id, `deposit_${depositNumber}`, bonusAmount, wagerRequired]
-    );
-    
-    // Добавляем бонус на баланс
-    await pool.query(
-      'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-      [bonusAmount, req.user.id]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
+    const result = await withTransaction(pool, async (client) => {
+      const bonusResult = await client.query(
+        `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+         VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days') RETURNING *`,
+        [req.user.id, `deposit_${depositNumber}`, bonusAmount, wagerRequired]
+      );
+      
+      await client.query(
+        'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+        [bonusAmount, req.user.id]
+      );
+      
+      return bonusResult.rows[0];
+    });
     
     res.json({ 
       success: true, 
@@ -109,7 +113,7 @@ router.post('/activate-deposit', auth, async (req, res) => {
       data: {
         bonusAmount,
         wagerRequired,
-        bonus: result.rows[0]
+        bonus: result
       }
     });
   } catch (error) {
@@ -230,22 +234,23 @@ router.post('/:id/deactivate', auth, async (req, res) => {
 // Отменить бонус
 router.post('/:id/cancel', auth, async (req, res) => {
   try {
-    const result = await pool.query(
-      `UPDATE bonuses 
-       SET status = 'cancelled'
-       WHERE id = $1 AND user_id = $2 AND status = 'active' RETURNING *`,
-      [req.params.id, req.user.id]
-    );
-    
-    if (result.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Бонус не найден или уже неактивен' });
-    }
-    
-    // Убираем бонусный баланс
-    await pool.query(
-      'UPDATE users SET bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
-      [result.rows[0].amount, req.user.id]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      const result = await client.query(
+        `UPDATE bonuses SET status = 'cancelled'
+         WHERE id = $1 AND user_id = $2 AND status = 'active' RETURNING *`,
+        [req.params.id, req.user.id]
+      );
+      
+      if (result.rows.length === 0) {
+        throw { status: 404, message: 'Бонус не найден или уже неактивен' };
+      }
+      
+      await client.query(
+        'UPDATE users SET bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
+        [result.rows[0].amount, req.user.id]
+      );
+    });
     
     res.json({ success: true, message: 'Бонус отменён' });
   } catch (error) {
@@ -296,18 +301,23 @@ router.post('/admin/grant', adminAuth, async (req, res) => {
   try {
     const { userId, type, amount, wager } = req.body;
     
-    const result = await pool.query(
-      `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-       VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days') RETURNING *`,
-      [userId, type || 'admin_bonus', amount, (amount * (wager || 1))]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
+    const bonus = await withTransaction(pool, async (client) => {
+      const bonusResult = await client.query(
+        `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+         VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days') RETURNING *`,
+        [userId, type || 'admin_bonus', amount, (amount * (wager || 1))]
+      );
+      
+      await client.query(
+        'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+        [amount, userId]
+      );
+      
+      return bonusResult.rows[0];
+    });
     
-    await pool.query(
-      'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-      [amount, userId]
-    );
-    
-    res.json({ success: true, message: 'Бонус выдан', data: result.rows[0] });
+    res.json({ success: true, message: 'Бонус выдан', data: bonus });
   } catch (error) {
     console.error('Grant bonus error:', error);
     res.status(500).json({ success: false, message: error.message });

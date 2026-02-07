@@ -74,21 +74,8 @@ export function useCurrency() {
   const currency = useSettingsStore((state) => state.currency);
   const hideBalance = useSettingsStore((state) => state.hideBalance);
 
-  const exchangeRates: Record<string, number> = {
-    RUB: 1,
-    USD: 0.011,
-    EUR: 0.010,
-    BTC: 0.00000012,
-    USDT: 0.011,
-  };
-
-  const symbols: Record<string, string> = {
-    RUB: '₽',
-    USD: '$',
-    EUR: '€',
-    BTC: '₿',
-    USDT: '₮',
-  };
+  // Импортируем единый источник курсов из settingsStore
+  const { exchangeRates, currencySymbols: symbols } = require('../store/settingsStore');
 
   const format = useCallback((amountInRub: number, showHidden = false): string => {
     if (hideBalance && !showHidden) {

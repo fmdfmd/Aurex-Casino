@@ -1,5 +1,8 @@
 const jwt = require('jsonwebtoken');
 const pool = require('../config/database');
+const config = require('../config/config');
+
+const JWT_SECRET = config.jwt.secret;
 
 const auth = async (req, res, next) => {
   try {
@@ -9,7 +12,7 @@ const auth = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Требуется авторизация' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
     
@@ -53,7 +56,7 @@ const adminAuth = async (req, res, next) => {
       return res.status(401).json({ success: false, message: 'Требуется авторизация' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+    const decoded = jwt.verify(token, JWT_SECRET);
     
     const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
     
@@ -92,7 +95,7 @@ const optionalAuth = async (req, res, next) => {
     const token = req.header('Authorization')?.replace('Bearer ', '');
     
     if (token) {
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'your-secret-key');
+      const decoded = jwt.verify(token, JWT_SECRET);
       const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
       
       if (result.rows.length > 0) {

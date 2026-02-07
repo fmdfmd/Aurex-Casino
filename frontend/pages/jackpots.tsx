@@ -68,9 +68,9 @@ export default function JackpotsPage() {
                      pool.id === 'gold' ? 'from-yellow-400 via-yellow-500 to-orange-500' :
                      pool.id === 'silver' ? 'from-gray-300 via-gray-400 to-gray-500' :
                      'from-amber-600 via-amber-700 to-amber-800',
-            lastWinner: '***',
-            lastWinAmount: 0,
-            avgDropTime: pool.id === 'emperor' ? '45 дней' : pool.id === 'gold' ? '14 дней' : pool.id === 'silver' ? '3 дня' : '12 часов',
+            lastWinner: pool.lastWinner || '—',
+            lastWinAmount: pool.lastWinAmount || 0,
+            avgDropTime: pool.avgDropTime || '—',
             minBet: pool.minBet
           }));
           setJackpots(mappedJackpots);

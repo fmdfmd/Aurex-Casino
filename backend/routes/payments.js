@@ -17,7 +17,10 @@ router.get('/history', auth, async (req, res) => {
       query += ` AND type = $${values.length}`;
     }
     
-    query += ` ORDER BY created_at DESC LIMIT ${parseInt(limit)} OFFSET ${offset}`;
+    values.push(parseInt(limit));
+    query += ` ORDER BY created_at DESC LIMIT $${values.length}`;
+    values.push(offset);
+    query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
     
@@ -77,10 +80,10 @@ router.post('/deposit', auth, async (req, res) => {
       amount: parseFloat(amount),
       currency,
       paymentMethod,
-      // Для криптовалют
-      walletAddress: paymentMethod === 'btc' ? '1BvBMSEYstWetqTFn5Au4m4GFg7xJaNVN2' :
-                     paymentMethod === 'eth' ? '0x742d35Cc6634C0532925a3b844Bc9e7595f0Ab12' :
-                     paymentMethod === 'usdt' ? 'TN3W4H6rK2ce4vX9YnFQHwKENnHjoxb3m9' : null,
+      // Для криптовалют — адреса из переменных окружения
+      walletAddress: paymentMethod === 'btc' ? (process.env.CRYPTO_BTC_ADDRESS || null) :
+                     paymentMethod === 'eth' ? (process.env.CRYPTO_ETH_ADDRESS || null) :
+                     paymentMethod === 'usdt' ? (process.env.CRYPTO_USDT_ADDRESS || null) : null,
       // Для СБП
       sbpLink: paymentMethod === 'sbp' ? `https://qr.nspk.ru/pay?amount=${amount}&purpose=AUREX` : null,
       expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 минут
@@ -109,43 +112,46 @@ router.post('/deposit', auth, async (req, res) => {
 router.post('/deposit/:id/confirm', auth, async (req, res) => {
   try {
     const { id } = req.params;
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Получаем транзакцию
-    const txResult = await pool.query(
-      "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'deposit' AND status = 'pending'",
-      [id, req.user.id]
-    );
-    
-    if (txResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Транзакция не найдена' });
-    }
-    
-    const tx = txResult.rows[0];
-    
-    // Обновляем статус транзакции
-    await pool.query(
-      "UPDATE transactions SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-      [id]
-    );
-    
-    // Добавляем на баланс
-    await pool.query(
-      'UPDATE users SET balance = balance + $1, deposit_count = deposit_count + 1 WHERE id = $2',
-      [parseFloat(tx.amount), req.user.id]
-    );
-    
-    // Получаем обновлённый баланс
-    const userResult = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
-    
-    res.json({
-      success: true,
-      message: 'Депозит подтверждён',
-      data: {
+    const result = await withTransaction(pool, async (client) => {
+      // Получаем транзакцию с блокировкой
+      const txResult = await client.query(
+        "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'deposit' AND status = 'pending' FOR UPDATE",
+        [id, req.user.id]
+      );
+      
+      if (txResult.rows.length === 0) {
+        throw { status: 404, message: 'Транзакция не найдена' };
+      }
+      
+      const tx = txResult.rows[0];
+      
+      // Обновляем статус транзакции
+      await client.query(
+        "UPDATE transactions SET status = 'completed', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [id]
+      );
+      
+      // Добавляем на баланс + обновляем total_deposited
+      const userResult = await client.query(
+        `UPDATE users SET balance = balance + $1, deposit_count = deposit_count + 1, 
+         total_deposited = total_deposited + $1
+         WHERE id = $2 RETURNING balance`,
+        [parseFloat(tx.amount), req.user.id]
+      );
+      
+      return {
         amount: parseFloat(tx.amount),
         newBalance: parseFloat(userResult.rows[0].balance)
-      }
+      };
     });
+    
+    res.json({ success: true, message: 'Депозит подтверждён', data: result });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Confirm deposit error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
@@ -158,17 +164,6 @@ router.post('/withdraw', auth, async (req, res) => {
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
-    }
-    
-    // Получаем баланс пользователя
-    const userResult = await pool.query('SELECT balance FROM users WHERE id = $1', [req.user.id]);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Пользователь не найден' });
-    }
-    const balance = parseFloat(userResult.rows[0].balance);
-    
-    if (amount > balance) {
-      return res.status(400).json({ success: false, message: 'Недостаточно средств' });
     }
     
     // Минимальные суммы вывода
@@ -184,29 +179,49 @@ router.post('/withdraw', auth, async (req, res) => {
       });
     }
     
-    // Блокируем средства (списываем с баланса сразу)
-    await pool.query(
-      'UPDATE users SET balance = balance - $1 WHERE id = $2',
-      [amount, req.user.id]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Создаём транзакцию
-    const result = await pool.query(
-      `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
-       VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, 'Вывод средств')
-       RETURNING *`,
-      [req.user.id, -amount, currency, paymentMethod, walletAddress]
-    );
+    const result = await withTransaction(pool, async (client) => {
+      // Блокируем строку пользователя для предотвращения race condition
+      const userResult = await client.query(
+        'SELECT balance FROM users WHERE id = $1 FOR UPDATE',
+        [req.user.id]
+      );
+      if (userResult.rows.length === 0) {
+        throw { status: 404, message: 'Пользователь не найден' };
+      }
+      const balance = parseFloat(userResult.rows[0].balance);
+      
+      if (amount > balance) {
+        throw { status: 400, message: 'Недостаточно средств' };
+      }
+      
+      // Блокируем средства (списываем с баланса)
+      await client.query(
+        'UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2',
+        [amount, req.user.id]
+      );
+      
+      // Создаём транзакцию
+      const txResult = await client.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
+         VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, 'Вывод средств')
+         RETURNING *`,
+        [req.user.id, -amount, currency, paymentMethod, walletAddress]
+      );
+      
+      return txResult.rows[0];
+    });
     
     res.json({
       success: true,
       message: 'Заявка на вывод создана',
-      data: {
-        transaction: result.rows[0],
-        estimatedTime: '1-24 часа'
-      }
+      data: { transaction: result, estimatedTime: '1-24 часа' }
     });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Create withdrawal error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
@@ -227,18 +242,21 @@ router.post('/withdraw/:id/cancel', auth, async (req, res) => {
     }
     
     const tx = txResult.rows[0];
+    const { withTransaction } = require('../utils/dbTransaction');
     
-    // Отменяем транзакцию
-    await pool.query(
-      "UPDATE transactions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
-      [id]
-    );
-    
-    // Возвращаем деньги
-    await pool.query(
-      'UPDATE users SET balance = balance + $1 WHERE id = $2',
-      [Math.abs(parseFloat(tx.amount)), req.user.id]
-    );
+    await withTransaction(pool, async (client) => {
+      // Отменяем транзакцию
+      await client.query(
+        "UPDATE transactions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+        [id]
+      );
+      
+      // Возвращаем деньги
+      await client.query(
+        'UPDATE users SET balance = balance + $1 WHERE id = $2',
+        [Math.abs(parseFloat(tx.amount)), req.user.id]
+      );
+    });
     
     res.json({ success: true, message: 'Заявка отменена, средства возвращены' });
   } catch (error) {

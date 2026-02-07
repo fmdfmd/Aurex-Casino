@@ -81,7 +81,7 @@ export default function AdminTicketsPage() {
       resolved: { bg: 'bg-green-500/20', text: 'text-green-400', label: 'Решён' },
       closed: { bg: 'bg-gray-500/20', text: 'text-gray-400', label: 'Закрыт' },
     };
-    const s = styles[status];
+    const s = styles[status] || styles.open;
     return <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>{s.label}</span>;
   };
 
@@ -92,7 +92,7 @@ export default function AdminTicketsPage() {
       high: { bg: 'bg-orange-500/20', text: 'text-orange-400', label: 'Высокий' },
       urgent: { bg: 'bg-red-500/20', text: 'text-red-400', label: 'Срочный' },
     };
-    const s = styles[priority];
+    const s = styles[priority] || styles.normal;
     return <span className={`px-2 py-1 rounded-full text-xs font-medium ${s.bg} ${s.text}`}>{s.label}</span>;
   };
 

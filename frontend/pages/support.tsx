@@ -135,8 +135,8 @@ export default function SupportPage() {
       closed: t('support.closed'),
     };
     return (
-      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status]}`}>
-        {labels[status]}
+      <span className={`px-2 py-1 rounded-full text-xs font-medium ${styles[status] || styles.open}`}>
+        {labels[status] || status}
       </span>
     );
   };
