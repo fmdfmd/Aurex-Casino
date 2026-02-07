@@ -249,9 +249,38 @@ router.get('/me', auth, async (req, res) => {
       return res.status(404).json({ success: false, error: 'User not found' });
     }
 
+    const userData = formatUser(result.rows[0]);
+
+    // Подтягиваем активные бонусы для расчёта вейджера
+    const bonusResult = await pool.query(
+      `SELECT bonus_type, amount, wagering_requirement, wagering_completed, expires_at 
+       FROM bonuses WHERE user_id = $1 AND status = 'active' 
+       ORDER BY created_at DESC`,
+      [req.user.id]
+    );
+
+    if (bonusResult.rows.length > 0) {
+      // Суммируем все активные вейджеры
+      const totalRequired = bonusResult.rows.reduce((sum, b) => sum + parseFloat(b.wagering_requirement || 0), 0);
+      const totalCompleted = bonusResult.rows.reduce((sum, b) => sum + parseFloat(b.wagering_completed || 0), 0);
+      // Средний множитель из первого бонуса
+      const firstBonus = bonusResult.rows[0];
+      const bonusAmount = parseFloat(firstBonus.amount || 0);
+      const wagerReq = parseFloat(firstBonus.wagering_requirement || 0);
+      const multiplier = bonusAmount > 0 ? Math.round(wagerReq / bonusAmount) : 0;
+
+      userData.wager = {
+        active: totalRequired > totalCompleted,
+        required: totalRequired,
+        completed: totalCompleted,
+        multiplier,
+        expiresAt: firstBonus.expires_at
+      };
+    }
+
     res.json({
       success: true,
-      data: { user: formatUser(result.rows[0]) }
+      data: { user: userData }
     });
   } catch (error) {
     console.error('Get user error:', error);
