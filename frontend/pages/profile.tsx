@@ -58,6 +58,21 @@ export default function ProfilePage() {
     birthDate: user?.birthDate || ''
   });
 
+  // Sync formData when user data loads/updates (e.g. after refreshUser on page reload)
+  useEffect(() => {
+    if (user && !isEditing) {
+      setFormData({
+        username: user.username || '',
+        email: user.email || '',
+        firstName: user.firstName || '',
+        lastName: user.lastName || '',
+        phone: user.phone || '',
+        country: user.country || '',
+        birthDate: user.birthDate || ''
+      });
+    }
+  }, [user, isEditing]);
+
   const [passwords, setPasswords] = useState({
     current: '',
     new: '',
