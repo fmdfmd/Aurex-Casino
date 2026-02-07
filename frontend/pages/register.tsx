@@ -69,6 +69,13 @@ export default function RegisterPage() {
     }
   }, [isAuthenticated, router]);
 
+  // Pre-fill referral code from URL ?ref=XXX
+  useEffect(() => {
+    if (router.isReady && router.query.ref) {
+      setValue('referralCode', router.query.ref as string);
+    }
+  }, [router.isReady, router.query.ref, setValue]);
+
   // SMS countdown timer
   useEffect(() => {
     if (smsCountdown <= 0) return;
