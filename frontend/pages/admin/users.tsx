@@ -138,7 +138,7 @@ export default function AdminUsersPage() {
         },
         body: JSON.stringify({
           amount: amount,
-          type: balanceAction,
+          type: balanceType,
           balanceType: balanceCategory === 'main' ? 'balance' : 'bonusBalance'
         })
       });
