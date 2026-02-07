@@ -6,6 +6,7 @@ const config = require('../config/config');
 const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
+const { normalizePhone } = require('../utils/phone');
 
 // Format user for response
 const formatUser = (user) => {
@@ -39,7 +40,7 @@ const generateToken = (userId) => {
   });
 };
 
-// Register
+// Register — поддерживает регистрацию по email ИЛИ по телефону (или оба)
 router.post('/register', [
   body('username')
     .isLength({ min: 3, max: 32 })
@@ -47,14 +48,20 @@ router.post('/register', [
     .matches(/^[a-zA-Z0-9_]+$/)
     .withMessage('Username can only contain letters, numbers and underscores'),
   body('email')
+    .optional({ nullable: true })
     .isEmail()
     .withMessage('Please provide a valid email')
     .normalizeEmail(),
+  body('phone')
+    .optional({ nullable: true })
+    .custom((value) => {
+      if (value === undefined || value === null || value === '') return true;
+      return Boolean(normalizePhone(value));
+    })
+    .withMessage('Please provide a valid phone number'),
   body('password')
     .isLength({ min: 6 })
     .withMessage('Password must be at least 6 characters long')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain at least one lowercase letter, one uppercase letter, and one number')
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -66,19 +73,45 @@ router.post('/register', [
       });
     }
 
-    const { username, email, password, referralCode } = req.body;
+    const { username, email, password, referralCode, phone } = req.body;
+    const normalizedPhone = normalizePhone(phone);
+    const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
+
+    // Нужен хотя бы email или телефон
+    if (!normalizedEmail && !normalizedPhone) {
+      return res.status(400).json({
+        success: false,
+        error: 'Укажите email или номер телефона'
+      });
+    }
 
     // Check if user already exists
+    const conditions = ['username = $1'];
+    const values = [username];
+    if (normalizedEmail) {
+      values.push(normalizedEmail);
+      conditions.push(`email = $${values.length}`);
+    }
+    if (normalizedPhone) {
+      values.push(normalizedPhone);
+      conditions.push(`phone = $${values.length}`);
+    }
+
     const existingResult = await pool.query(
-      'SELECT * FROM users WHERE email = $1 OR username = $2',
-      [email, username]
+      `SELECT * FROM users WHERE ${conditions.join(' OR ')}`,
+      values
     );
 
     if (existingResult.rows.length > 0) {
       const existing = existingResult.rows[0];
       return res.status(400).json({
         success: false,
-        error: existing.email === email ? 'Email already registered' : 'Username already taken'
+        error:
+          existing.username === username
+            ? 'Username already taken'
+            : normalizedEmail && existing.email === normalizedEmail
+              ? 'Email already registered'
+              : 'Телефон уже зарегистрирован'
       });
     }
 
@@ -103,9 +136,9 @@ router.post('/register', [
 
     // Create user
     const result = await pool.query(
-      `INSERT INTO users (odid, username, email, password, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, 1000, 500, 1, true) RETURNING *`,
-      [odid, username, email, hashedPassword, userReferralCode, referredBy]
+      `INSERT INTO users (odid, username, email, password, phone, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 1000, 500, 1, true) RETURNING *`,
+      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, userReferralCode, referredBy]
     );
 
     const user = result.rows[0];
@@ -141,8 +174,10 @@ router.post('/login', [
       });
     }
 
-    const { login, email, password } = req.body;
-    const loginValue = login || email;
+    const { login, email, password, phone } = req.body;
+    const rawLogin = login || email || phone;
+    const normalizedPhone = normalizePhone(rawLogin);
+    const loginValue = normalizedPhone || rawLogin;
 
     if (!loginValue) {
       return res.status(400).json({ success: false, error: 'Email или логин обязателен' });
@@ -150,7 +185,7 @@ router.post('/login', [
 
     // Find user by email or username
     const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1 OR username = $1',
+      'SELECT * FROM users WHERE email = $1 OR username = $1 OR phone = $1',
       [loginValue]
     );
 
