@@ -949,11 +949,13 @@ export default function WalletPage() {
                           });
                           const data = await response.json();
                           if (data.success) {
-                            toast.success(`Промокод активирован! +₽${data.data?.bonusAmount || data.bonus}`, { icon: '🎁' });
+                            const credited = data.data?.creditedAmount || data.data?.value || 0;
+                            const typeLabel = data.data?.type === 'freespins' ? `+${credited} фриспинов` : `+₽${credited.toLocaleString('ru-RU')}`;
+                            toast.success(`Промокод активирован! ${typeLabel}`, { icon: '🎁' });
                             refreshUser?.();
                             setPromoCode('');
                           } else {
-                            toast.error(data.error || 'Неверный промокод');
+                            toast.error(data.message || 'Неверный промокод');
                           }
                         } catch (error) {
                           toast.error('Ошибка активации промокода');

@@ -56,11 +56,55 @@ router.post('/activate', auth, async (req, res) => {
         [promo.id]
       );
       
-      if (promo.type === 'bonus' && promo.value_type === 'fixed') {
+      let creditedAmount = 0;
+      
+      if (promo.type === 'bonus') {
+        if (promo.value_type === 'fixed') {
+          creditedAmount = parseFloat(promo.value);
+        } else if (promo.value_type === 'percent') {
+          // Процент от баланса — для промокодов процент не имеет смысла без депозита
+          // Зачислим как фиксированную сумму value
+          creditedAmount = parseFloat(promo.value);
+        }
+        
+        if (creditedAmount > 0) {
+          if (promo.max_bonus && creditedAmount > parseFloat(promo.max_bonus)) {
+            creditedAmount = parseFloat(promo.max_bonus);
+          }
+          await client.query(
+            'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+            [creditedAmount, req.user.id]
+          );
+        }
+      } else if (promo.type === 'freespins') {
+        // Добавляем фриспины
+        const spinsCount = parseInt(promo.value) || 0;
+        if (spinsCount > 0) {
+          await client.query(
+            'UPDATE users SET freespins = freespins + $1 WHERE id = $2',
+            [spinsCount, req.user.id]
+          );
+        }
+        creditedAmount = spinsCount;
+      } else if (promo.type === 'deposit_bonus') {
+        // Процент к следующему депозиту — сохраняем в used_bonuses
         await client.query(
-          'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-          [promo.value, req.user.id]
+          `UPDATE users SET used_bonuses = used_bonuses || $1 WHERE id = $2`,
+          [JSON.stringify({ promoBonus: { percent: parseFloat(promo.value), maxBonus: promo.max_bonus ? parseFloat(promo.max_bonus) : null, wager: promo.wager || 20, code: promo.code } }), req.user.id]
         );
+        creditedAmount = parseFloat(promo.value);
+      } else if (promo.type === 'balance') {
+        // Прямо на основной баланс
+        creditedAmount = parseFloat(promo.value);
+        if (promo.max_bonus && creditedAmount > parseFloat(promo.max_bonus)) {
+          creditedAmount = parseFloat(promo.max_bonus);
+        }
+        if (creditedAmount > 0) {
+          await client.query(
+            'UPDATE users SET balance = balance + $1 WHERE id = $2',
+            [creditedAmount, req.user.id]
+          );
+        }
       }
     });
     
@@ -71,6 +115,7 @@ router.post('/activate', auth, async (req, res) => {
         type: promo.type,
         value: parseFloat(promo.value),
         valueType: promo.value_type,
+        creditedAmount: promo.type === 'freespins' ? parseInt(promo.value) : parseFloat(promo.value),
         maxBonus: promo.max_bonus ? parseFloat(promo.max_bonus) : null,
         wager: promo.wager,
       }
