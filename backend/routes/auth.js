@@ -262,7 +262,7 @@ router.get('/me', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { firstName, lastName } = req.body;
+    const { firstName, lastName, phone, country, birthDate } = req.body;
     
     const updates = [];
     const values = [];
@@ -274,6 +274,19 @@ router.put('/profile', auth, async (req, res) => {
     if (lastName !== undefined) {
       values.push(lastName);
       updates.push(`last_name = $${values.length}`);
+    }
+    if (phone !== undefined) {
+      const normalizedPhone = normalizePhone(phone);
+      values.push(normalizedPhone || phone || null);
+      updates.push(`phone = $${values.length}`);
+    }
+    if (country !== undefined) {
+      values.push(country || null);
+      updates.push(`country = $${values.length}`);
+    }
+    if (birthDate !== undefined) {
+      values.push(birthDate || null);
+      updates.push(`birth_date = $${values.length}`);
     }
     
     if (updates.length === 0) {

@@ -180,6 +180,16 @@
     "gameHistory": "Spielverlauf",
     "quickActions": "Schnellaktionen",
     "topUpBalance": "Guthaben aufladen",
+    "logout": "Abmelden",
+    "vipProgram": "VIP-Programm",
+    "statistics": "Statistik",
+    "totalDeposits": "Gesamteinzahlungen",
+    "totalWithdrawals": "Gesamtauszahlungen",
+    "vipPoints": "VIP-Punkte",
+    "registrationDate": "Registrierungsdatum",
+    "verificationRequired": "Verifizierung erforderlich",
+    "verificationDesc": "Laden Sie Dokumente hoch, um Auszahlungen vorzunehmen",
+    "passKyc": "KYC bestehen",
     "referralProgram": {
       "title": "Empfehlungsprogramm - AUREX Partners",
       "metaDescription": "Lade Freunde zu AUREX ein und verdiene bis zu 20% von ihren Einzahlungen!",
@@ -384,7 +394,9 @@
     "silver": "Silber",
     "gold": "Gold",
     "platinum": "Platin",
-    "emperor": "Kaiser"
+    "emperor": "Kaiser",
+    "levels": "Stufen",
+    "support": "Support"
   },
   "support": {
     "title": "Support-Service",

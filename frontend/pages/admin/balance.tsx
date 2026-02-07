@@ -116,7 +116,7 @@ export default function AdminBalancePage() {
         // Update local state
         setFoundUser(prev => prev ? {
           ...prev,
-          [balanceType]: data.data.newBalance
+          [balanceType]: data.data?.newBalance ?? prev[balanceType]
         } : null);
         
         // Add to history

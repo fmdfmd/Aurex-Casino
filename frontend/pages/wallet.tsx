@@ -226,57 +226,54 @@ export default function WalletPage() {
         }
       }
 
-      // Simulate payment processing
-      await new Promise(resolve => setTimeout(resolve, 1500));
-
-      // Update user balance
-      const newBalance = (user?.balance || 0) + depositAmount;
-      const newBonusBalance = (user?.bonusBalance || 0) + finalBonusAmount;
-      const newDepositCount = (user?.depositCount || 0) + 1;
-
-      // Update local state
-      updateUser({
-        balance: newBalance,
-        bonusBalance: newBonusBalance,
-        depositCount: newDepositCount,
-        totalDeposited: (user?.totalDeposited || 0) + depositAmount
+      // Create deposit via real API
+      const depositRes = await fetch('/api/payments/deposit', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          amount: depositAmount,
+          paymentMethod: method.id || method.name,
+          currency: 'RUB'
+        })
       });
+      const depositData = await depositRes.json();
 
-      // Add to transactions
-      const newTransaction: Transaction = {
-        id: Date.now().toString(),
-        type: 'deposit',
-        amount: depositAmount,
-        status: 'completed',
-        method: method.name,
-        createdAt: new Date().toISOString()
-      };
-
-      if (finalBonusAmount > 0) {
-        setTransactions(prev => [{
-          id: (Date.now() + 1).toString(),
-          type: 'bonus',
-          amount: finalBonusAmount,
-          status: 'completed',
-          method: bonusMessage || `Бонус ${currentBonus?.percent}%`,
-          createdAt: new Date().toISOString()
-        }, newTransaction, ...prev]);
-      } else {
-        setTransactions(prev => [newTransaction, ...prev]);
+      if (!depositRes.ok || !depositData.success) {
+        throw new Error(depositData.message || 'Ошибка создания депозита');
       }
 
-      toast.success(`Депозит ₽${depositAmount.toLocaleString('ru-RU')} успешно зачислен!`);
+      // Refresh user data from server to get updated balance
+      await refreshUser();
+
+      // Add transaction to local list
+      const newTransaction: Transaction = {
+        id: depositData.data?.transaction?.id?.toString() || Date.now().toString(),
+        type: 'deposit',
+        amount: depositAmount,
+        status: depositData.data?.transaction?.status || 'pending',
+        method: method.name,
+        createdAt: depositData.data?.transaction?.createdAt || new Date().toISOString()
+      };
+      setTransactions(prev => [newTransaction, ...prev]);
+
+      // Show payment info if crypto
+      if (depositData.data?.paymentData?.walletAddress) {
+        toast.success(`Переведите ${depositAmount} RUB на адрес: ${depositData.data.paymentData.walletAddress}`, { duration: 10000 });
+      } else {
+        toast.success(`Заявка на депозит ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
+      }
+
       if (finalBonusAmount > 0) {
-        toast.success(`Бонус +₽${finalBonusAmount.toLocaleString('ru-RU')} применён!`, { icon: '🎁' });
-        if (currentBonus?.freespins) {
-          toast.success(`+${currentBonus.freespins} фриспинов!`, { icon: '🎰' });
-        }
+        toast.success(`Бонус +₽${finalBonusAmount.toLocaleString('ru-RU')} будет применён!`, { icon: '🎁' });
       }
 
       setAmount('');
       setSelectedMethod(null);
-      setActiveBonus(null); // Clear active bonus
-      fetchActiveBonus(); // Refresh bonuses
+      setActiveBonus(null);
+      fetchActiveBonus();
 
     } catch (error) {
       toast.error('Ошибка при обработке депозита');
@@ -305,25 +302,41 @@ export default function WalletPage() {
     setIsProcessing(true);
 
     try {
-      await new Promise(resolve => setTimeout(resolve, 2000));
-
-      updateUser({
-        balance: (user?.balance || 0) - depositAmount,
-        totalWithdrawn: (user?.totalWithdrawn || 0) + depositAmount
+      // Create withdrawal via real API
+      const withdrawRes = await fetch('/api/payments/withdraw', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          amount: depositAmount,
+          paymentMethod: selectedMethod,
+          walletAddress: withdrawAddress,
+          currency: 'RUB'
+        })
       });
+      const withdrawData = await withdrawRes.json();
+
+      if (!withdrawRes.ok || !withdrawData.success) {
+        throw new Error(withdrawData.message || 'Ошибка создания заявки на вывод');
+      }
+
+      // Refresh user data from server to get updated balance
+      await refreshUser();
 
       const newTransaction: Transaction = {
-        id: Date.now().toString(),
+        id: withdrawData.data?.transaction?.id?.toString() || Date.now().toString(),
         type: 'withdrawal',
         amount: -depositAmount,
         status: 'pending',
         method: selectedMethod,
-        createdAt: new Date().toISOString(),
+        createdAt: withdrawData.data?.transaction?.created_at || new Date().toISOString(),
         description: withdrawAddress
       };
 
       setTransactions(prev => [newTransaction, ...prev]);
-      toast.success('Заявка на вывод создана!');
+      toast.success(`Заявка на вывод ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
 
       setAmount('');
       setWithdrawAddress('');

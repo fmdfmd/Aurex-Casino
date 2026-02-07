@@ -75,14 +75,24 @@ export default function ProfilePage() {
 
   const vipNames = ['Bronze', 'Silver', 'Gold', 'Platinum', 'Emperor'];
 
-  const handleSaveProfile = () => {
-    updateUser({
-      username: formData.username,
-      firstName: formData.firstName,
-      lastName: formData.lastName
-    });
-    setIsEditing(false);
-    toast.success('Профиль обновлён');
+  const handleSaveProfile = async () => {
+    try {
+      const axios = (await import('axios')).default;
+      const response = await axios.put('/api/auth/profile', {
+        firstName: formData.firstName,
+        lastName: formData.lastName,
+        phone: formData.phone,
+        country: formData.country,
+        birthDate: formData.birthDate
+      });
+      if (response.data?.data?.user) {
+        updateUser(response.data.data.user);
+      }
+      setIsEditing(false);
+      toast.success('Профиль обновлён');
+    } catch (error: any) {
+      toast.error(error.response?.data?.error || 'Ошибка сохранения профиля');
+    }
   };
 
   const handleChangePassword = () => {

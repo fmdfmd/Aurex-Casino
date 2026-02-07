@@ -180,6 +180,16 @@
     "gameHistory": "Game History",
     "quickActions": "Quick Actions",
     "topUpBalance": "Top Up Balance",
+    "logout": "Log Out",
+    "vipProgram": "VIP Program",
+    "statistics": "Statistics",
+    "totalDeposits": "Total Deposits",
+    "totalWithdrawals": "Total Withdrawals",
+    "vipPoints": "VIP Points",
+    "registrationDate": "Registration Date",
+    "verificationRequired": "Verification Required",
+    "verificationDesc": "Upload documents to withdraw funds",
+    "passKyc": "Pass KYC",
     "referralProgram": {
       "title": "Referral Program - AUREX Partners",
       "metaDescription": "Invite friends to AUREX and earn up to 20% from their deposits!",
@@ -382,7 +392,9 @@
     "silver": "Silver",
     "gold": "Gold",
     "platinum": "Platinum",
-    "emperor": "Emperor"
+    "emperor": "Emperor",
+    "levels": "Levels",
+    "support": "Support"
   },
   "support": {
     "title": "Support Service",

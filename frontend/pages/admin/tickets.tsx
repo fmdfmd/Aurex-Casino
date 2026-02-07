@@ -136,7 +136,7 @@ export default function AdminTicketsPage() {
       t.id === selectedTicket.id 
         ? { 
             ...t, 
-            messages: [...t.messages, { id: t.messages.length + 1, sender: 'support' as const, text: replyMessage, createdAt: new Date().toISOString() }], 
+            messages: [...(t.messages || []), { id: (t.messages?.length || 0) + 1, sender: 'support' as const, text: replyMessage, createdAt: new Date().toISOString() }], 
             status: 'pending', 
             updatedAt: new Date().toISOString() 
           } 

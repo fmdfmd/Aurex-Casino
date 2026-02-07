@@ -343,21 +343,21 @@ export default function AdminDashboard() {
                       <AlertTriangle className="w-5 h-5 text-orange-500" />
                       <span className="text-white">Выводы на проверку</span>
                     </div>
-                    <span className="px-2 py-1 bg-orange-500 text-white text-xs font-bold rounded">5</span>
+                    <span className="px-2 py-1 bg-orange-500 text-white text-xs font-bold rounded">{(stats as any).pendingWithdrawalsCount ?? '–'}</span>
                   </Link>
                   <Link href="/admin/verification" className="flex items-center justify-between p-3 bg-blue-500/10 border border-blue-500/30 rounded-xl hover:bg-blue-500/20 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Users className="w-5 h-5 text-blue-500" />
                       <span className="text-white">KYC верификация</span>
                     </div>
-                    <span className="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded">12</span>
+                    <span className="px-2 py-1 bg-blue-500 text-white text-xs font-bold rounded">{(stats as any).pendingKycCount ?? '–'}</span>
                   </Link>
-                  <Link href="/admin/support" className="flex items-center justify-between p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl hover:bg-purple-500/20 transition-colors">
+                  <Link href="/admin/tickets" className="flex items-center justify-between p-3 bg-purple-500/10 border border-purple-500/30 rounded-xl hover:bg-purple-500/20 transition-colors">
                     <div className="flex items-center space-x-3">
                       <Activity className="w-5 h-5 text-purple-500" />
                       <span className="text-white">Тикеты поддержки</span>
                     </div>
-                    <span className="px-2 py-1 bg-purple-500 text-white text-xs font-bold rounded">3</span>
+                    <span className="px-2 py-1 bg-purple-500 text-white text-xs font-bold rounded">{(stats as any).openTicketsCount ?? '–'}</span>
                   </Link>
                 </div>
               </div>

@@ -180,6 +180,16 @@
     "gameHistory": "История игр",
     "quickActions": "Быстрые действия",
     "topUpBalance": "Пополнить баланс",
+    "logout": "Выйти из аккаунта",
+    "vipProgram": "VIP программа",
+    "statistics": "Статистика",
+    "totalDeposits": "Всего депозитов",
+    "totalWithdrawals": "Всего выводов",
+    "vipPoints": "VIP очки",
+    "registrationDate": "Дата регистрации",
+    "verificationRequired": "Требуется верификация",
+    "verificationDesc": "Загрузите документы для вывода средств",
+    "passKyc": "Пройти KYC",
     "referralProgram": {
       "title": "Реферальная программа - AUREX Partners",
       "metaDescription": "Приглашай друзей в AUREX и зарабатывай до 20% от их депозитов!",
@@ -382,7 +392,9 @@
     "silver": "Серебро",
     "gold": "Золото",
     "platinum": "Платина",
-    "emperor": "Император"
+    "emperor": "Император",
+    "levels": "Уровни",
+    "support": "Поддержка"
   },
   "support": {
     "title": "Служба поддержки",
