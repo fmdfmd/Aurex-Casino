@@ -133,17 +133,74 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
         [id]
       );
       
-      // Добавляем на баланс + обновляем total_deposited
+      // Добавляем на баланс + обновляем total_deposited + deposit_count
       const userResult = await client.query(
         `UPDATE users SET balance = balance + $1, deposit_count = deposit_count + 1, 
          total_deposited = total_deposited + $1
-         WHERE id = $2 RETURNING balance`,
+         WHERE id = $2 RETURNING *`,
         [parseFloat(tx.amount), req.user.id]
       );
       
+      const updatedUser = userResult.rows[0];
+      const depositAmount = parseFloat(tx.amount);
+      const newDepositCount = updatedUser.deposit_count;
+      let bonusInfo = null;
+      
+      // Проверяем, выбрал ли пользователь бонус (selectedBonus в used_bonuses)
+      const usedBonuses = updatedUser.used_bonuses || {};
+      const selectedBonus = usedBonuses.selectedBonus;
+      
+      if (selectedBonus && selectedBonus.startsWith('deposit_')) {
+        const depositNumber = parseInt(selectedBonus.replace('deposit_', ''));
+        
+        // Конфигурация бонусов
+        const depositBonuses = {
+          1: { percent: 200, maxBonus: 70000, wager: 35 },
+          2: { percent: 150, maxBonus: 50000, wager: 30 },
+          3: { percent: 100, maxBonus: 30000, wager: 25 },
+          4: { percent: 75, maxBonus: 20000, wager: 20 }
+        };
+        
+        const bonusConfig = depositBonuses[depositNumber];
+        
+        // Проверяем: бонус для правильного депозита и ещё не был использован
+        if (bonusConfig && depositNumber === newDepositCount) {
+          const bonusAmount = Math.min(depositAmount * (bonusConfig.percent / 100), bonusConfig.maxBonus);
+          const wagerRequired = (depositAmount + bonusAmount) * bonusConfig.wager;
+          
+          // Создаём бонус
+          await client.query(
+            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+             VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
+            [req.user.id, `deposit_${depositNumber}`, bonusAmount, wagerRequired]
+          );
+          
+          // Зачисляем на бонусный баланс
+          await client.query(
+            'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+            [bonusAmount, req.user.id]
+          );
+          
+          // Убираем selectedBonus
+          await client.query(
+            `UPDATE users SET used_bonuses = used_bonuses - 'selectedBonus' WHERE id = $1`,
+            [req.user.id]
+          );
+          
+          bonusInfo = {
+            type: `deposit_${depositNumber}`,
+            percent: bonusConfig.percent,
+            bonusAmount,
+            wagerRequired
+          };
+        }
+      }
+      
       return {
-        amount: parseFloat(tx.amount),
-        newBalance: parseFloat(userResult.rows[0].balance)
+        amount: depositAmount,
+        newBalance: parseFloat(updatedUser.balance) + depositAmount,
+        depositNumber: newDepositCount,
+        bonus: bonusInfo
       };
     });
     

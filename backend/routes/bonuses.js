@@ -93,6 +93,15 @@ router.post('/activate-deposit', auth, async (req, res) => {
     
     const { withTransaction } = require('../utils/dbTransaction');
     const result = await withTransaction(pool, async (client) => {
+      // Проверяем что этот бонус ещё не был активирован
+      const existing = await client.query(
+        `SELECT id FROM bonuses WHERE user_id = $1 AND bonus_type = $2`,
+        [req.user.id, `deposit_${depositNumber}`]
+      );
+      if (existing.rows.length > 0) {
+        throw { status: 400, message: 'Этот бонус уже был использован' };
+      }
+      
       const bonusResult = await client.query(
         `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
          VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days') RETURNING *`,
@@ -117,6 +126,7 @@ router.post('/activate-deposit', auth, async (req, res) => {
       }
     });
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     console.error('Activate deposit bonus error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
