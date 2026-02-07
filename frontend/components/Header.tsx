@@ -124,7 +124,7 @@ export default function Header() {
                   <div className="flex items-center gap-1.5">
                     <Wallet className="w-4 h-4 text-aurex-gold-500" />
                     <span className="text-aurex-gold-500 font-bold text-sm">
-                      {formatCurrency(user.balance || 0)}
+                      {formatCurrency((user.balance || 0) + (user.bonusBalance || 0))}
                     </span>
                   </div>
                 </Link>
@@ -272,8 +272,13 @@ export default function Header() {
                             <div>
                               <p className="text-aurex-platinum-400 text-sm">Баланс</p>
                               <p className="text-aurex-gold-500 font-black text-2xl">
-                                {formatCurrency(user.balance)}
+                                {formatCurrency((user.balance || 0) + (user.bonusBalance || 0))}
                               </p>
+                              {(user.bonusBalance || 0) > 0 && (
+                                <p className="text-aurex-platinum-500 text-xs">
+                                  Основной: {formatCurrency(user.balance || 0)} · Бонус: {formatCurrency(user.bonusBalance || 0)}
+                                </p>
+                              )}
                             </div>
                           </div>
                           {user.vipLevel > 0 && (
