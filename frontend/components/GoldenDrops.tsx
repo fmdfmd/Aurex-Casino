@@ -312,12 +312,12 @@ export default function GoldenDrops() {
             className="mt-12 flex justify-center gap-8"
           >
             <div className="text-center">
-              <div className="text-aurex-gold-500 text-2xl font-bold">1,247</div>
-              <div className="text-aurex-platinum-500 text-sm">дропов сегодня</div>
+              <div className="text-aurex-gold-500 text-2xl font-bold">Golden</div>
+              <div className="text-aurex-platinum-500 text-sm">Drops</div>
             </div>
             <div className="text-center">
-              <div className="text-aurex-gold-500 text-2xl font-bold">₽2.5M</div>
-              <div className="text-aurex-platinum-500 text-sm">выдано наград</div>
+              <div className="text-aurex-gold-500 text-2xl font-bold">AUREX</div>
+              <div className="text-aurex-platinum-500 text-sm">Empire</div>
             </div>
           </motion.div>
         </div>

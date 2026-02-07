@@ -1,6 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
+const { updateVipLevel } = require('../config/vipLevels');
 
 // Middleware для логирования всех запросов от провайдера
 router.use((req, res, next) => {
@@ -187,17 +188,9 @@ router.post('/make-bet', async (req, res) => {
         'UPDATE users SET vip_points = COALESCE(vip_points, 0) + $1 WHERE id = $2',
         [loyaltyPoints, user.id]
       );
-      // Проверяем повышение VIP уровня
-      const updatedUser = await pool.query('SELECT vip_points, vip_level FROM users WHERE id = $1', [user.id]);
-      const pts = updatedUser.rows[0]?.vip_points || 0;
-      let newLevel = 1;
-      if (pts >= 500000) newLevel = 5;
-      else if (pts >= 100000) newLevel = 4;
-      else if (pts >= 25000) newLevel = 3;
-      else if (pts >= 5000) newLevel = 2;
-      if (newLevel > (updatedUser.rows[0]?.vip_level || 1)) {
-        await pool.query('UPDATE users SET vip_level = $1 WHERE id = $2', [newLevel, user.id]);
-        console.log(`🏆 ${user.username} повысил VIP уровень до ${newLevel}!`);
+      const levelUp = await updateVipLevel(pool, user.id);
+      if (levelUp) {
+        console.log(`🏆 ${user.username} повысил VIP до ${levelUp.name}!`);
       }
     }
 

@@ -2,17 +2,11 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
+const { getCashbackPercent } = require('../config/vipLevels');
 
-// Получить VIP конфиг кэшбэка
+// Получить VIP конфиг кэшбэка (централизованно)
 async function getVipCashbackPercent(vipLevel) {
-  const cashbackRates = {
-    1: 5,   // Bronze
-    2: 7,   // Silver
-    3: 10,  // Gold
-    4: 12,  // Platinum
-    5: 15   // Emperor
-  };
-  return cashbackRates[vipLevel] || 5;
+  return getCashbackPercent(vipLevel);
 }
 
 // Получить доступный кэшбэк

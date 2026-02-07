@@ -3,6 +3,7 @@ const axios = require('axios');
 const crypto = require('crypto');
 const config = require('../config/config');
 const pool = require('../config/database');
+const { updateVipLevel: centralUpdateVipLevel } = require('../config/vipLevels');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 
@@ -118,20 +119,10 @@ class SlotsApiService {
     return crypto.randomBytes(16).toString('hex');
   }
 
-  // Update VIP level based on points
+  // Update VIP level based on points (centralized)
   async updateVipLevel(userId) {
     try {
-      const userResult = await pool.query('SELECT vip_points FROM users WHERE id = $1', [userId]);
-      const points = userResult.rows[0]?.vip_points || 0;
-      
-      // VIP уровни: Bronze(1) 0, Silver(2) 5000, Gold(3) 25000, Platinum(4) 100000, Emperor(5) 500000
-      let newLevel = 1;
-      if (points >= 500000) newLevel = 5;
-      else if (points >= 100000) newLevel = 4;
-      else if (points >= 25000) newLevel = 3;
-      else if (points >= 5000) newLevel = 2;
-      
-      await pool.query('UPDATE users SET vip_level = $1 WHERE id = $2', [newLevel, userId]);
+      await centralUpdateVipLevel(pool, userId);
     } catch (error) {
       console.error('Update VIP level error:', error);
     }

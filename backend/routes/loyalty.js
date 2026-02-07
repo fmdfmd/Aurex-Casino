@@ -2,15 +2,13 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
+const { VIP_LEVELS: VIP_LEVELS_ARR } = require('../config/vipLevels');
 
-// VIP уровни и их названия
-const VIP_LEVELS = {
-  1: { name: 'Bronze', pointsRequired: 0, cashbackPercent: 5 },
-  2: { name: 'Silver', pointsRequired: 5000, cashbackPercent: 7 },
-  3: { name: 'Gold', pointsRequired: 25000, cashbackPercent: 10 },
-  4: { name: 'Platinum', pointsRequired: 100000, cashbackPercent: 12 },
-  5: { name: 'Emperor', pointsRequired: 500000, cashbackPercent: 15 }
-};
+// VIP уровни из централизованного конфига
+const VIP_LEVELS = {};
+VIP_LEVELS_ARR.forEach(l => {
+  VIP_LEVELS[l.level] = { name: l.name, pointsRequired: l.pointsRequired, cashbackPercent: l.cashbackPercent };
+});
 
 // Магазин бонусов (что можно купить за очки)
 const LOYALTY_SHOP = [

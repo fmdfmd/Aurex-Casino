@@ -268,15 +268,22 @@ router.get('/stats', async (req, res) => {
     const totalDeposits = parseFloat(depositsResult.rows[0].total) || 0;
     const totalPayouts = parseFloat(withdrawalsResult.rows[0].total) || 0;
 
+    // Считаем количество игр из БД
+    let gamesCount = 0;
+    try {
+      const gamesResult = await pool.query('SELECT COUNT(*) FROM games');
+      gamesCount = parseInt(gamesResult.rows[0].count) || 0;
+    } catch (e) { /* таблица может не существовать */ }
+
     res.json({
       success: true,
       data: {
-        activePlayers: `${Math.max(50000, totalUsers).toLocaleString('ru-RU')}+`,
-        totalPlayers: Math.max(50000, totalUsers),
-        gamesAvailable: '2,500+',
-        totalPayouts: `₽${Math.max(500000000, totalPayouts).toLocaleString('ru-RU')}+`,
-        averageRtp: '97.5%',
-        onlineNow: Math.floor(Math.random() * 2000) + 3000
+        activePlayers: totalUsers.toLocaleString('ru-RU'),
+        totalPlayers: totalUsers,
+        gamesAvailable: gamesCount > 0 ? gamesCount.toLocaleString('ru-RU') : '0',
+        totalPayouts: `₽${totalPayouts.toLocaleString('ru-RU')}`,
+        averageRtp: '96.5%',
+        onlineNow: totalUsers > 0 ? Math.max(1, Math.floor(totalUsers * 0.05)) : 0
       }
     });
   } catch (error) {

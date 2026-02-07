@@ -55,7 +55,7 @@ export default function ProfilePage() {
     lastName: user?.lastName || '',
     phone: user?.phone || '',
     country: 'Россия',
-    birthDate: '1990-01-01'
+    birthDate: ''
   });
 
   const [passwords, setPasswords] = useState({
@@ -448,7 +448,7 @@ export default function ProfilePage() {
                             <Globe className="w-5 h-5 text-green-500" />
                             <div>
                               <div className="text-white">Chrome на MacOS</div>
-                              <div className="text-xs text-aurex-platinum-500">Текущая сессия • Berlin, DE</div>
+                              <div className="text-xs text-aurex-platinum-500">Текущая сессия</div>
                             </div>
                           </div>
                           <span className="text-green-400 text-sm">Активна</span>
