@@ -6,9 +6,7 @@ const nextConfig = {
     domains: [
       'int.apichannel.cloud',
       'icdnchannel.com',
-      'api.aurex.io',
-      'lh3.googleusercontent.com',
-      't.me'
+      'api.aurex.io'
     ],
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",
