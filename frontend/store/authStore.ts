@@ -112,6 +112,8 @@ interface AuthState {
   isLoading: boolean;
   isAuthenticated: boolean;
   login: (loginOrEmail: string, password: string) => Promise<void>;
+  loginWithToken: (token: string) => Promise<void>;
+  loginWithTelegram: (data: Record<string, string>) => Promise<void>;
   register: (data: RegisterData) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
@@ -170,6 +172,59 @@ export const useAuthStore = create<AuthState>()(
         } catch (error: any) {
           set({ isLoading: false });
           const message = error.response?.data?.error || 'Ошибка входа';
+          toast.error(message);
+          throw error;
+        }
+      },
+
+      loginWithToken: async (token: string) => {
+        set({ isLoading: true });
+        try {
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          const response = await axios.get('/api/auth/me');
+          const { user } = response.data?.data || {};
+          if (!user) throw new Error('Invalid token');
+
+          set({
+            user,
+            token,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+
+          toast.success('Добро пожаловать!');
+        } catch (error: any) {
+          set({ isLoading: false });
+          delete axios.defaults.headers.common['Authorization'];
+          const message = error.response?.data?.error || 'Ошибка авторизации';
+          toast.error(message);
+          throw error;
+        }
+      },
+
+      loginWithTelegram: async (data: Record<string, string>) => {
+        set({ isLoading: true });
+        try {
+          const response = await axios.post('/api/auth/telegram', data);
+          const resData = response.data?.data;
+          if (!resData?.user || !resData?.token) {
+            throw new Error('Invalid server response');
+          }
+          const { user, token } = resData;
+
+          axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+          set({
+            user,
+            token,
+            isAuthenticated: true,
+            isLoading: false,
+          });
+
+          toast.success('Добро пожаловать!');
+        } catch (error: any) {
+          set({ isLoading: false });
+          const message = error.response?.data?.error || 'Ошибка входа через Telegram';
           toast.error(message);
           throw error;
         }

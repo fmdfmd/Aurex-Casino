@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/router';
 import Head from 'next/head';
 import Link from 'next/link';
@@ -7,7 +7,6 @@ import { useForm } from 'react-hook-form';
 import { 
   Eye, 
   EyeOff, 
-  Mail, 
   Lock, 
   User,
   UserPlus,
@@ -15,8 +14,7 @@ import {
   Gift,
   Check,
   Star,
-  Phone,
-  Smartphone
+  Phone
 } from 'lucide-react';
 import axios from 'axios';
 import InputMask from 'react-input-mask';
@@ -24,10 +22,10 @@ import Image from 'next/image';
 import { useAuthStore } from '../store/authStore';
 import Layout from '../components/Layout';
 import { useTranslation } from '../hooks/useTranslation';
+import TelegramLoginButton, { TelegramUser } from '../components/TelegramLoginButton';
 
 interface RegisterForm {
   username: string;
-  email: string;
   phone: string;
   smsCode: string;
   password: string;
@@ -41,21 +39,23 @@ interface RegisterForm {
 
 export default function RegisterPage() {
   const router = useRouter();
-  const { register: registerUser, isLoading, isAuthenticated } = useAuthStore();
+  const { register: registerUser, loginWithTelegram, isLoading, isAuthenticated } = useAuthStore();
   const { t } = useTranslation();
+
+  const handleTelegramAuth = useCallback(async (tgUser: TelegramUser) => {
+    try {
+      await loginWithTelegram(tgUser as unknown as Record<string, string>);
+      router.push('/');
+    } catch (e) {
+      // handled by store
+    }
+  }, [loginWithTelegram, router]);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [regMethod, setRegMethod] = useState<'email' | 'phone'>('phone');
   const [smsSent, setSmsSent] = useState(false);
   const [smsVerified, setSmsVerified] = useState(false);
   const [smsCountdown, setSmsCountdown] = useState(0);
   const [smsError, setSmsError] = useState('');
-  // Email OTP states
-  const [emailCodeSent, setEmailCodeSent] = useState(false);
-  const [emailVerified, setEmailVerified] = useState(false);
-  const [emailCountdown, setEmailCountdown] = useState(0);
-  const [emailError, setEmailError] = useState('');
-  const [emailCode, setEmailCode] = useState('');
   
   const {
     register,
@@ -88,13 +88,6 @@ export default function RegisterPage() {
     const timer = setTimeout(() => setSmsCountdown(smsCountdown - 1), 1000);
     return () => clearTimeout(timer);
   }, [smsCountdown]);
-
-  // Email countdown timer
-  useEffect(() => {
-    if (emailCountdown <= 0) return;
-    const timer = setTimeout(() => setEmailCountdown(emailCountdown - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [emailCountdown]);
 
   const password = watch('password');
   const phoneValue = watch('phone');
@@ -131,53 +124,15 @@ export default function RegisterPage() {
     }
   };
 
-  const emailValue = watch('email');
-
-  const sendEmailCode = async () => {
-    const email = emailValue?.trim();
-    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-      setEmailError('Введите корректный email');
-      return;
-    }
-    setEmailError('');
-    try {
-      await axios.post('/api/auth/otp/email/send', { email });
-      setEmailCodeSent(true);
-      setEmailCountdown(60);
-    } catch (err: any) {
-      setEmailError(err.response?.data?.error || 'Ошибка отправки кода');
-    }
-  };
-
-  const verifyEmailCode = async () => {
-    const email = emailValue?.trim();
-    if (!emailCode || emailCode.length < 4) {
-      setEmailError('Введите 4-значный код');
-      return;
-    }
-    setEmailError('');
-    try {
-      await axios.post('/api/auth/otp/email/verify', { email, code: emailCode });
-      setEmailVerified(true);
-    } catch (err: any) {
-      setEmailError(err.response?.data?.error || 'Неверный код');
-    }
-  };
-
   const onSubmit = async (data: RegisterForm) => {
-    if (regMethod === 'phone' && !smsVerified) {
+    if (!smsVerified) {
       setSmsError('Подтвердите номер телефона');
-      return;
-    }
-    if (regMethod === 'email' && !emailVerified) {
-      setEmailError('Подтвердите email');
       return;
     }
     try {
       await registerUser({
         username: data.username,
-        email: regMethod === 'email' ? data.email : undefined,
-        phone: regMethod === 'phone' ? data.phone : undefined,
+        phone: data.phone,
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
@@ -273,171 +228,75 @@ export default function RegisterPage() {
                       )}
                     </div>
 
-                    {/* Registration Method Switcher */}
+                    {/* Phone Field */}
                     <div>
-                      <div className="flex rounded-lg overflow-hidden border border-gray-700 mb-4">
-                        <button
-                          type="button"
-                          onClick={() => { setRegMethod('phone'); setSmsError(''); setEmailError(''); }}
-                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all ${
-                            regMethod === 'phone'
-                              ? 'bg-casino-gold text-black'
-                              : 'bg-dark-200 text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          <Smartphone className="w-4 h-4" />
-                          Телефон
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => { setRegMethod('email'); setSmsError(''); setEmailError(''); }}
-                          className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-sm font-medium transition-all ${
-                            regMethod === 'email'
-                              ? 'bg-casino-gold text-black'
-                              : 'bg-dark-200 text-gray-400 hover:text-white'
-                          }`}
-                        >
-                          <Mail className="w-4 h-4" />
-                          Email
-                        </button>
+                      <label className="block text-sm font-medium text-gray-300 mb-2">
+                        Номер телефона *
+                      </label>
+                      <div className="space-y-3">
+                        <div className="relative">
+                          <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                          <InputMask
+                            mask="+7 (999) 999-99-99"
+                            maskChar="_"
+                            {...register('phone', {
+                              required: 'Номер телефона обязателен',
+                              validate: (value) => {
+                                const digits = value?.replace(/\D/g, '') || '';
+                                return digits.length === 11 || 'Введите полный номер телефона';
+                              }
+                            })}
+                            className={`w-full pl-10 pr-28 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
+                              errors.phone || smsError ? 'border-red-500' : smsVerified ? 'border-green-500' : 'border-gray-700'
+                            }`}
+                            placeholder="+7 (___) ___-__-__"
+                            disabled={smsVerified}
+                          />
+                          {!smsVerified && (
+                            <button
+                              type="button"
+                              onClick={sendCallCode}
+                              disabled={smsCountdown > 0}
+                              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-casino-gold text-black text-xs font-bold rounded-md hover:bg-casino-gold-dark transition-colors disabled:opacity-50"
+                            >
+                              {smsCountdown > 0 ? `${smsCountdown}с` : smsSent ? 'Ещё раз' : 'Позвонить'}
+                            </button>
+                          )}
+                          {smsVerified && (
+                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                              <Check className="w-5 h-5 text-green-500" />
+                            </div>
+                          )}
+                        </div>
+
+                        {smsSent && !smsVerified && (
+                          <>
+                            <p className="text-xs text-gray-400 text-center">
+                              Мы позвоним на ваш номер. Введите последние 4 цифры входящего номера.
+                            </p>
+                            <div className="relative">
+                              <input
+                                type="text"
+                                {...register('smsCode')}
+                                maxLength={4}
+                                className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
+                                placeholder="_ _ _ _"
+                              />
+                              <button
+                                type="button"
+                                onClick={verifyCallCode}
+                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
+                              >
+                                Подтвердить
+                              </button>
+                            </div>
+                          </>
+                        )}
+
+                        {smsError && <p className="text-sm text-red-400">{smsError}</p>}
+                        {errors.phone && <p className="text-sm text-red-400">{errors.phone.message}</p>}
+                        {smsVerified && <p className="text-sm text-green-400">Телефон подтверждён</p>}
                       </div>
-
-                      {/* Phone Field */}
-                      {regMethod === 'phone' && (
-                        <div className="space-y-3">
-                          <div className="relative">
-                            <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                            <InputMask
-                              mask="+7 (999) 999-99-99"
-                              maskChar="_"
-                              {...register('phone', {
-                                required: regMethod === 'phone' ? 'Номер телефона обязателен' : false,
-                                validate: (value) => {
-                                  if (regMethod !== 'phone') return true;
-                                  const digits = value?.replace(/\D/g, '') || '';
-                                  return digits.length === 11 || 'Введите полный номер телефона';
-                                }
-                              })}
-                              className={`w-full pl-10 pr-28 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
-                                errors.phone || smsError ? 'border-red-500' : smsVerified ? 'border-green-500' : 'border-gray-700'
-                              }`}
-                              placeholder="+7 (___) ___-__-__"
-                              disabled={smsVerified}
-                            />
-                            {!smsVerified && (
-                              <button
-                                type="button"
-                                onClick={sendCallCode}
-                                disabled={smsCountdown > 0}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-casino-gold text-black text-xs font-bold rounded-md hover:bg-casino-gold-dark transition-colors disabled:opacity-50"
-                              >
-                                {smsCountdown > 0 ? `${smsCountdown}с` : smsSent ? 'Ещё раз' : 'Позвонить'}
-                              </button>
-                            )}
-                            {smsVerified && (
-                              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                <Check className="w-5 h-5 text-green-500" />
-                              </div>
-                            )}
-                          </div>
-
-                          {smsSent && !smsVerified && (
-                            <>
-                              <p className="text-xs text-gray-400 text-center">
-                                Мы позвоним на ваш номер. Введите последние 4 цифры входящего номера.
-                              </p>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  {...register('smsCode')}
-                                  maxLength={4}
-                                  className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
-                                  placeholder="_ _ _ _"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={verifyCallCode}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
-                                >
-                                  Подтвердить
-                                </button>
-                              </div>
-                            </>
-                          )}
-
-                          {smsError && <p className="text-sm text-red-400">{smsError}</p>}
-                          {errors.phone && <p className="text-sm text-red-400">{errors.phone.message}</p>}
-                          {smsVerified && <p className="text-sm text-green-400">Телефон подтверждён</p>}
-                        </div>
-                      )}
-
-                      {/* Email Field with verification */}
-                      {regMethod === 'email' && (
-                        <div className="space-y-3">
-                          <div className="relative">
-                            <Mail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                            <input
-                              type="email"
-                              {...register('email', {
-                                required: regMethod === 'email' ? 'Email обязателен' : false,
-                                pattern: {
-                                  value: /^[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}$/i,
-                                  message: 'Неверный формат email'
-                                }
-                              })}
-                              className={`w-full pl-10 pr-28 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
-                                errors.email || emailError ? 'border-red-500' : emailVerified ? 'border-green-500' : 'border-gray-700'
-                              }`}
-                              placeholder="example@email.com"
-                              disabled={emailVerified}
-                            />
-                            {!emailVerified && (
-                              <button
-                                type="button"
-                                onClick={sendEmailCode}
-                                disabled={emailCountdown > 0}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-casino-gold text-black text-xs font-bold rounded-md hover:bg-casino-gold-dark transition-colors disabled:opacity-50"
-                              >
-                                {emailCountdown > 0 ? `${emailCountdown}с` : emailCodeSent ? 'Ещё раз' : 'Отправить код'}
-                              </button>
-                            )}
-                            {emailVerified && (
-                              <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                                <Check className="w-5 h-5 text-green-500" />
-                              </div>
-                            )}
-                          </div>
-
-                          {emailCodeSent && !emailVerified && (
-                            <>
-                              <p className="text-xs text-gray-400 text-center">
-                                Код отправлен на вашу почту. Введите 4-значный код.
-                              </p>
-                              <div className="relative">
-                                <input
-                                  type="text"
-                                  value={emailCode}
-                                  onChange={(e) => setEmailCode(e.target.value.replace(/\D/g, '').slice(0, 4))}
-                                  maxLength={4}
-                                  className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
-                                  placeholder="_ _ _ _"
-                                />
-                                <button
-                                  type="button"
-                                  onClick={verifyEmailCode}
-                                  className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
-                                >
-                                  Подтвердить
-                                </button>
-                              </div>
-                            </>
-                          )}
-
-                          {emailError && <p className="text-sm text-red-400">{emailError}</p>}
-                          {errors.email && <p className="text-sm text-red-400">{errors.email.message}</p>}
-                          {emailVerified && <p className="text-sm text-green-400">Email подтверждён</p>}
-                        </div>
-                      )}
                     </div>
 
                     {/* Name Fields */}
@@ -622,6 +481,37 @@ export default function RegisterPage() {
                       )}
                     </button>
                   </form>
+
+                  {/* Social Login Divider */}
+                  <div className="mt-6 flex items-center gap-3">
+                    <div className="flex-1 h-px bg-gray-700"></div>
+                    <span className="text-gray-500 text-sm">или</span>
+                    <div className="flex-1 h-px bg-gray-700"></div>
+                  </div>
+
+                  {/* Social Login Buttons */}
+                  <div className="mt-4 space-y-3">
+                    {/* Google */}
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = '/api/auth/google'; }}
+                      className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-gray-100 text-gray-800 font-medium rounded-lg transition-colors"
+                    >
+                      <svg className="w-5 h-5" viewBox="0 0 24 24">
+                        <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z"/>
+                        <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
+                        <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
+                        <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                      </svg>
+                      Войти через Google
+                    </button>
+
+                    {/* Telegram Widget */}
+                    <TelegramLoginButton
+                      botName="aurex_support_bot"
+                      onAuth={handleTelegramAuth}
+                    />
+                  </div>
 
                   {/* Login Link */}
                   <div className="mt-8 text-center">

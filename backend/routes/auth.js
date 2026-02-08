@@ -33,6 +33,8 @@ const formatUser = (user) => {
     isAdmin: user.is_admin || false,
     role: user.is_admin ? 'admin' : 'user',
     referralCode: user.referral_code,
+    googleEmail: user.google_email || null,
+    telegramId: user.telegram_id || null,
     totalDeposited: parseFloat(user.total_deposited) || 0,
     totalWithdrawn: parseFloat(user.total_withdrawn) || 0,
     gamesPlayed: parseInt(user.games_played) || 0,
@@ -87,11 +89,11 @@ router.post('/register', [
     const normalizedPhone = normalizePhone(phone);
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
-    // Нужен хотя бы email или телефон
-    if (!normalizedEmail && !normalizedPhone) {
+    // Телефон обязателен при обычной регистрации
+    if (!normalizedPhone) {
       return res.status(400).json({
         success: false,
-        error: 'Укажите email или номер телефона'
+        error: 'Укажите номер телефона'
       });
     }
 
@@ -205,6 +207,17 @@ router.post('/login', [
     }
 
     const user = result.rows[0];
+
+    // Social-login users may not have a password
+    if (!user.password) {
+      const methods = [];
+      if (user.google_id) methods.push('Google');
+      if (user.telegram_id) methods.push('Telegram');
+      return res.status(401).json({
+        success: false,
+        error: `Этот аккаунт использует вход через ${methods.join(' / ') || 'соцсеть'}. Используйте соответствующую кнопку.`
+      });
+    }
 
     // Check password
     const isPasswordValid = await bcrypt.compare(password, user.password);
@@ -522,6 +535,259 @@ router.get('/games/history', auth, async (req, res) => {
 // Logout
 router.post('/logout', auth, (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
+});
+
+// ===== GOOGLE OAUTH 2.0 =====
+
+// Step 1: Redirect to Google
+router.get('/google', (req, res) => {
+  const { clientId, callbackUrl } = config.google || {};
+  if (!clientId) {
+    return res.status(500).json({ success: false, error: 'Google OAuth не настроен' });
+  }
+
+  // Build the full callback URL based on the request
+  const protocol = req.protocol;
+  const host = req.get('host');
+  const fullCallbackUrl = callbackUrl.startsWith('http')
+    ? callbackUrl
+    : `${protocol}://${host}${callbackUrl}`;
+
+  const params = new URLSearchParams({
+    client_id: clientId,
+    redirect_uri: fullCallbackUrl,
+    response_type: 'code',
+    scope: 'openid email profile',
+    access_type: 'offline',
+    prompt: 'select_account'
+  });
+
+  res.redirect(`https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`);
+});
+
+// Step 2: Google callback — exchange code for tokens, find/create user
+router.get('/google/callback', async (req, res) => {
+  const frontendUrl = config.server.frontendUrl;
+  try {
+    const { code } = req.query;
+    if (!code) {
+      return res.redirect(`${frontendUrl}/login?error=no_code`);
+    }
+
+    const { clientId, clientSecret, callbackUrl } = config.google || {};
+    if (!clientId || !clientSecret) {
+      return res.redirect(`${frontendUrl}/login?error=oauth_not_configured`);
+    }
+
+    const protocol = req.protocol;
+    const host = req.get('host');
+    const fullCallbackUrl = callbackUrl.startsWith('http')
+      ? callbackUrl
+      : `${protocol}://${host}${callbackUrl}`;
+
+    // Exchange code for tokens
+    const https = require('https');
+    const tokenData = await new Promise((resolve, reject) => {
+      const postData = new URLSearchParams({
+        code,
+        client_id: clientId,
+        client_secret: clientSecret,
+        redirect_uri: fullCallbackUrl,
+        grant_type: 'authorization_code'
+      }).toString();
+
+      const options = {
+        hostname: 'oauth2.googleapis.com',
+        path: '/token',
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Content-Length': Buffer.byteLength(postData)
+        }
+      };
+
+      const request = https.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      });
+      request.on('error', reject);
+      request.write(postData);
+      request.end();
+    });
+
+    if (tokenData.error) {
+      console.error('Google token error:', tokenData);
+      return res.redirect(`${frontendUrl}/login?error=token_exchange_failed`);
+    }
+
+    // Get user profile from Google
+    const googleProfile = await new Promise((resolve, reject) => {
+      const options = {
+        hostname: 'www.googleapis.com',
+        path: '/oauth2/v2/userinfo',
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${tokenData.access_token}` }
+      };
+
+      const request = https.request(options, (response) => {
+        let data = '';
+        response.on('data', (chunk) => { data += chunk; });
+        response.on('end', () => {
+          try { resolve(JSON.parse(data)); } catch (e) { reject(e); }
+        });
+      });
+      request.on('error', reject);
+      request.end();
+    });
+
+    if (!googleProfile.id) {
+      console.error('Google profile error:', googleProfile);
+      return res.redirect(`${frontendUrl}/login?error=profile_fetch_failed`);
+    }
+
+    const googleId = String(googleProfile.id);
+    const googleEmail = googleProfile.email || null;
+    const firstName = googleProfile.given_name || null;
+    const lastName = googleProfile.family_name || null;
+
+    // Try to find existing user by google_id
+    let userResult = await pool.query('SELECT * FROM users WHERE google_id = $1', [googleId]);
+    let user;
+
+    if (userResult.rows.length > 0) {
+      // Existing Google user — just login
+      user = userResult.rows[0];
+      await pool.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    } else if (googleEmail) {
+      // Check if user with this email already exists — link Google
+      userResult = await pool.query('SELECT * FROM users WHERE email = $1', [googleEmail]);
+      if (userResult.rows.length > 0) {
+        user = userResult.rows[0];
+        await pool.query(
+          'UPDATE users SET google_id = $1, google_email = $2, last_login = CURRENT_TIMESTAMP WHERE id = $3',
+          [googleId, googleEmail, user.id]
+        );
+      }
+    }
+
+    if (!user) {
+      // Create new user
+      const crypto = require('crypto');
+      const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const username = `user_${randomSuffix}`;
+      const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
+      const referralCode = `REF-${username.toUpperCase().slice(0, 6)}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+      const insertResult = await pool.query(
+        `INSERT INTO users (odid, username, email, google_id, google_email, first_name, last_name, referral_code, balance, bonus_balance, vip_level, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0, 1, true) RETURNING *`,
+        [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode]
+      );
+      user = insertResult.rows[0];
+    }
+
+    if (!user.is_active) {
+      return res.redirect(`${frontendUrl}/login?error=account_disabled`);
+    }
+
+    const token = generateToken(user.id);
+
+    // Redirect to frontend with token
+    res.redirect(`${frontendUrl}/auth/callback?token=${encodeURIComponent(token)}`);
+  } catch (error) {
+    console.error('Google OAuth error:', error);
+    res.redirect(`${frontendUrl}/login?error=oauth_failed`);
+  }
+});
+
+// ===== TELEGRAM LOGIN =====
+
+router.post('/telegram', async (req, res) => {
+  try {
+    const telegramData = req.body;
+    const { id, first_name, last_name, username: tgUsername, photo_url, auth_date, hash } = telegramData;
+
+    if (!id || !hash || !auth_date) {
+      return res.status(400).json({ success: false, error: 'Неверные данные Telegram' });
+    }
+
+    // Verify signature
+    const botToken = config.telegram?.botToken;
+    if (!botToken) {
+      return res.status(500).json({ success: false, error: 'Telegram бот не настроен' });
+    }
+
+    const crypto = require('crypto');
+
+    // Create the data-check-string
+    const checkFields = Object.keys(telegramData)
+      .filter(k => k !== 'hash')
+      .sort()
+      .map(k => `${k}=${telegramData[k]}`)
+      .join('\n');
+
+    const secretKey = crypto.createHash('sha256').update(botToken).digest();
+    const hmac = crypto.createHmac('sha256', secretKey).update(checkFields).digest('hex');
+
+    if (hmac !== hash) {
+      return res.status(401).json({ success: false, error: 'Неверная подпись Telegram' });
+    }
+
+    // Check auth_date is not too old (allow up to 1 day)
+    const authAge = Math.floor(Date.now() / 1000) - parseInt(auth_date);
+    if (authAge > 86400) {
+      return res.status(401).json({ success: false, error: 'Данные Telegram устарели' });
+    }
+
+    const telegramId = String(id);
+
+    // Find existing user by telegram_id
+    let userResult = await pool.query('SELECT * FROM users WHERE telegram_id = $1', [telegramId]);
+    let user;
+
+    if (userResult.rows.length > 0) {
+      user = userResult.rows[0];
+      await pool.query('UPDATE users SET last_login = CURRENT_TIMESTAMP WHERE id = $1', [user.id]);
+    } else {
+      // Create new user
+      const randomSuffix = crypto.randomBytes(3).toString('hex').toUpperCase();
+      const username = tgUsername || `tg_${randomSuffix}`;
+      const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
+      const referralCode = `REF-${username.toUpperCase().slice(0, 6)}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
+
+      // Check if username already taken
+      const existingUsername = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
+      const finalUsername = existingUsername.rows.length > 0 ? `${username}_${randomSuffix}` : username;
+
+      const insertResult = await pool.query(
+        `INSERT INTO users (odid, username, telegram_id, first_name, last_name, referral_code, balance, bonus_balance, vip_level, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 1, true) RETURNING *`,
+        [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode]
+      );
+      user = insertResult.rows[0];
+    }
+
+    if (!user.is_active) {
+      return res.status(401).json({ success: false, error: 'Аккаунт деактивирован' });
+    }
+
+    const token = generateToken(user.id);
+
+    res.json({
+      success: true,
+      message: 'Telegram login successful',
+      data: {
+        user: formatUser(user),
+        token
+      }
+    });
+  } catch (error) {
+    console.error('Telegram auth error:', error);
+    res.status(500).json({ success: false, error: 'Telegram auth failed' });
+  }
 });
 
 module.exports = router;

@@ -45,6 +45,18 @@ module.exports = {
     apiKey: process.env.LAVA_TOP_API_KEY || 'your-api-key'
   },
 
+  // Google OAuth
+  google: {
+    clientId: process.env.GOOGLE_CLIENT_ID || '',
+    clientSecret: process.env.GOOGLE_CLIENT_SECRET || '',
+    callbackUrl: process.env.GOOGLE_CALLBACK_URL || '/api/auth/google/callback'
+  },
+
+  // Telegram Login
+  telegram: {
+    botToken: process.env.TELEGRAM_BOT_TOKEN || ''
+  },
+
   // Email Configuration
   email: {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
