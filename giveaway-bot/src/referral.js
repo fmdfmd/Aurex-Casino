@@ -111,14 +111,14 @@ class ReferralService {
     `).all(userId);
   }
 
-  /** ТОП рефереров */
-  getTopReferrers(limit = 10) {
+  /** ТОП пользователей по билетам */
+  getTopUsers(limit = 10) {
     return db.prepare(`
       SELECT u.telegram_id, u.username, u.first_name, u.tickets,
         (SELECT COUNT(*) FROM users r WHERE r.referred_by = u.id) as referrals
       FROM users u
-      WHERE (SELECT COUNT(*) FROM users r WHERE r.referred_by = u.id) > 0
-      ORDER BY referrals DESC
+      WHERE u.tickets > 0
+      ORDER BY u.tickets DESC, referrals DESC
       LIMIT ?
     `).all(limit);
   }

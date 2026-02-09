@@ -443,14 +443,14 @@ bot.action(/my_chances_(\d+)/, (ctx) => {
 // =============================================
 
 bot.hears('🏆 ТОП участников', subscriptionGuard, (ctx) => {
-  const top = referral.getTopReferrers(10);
+  const top = referral.getTopUsers(10);
   const user = referral.findByTelegramId(ctx.from.id);
 
   if (top.length === 0) {
-    return ctx.reply('Пока нет участников с рефералами. Будь первым! 🔥');
+    return ctx.reply('Пока нет участников с билетами. Будь первым! 🔥');
   }
 
-  let text = `🏆 <b>ТОП-10 УЧАСТНИКОВ</b>\n\n`;
+  let text = `🏆 <b>ТОП-10 УЧАСТНИКОВ (по билетам)</b>\n\n`;
   const medals = ['🥇', '🥈', '🥉'];
 
   top.forEach((t, i) => {
@@ -464,7 +464,7 @@ bot.hears('🏆 ТОП участников', subscriptionGuard, (ctx) => {
     text += `\n━━━━━━━━━━━━━━━━━━\n`;
     text += `📍 <b>Ты:</b> ${formatTickets(user.tickets)}`;
     if (myRank === -1) text += ` (не в ТОП-10)`;
-    text += `\n\n<i>Приглашай друзей, чтобы войти в топ!</i>`;
+    text += `\n\n<i>Приглашай друзей, чтобы подняться в топе!</i>`;
   }
 
   safeReply(ctx, text);
@@ -822,11 +822,11 @@ bot.action('admin_stats', async (ctx) => {
       text += `\n🎁 Нет активных розыгрышей\n`;
     }
 
-    if (stats.topReferrers.length > 0) {
-      text += `\n🏆 <b>ТОП рефереров:</b>\n`;
-      stats.topReferrers.slice(0, 5).forEach((t, i) => {
+    if (stats.topUsers.length > 0) {
+      text += `\n🏆 <b>ТОП участников (по билетам):</b>\n`;
+      stats.topUsers.slice(0, 10).forEach((t, i) => {
         const name = t.username ? `@${t.username}` : (t.first_name || 'User');
-        text += `${i + 1}. ${name} — ${t.referrals} друзей, ${t.tickets} 🎫\n`;
+        text += `${i + 1}. ${name} — <b>${t.tickets} 🎫</b> (${t.referrals} друзей)\n`;
       });
     }
 

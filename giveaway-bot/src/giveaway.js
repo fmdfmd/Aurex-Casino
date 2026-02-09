@@ -163,11 +163,11 @@ class GiveawayService {
       ? this.getParticipantCount(activeGiveaway.id)
       : 0;
 
-    const topReferrers = db.prepare(`
+    const topUsers = db.prepare(`
       SELECT u.telegram_id, u.username, u.first_name, u.tickets,
         (SELECT COUNT(*) FROM users r WHERE r.referred_by = u.id) as referrals
       FROM users u
-      ORDER BY referrals DESC
+      ORDER BY u.tickets DESC, referrals DESC
       LIMIT 10
     `).all();
 
@@ -176,7 +176,7 @@ class GiveawayService {
       totalTickets,
       activeGiveaway,
       activeParticipants,
-      topReferrers
+      topUsers
     };
   }
 }
