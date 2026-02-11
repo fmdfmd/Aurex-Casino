@@ -23,6 +23,9 @@ import { useAuthStore } from '../store/authStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { JackpotIcon } from '../components/JackpotIcons';
 
+import CategoryCard from '../components/CategoryCard';
+import { toast } from 'react-hot-toast';
+
 interface PlatformStats {
   activePlayers: string;
   gamesAvailable: string;
@@ -133,6 +136,27 @@ export default function HomePage() {
   ];
 
   const featuredGames = gamesData?.data?.data?.data?.groups?.[0]?.games?.slice(0, 12) || gamesData?.data?.games?.slice(0, 12) || [];
+  
+  // Fake data for Category Cards (visuals)
+  const slotGames = featuredGames.slice(0, 4).map(g => ({ id: g.id, name: g.name, image: g.image || g.imageUrl }));
+  const liveGames = [
+    { id: 'evo-crazy-time', name: 'Crazy Time', image: 'https://img.slotgrator.com/games/evolution/crazy_time.png' },
+    { id: 'evo-blackjack', name: 'Blackjack VIP', image: 'https://img.slotgrator.com/games/evolution/blackjack_vip.png' },
+    { id: 'evo-roulette', name: 'Lightning Roulette', image: 'https://img.slotgrator.com/games/evolution/lightning_roulette.png' },
+    { id: 'evo-monopoly', name: 'Monopoly Live', image: 'https://img.slotgrator.com/games/evolution/monopoly_live.png' }
+  ];
+
+  const handleSportClick = (e: React.MouseEvent) => {
+    e.preventDefault();
+    toast.error('Раздел "Спорт" находится в разработке. Скоро открытие!', {
+      style: {
+        background: '#1F2937',
+        color: '#fff',
+        border: '1px solid #D4AF37',
+      },
+      icon: '🚧',
+    });
+  };
 
   return (
     <>
@@ -323,6 +347,75 @@ export default function HomePage() {
           
           {/* Golden divider bottom */}
           <div className="aurex-divider mt-16"></div>
+        </section>
+
+        {/* Main Categories - Dragon Style */}
+        <section className="py-12 relative z-20 -mt-20">
+          <div className="max-w-7xl mx-auto px-4">
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              
+              {/* SLOTS */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.1 }}
+                className="h-[320px]"
+              >
+                <CategoryCard
+                  title="Слоты"
+                  onlineCount={1692}
+                  href="/games"
+                  gradient="bg-gradient-to-br from-[#4f46e5] to-[#0f172a]" // Indigo to Dark Blue
+                  // image="/images/slots-char.png" 
+                  buttonText="Играть"
+                  games={slotGames.length > 0 ? slotGames : [
+                    { id: 1, name: 'Sweet Bonanza', image: 'https://img.slotgrator.com/games/pragmatic/sweet_bonanza.png' },
+                    { id: 2, name: 'Gates of Olympus', image: 'https://img.slotgrator.com/games/pragmatic/gates_of_olympus.png' },
+                    { id: 3, name: 'The Dog House', image: 'https://img.slotgrator.com/games/pragmatic/the_dog_house.png' },
+                    { id: 4, name: 'Sugar Rush', image: 'https://img.slotgrator.com/games/pragmatic/sugar_rush.png' }
+                  ]}
+                />
+              </motion.div>
+
+              {/* LIVE DEALERS */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.2 }}
+                className="h-[320px]"
+              >
+                <CategoryCard
+                  title="Live Dealers"
+                  onlineCount={845}
+                  href="/games/live"
+                  gradient="bg-gradient-to-br from-[#059669] to-[#022c22]" // Emerald to Dark Green
+                  // image="/images/live-char.png"
+                  buttonText="Играть"
+                  games={liveGames}
+                />
+              </motion.div>
+
+              {/* SPORT */}
+              <motion.div
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3 }}
+                className="h-[320px]"
+              >
+                <CategoryCard
+                  title="Sport"
+                  onlineCount={312}
+                  href="/sport"
+                  gradient="bg-gradient-to-br from-[#dc2626] to-[#450a0a]" // Red to Dark Red
+                  // image="/images/sport-char.png"
+                  buttonText="Ставки"
+                  isSport={true}
+                  onClick={handleSportClick}
+                />
+              </motion.div>
+
+            </div>
+          </div>
         </section>
 
         {/* Featured Games - AUREX Collection */}
