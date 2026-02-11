@@ -817,7 +817,7 @@ bot.action('admin_stats', async (ctx) => {
 
     if (stats.activeGiveaway) {
       text += `\n🎁 Активный розыгрыш: <b>${stats.activeGiveaway.title}</b>\n`;
-      text += `👥 Участников: <b>${stats.activeParticipants}</b>\n`;
+      text += `👥 Нажали "Участвую": <b>${stats.activeParticipants}</b>\n`;
     } else {
       text += `\n🎁 Нет активных розыгрышей\n`;
     }
@@ -1058,6 +1058,24 @@ bot.command('addtickets', (ctx) => {
     `🎁 <b>Бонус от администрации!</b>\n\n🎫 Тебе начислено: <b>+${amount} билетов</b>\n💰 Твой баланс: <b>${formatTickets(newTotal)}</b>`,
     { parse_mode: 'HTML' }
   ).catch(() => {});
+});
+
+// Назначение админа
+bot.command('addadmin', (ctx) => {
+  // Проверка: только "супер-админы" из .env могут назначать других админов
+  // Или любой админ? Пусть будет любой админ.
+  if (!isAdmin(ctx)) return;
+
+  const args = ctx.message.text.split(' ');
+  const targetId = parseInt(args[1]);
+
+  if (!targetId) return ctx.reply('Укажи ID: /addadmin 123456789');
+
+  const user = referral.findByTelegramId(targetId);
+  if (!user) return ctx.reply('❌ Пользователь не найден в базе бота. Пусть сначала нажмет /start');
+
+  referral.setAdmin(targetId, true);
+  ctx.reply(`✅ Пользователь <b>${targetId}</b> назначен администратором!`, { parse_mode: 'HTML' });
 });
 
 // =============================================
