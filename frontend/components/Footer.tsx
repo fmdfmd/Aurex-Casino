@@ -29,7 +29,6 @@ export default function Footer() {
     [t('footer.legal')]: [
       { label: t('footer.terms'), href: '/terms' },
       { label: t('footer.privacy'), href: '/privacy' },
-      { label: t('footer.license'), href: '/license' },
       { label: t('footer.aml'), href: '/terms' },
     ],
   };
@@ -160,9 +159,9 @@ export default function Footer() {
                 <Shield className="w-6 h-6 text-aurex-obsidian-900" />
               </div>
               <div>
-                <p className="text-aurex-gold-500 font-bold mb-2 tracking-wide">License</p>
+                <p className="text-aurex-gold-500 font-bold mb-2 tracking-wide">Security</p>
                 <p className="text-aurex-platinum-400 text-sm">
-                  Curacao eGaming #365/JAZ
+                  SSL Encrypted
                 </p>
               </div>
             </div>
@@ -215,7 +214,7 @@ export default function Footer() {
             </div>
             <div className="flex items-center gap-2 text-aurex-platinum-400 text-sm">
               <Shield className="w-4 h-4 text-aurex-gold-500" />
-              <span>Licensed</span>
+              <span>Secure</span>
             </div>
             <div className="flex items-center gap-2 text-aurex-platinum-400 text-sm">
               <Bitcoin className="w-4 h-4 text-aurex-gold-500" />
