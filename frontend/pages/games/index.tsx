@@ -193,10 +193,9 @@ export default function GamesPage() {
 
   const visibleGames = useMemo(() => filteredGames.slice(0, visibleCount), [filteredGames, visibleCount]);
 
-  // Section Data (Mocking sections from allGames)
-  const popularGames = useMemo(() => allGames.slice(0, 10), [allGames]); // Already sorted by provider tier
-  const newGames = useMemo(() => allGames.filter(g => g.isNew).slice(0, 10), [allGames]);
-  const liveGames = useMemo(() => allGames.filter(g => g.provider?.toLowerCase().includes('evolution') || g.provider?.toLowerCase().includes('live')).slice(0, 10), [allGames]);
+  // Section Data: top games are first 20 from backend (curated), slot games for the "all games" section
+  const topGames = useMemo(() => allGames.slice(0, 20), [allGames]);
+  const slotGames = useMemo(() => allGames.filter(g => g.category === 'slots'), [allGames]);
 
   const handleSportClick = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -305,6 +304,59 @@ export default function GamesPage() {
                   buttonText="Играть"
                 />
 
+              </div>
+            )}
+
+            {/* TOP GAMES section — shown on default view */}
+            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && topGames.length > 0 && (
+              <div className="mb-10">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <Flame className="w-6 h-6 text-casino-gold" />
+                    <h2 className="text-2xl font-bold text-white">Топ игры</h2>
+                    <span className="bg-red-500/20 text-red-400 text-xs font-bold px-2.5 py-1 rounded-full">HOT</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCategory('popular')}
+                    className="flex items-center gap-1 text-sm text-aurex-gold-500 hover:text-aurex-gold-400 transition-colors"
+                  >
+                    Все популярные <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-4">
+                  {topGames.map((game, i) => (
+                    <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* ALL SLOT GAMES section — shown on default view with infinite scroll */}
+            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && slotGames.length > 0 && (
+              <div className="mb-10">
+                <div className="flex items-center justify-between mb-5">
+                  <div className="flex items-center gap-3">
+                    <Gamepad2 className="w-6 h-6 text-casino-gold" />
+                    <h2 className="text-2xl font-bold text-white">Все слоты</h2>
+                    <span className="text-aurex-platinum-500 text-sm font-normal">({slotGames.length})</span>
+                  </div>
+                  <button
+                    onClick={() => setSelectedCategory('slots')}
+                    className="flex items-center gap-1 text-sm text-aurex-gold-500 hover:text-aurex-gold-400 transition-colors"
+                  >
+                    Фильтр и поиск <ChevronRight className="w-4 h-4" />
+                  </button>
+                </div>
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
+                  {slotGames.slice(0, visibleCount).map((game, i) => (
+                    <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
+                  ))}
+                </div>
+                {visibleCount < slotGames.length && (
+                  <div ref={loadMoreRef} className="flex justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aurex-gold-500"></div>
+                  </div>
+                )}
               </div>
             )}
             

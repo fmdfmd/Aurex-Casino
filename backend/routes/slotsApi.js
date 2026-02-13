@@ -62,39 +62,63 @@ router.get('/games', async (req, res) => {
 
     const merchants = apiData.merchants || {};
 
-    // Provider tier system — top providers get shown first
+    // Curated top games — these always appear first (in this exact order)
+    const topGameCodes = new Set([
+      'vs20olympgate',       // Gates of Olympus — Pragmatic
+      'vs20sbxmas',          // Sweet Bonanza Xmas — Pragmatic
+      'vs20sugarrush',       // Sugar Rush — Pragmatic
+      'vs20doghouse',        // The Dog House — Pragmatic
+      'vs20fruitparty',      // Fruit Party — Pragmatic
+      'vs20olympx',          // Gates of Olympus 1000 — Pragmatic
+      'vs20starz',           // Starlight Princess — Pragmatic
+      'vs20zeusvshadp',      // Zeus vs Hades — Pragmatic
+      'bigbamboo-01',        // Big Bamboo — Push Gaming
+      '1067_desktop',        // Wanted Dead or a Wild — Hacksaw
+      '310',                 // Book of Dead — Play'n GO
+      'vs25pyramid',         // Great Rhino Megaways — Pragmatic
+      'vs10firestrike',      // Fire Strike — Pragmatic
+      'vs25wolfgold',        // Wolf Gold — Pragmatic
+      'vs20bonzgold',        // Bonanza Gold — Pragmatic
+      'vs20rhinoluxe',       // Great Rhino Deluxe — Pragmatic
+      'vs40wanderw',         // The Hand of Midas — Pragmatic
+      'release_the_kraken_2', // Release the Kraken 2 — Pragmatic
+      'christmas_big_bass_bonanza', // Big Bass Bonanza Xmas
+      'vs25jokerking',       // Joker King — Pragmatic
+    ]);
+    const topGameOrder = [...topGameCodes];
+
+    // Provider tier system — slot providers first, then live
     const providerTier = {
-      // Tier 1 — most popular worldwide
+      // Tier 1 — top slot providers
       '960': 1, // PragmaticPlay
-      '998': 1, // Evolution
+      '850': 1, // HacksawGaming
+      '938': 1, // NoLimitCity
+      '911': 1, // PushGaming
       '944': 1, // PlaynGo
-      '953': 1, // Yggdrasil
-      '997': 1, // MG (Microgaming/GamesGlobal)
+      '939': 1, // PGSoft
       '421': 1, // NetEntOSS
+      '997': 1, // MG (Microgaming/GamesGlobal)
+      '953': 1, // Yggdrasil
       '940': 1, // EvoPlay
       '935': 1, // RelaxGaming
-      '939': 1, // PGSoft
       '920': 1, // Thunderkick
-      // Tier 2 — well-known
+      '925': 1, // ELKStudios
+      // Tier 2 — good slot providers
       '991': 2, // BetSoft
       '976': 2, // Habanero
       '969': 2, // Quickspin
       '963': 2, // ISoftBet
       '943': 2, // PlaysonDirect
       '941': 2, // Wazdan
-      '938': 2, // NoLimitCity
-      '925': 2, // ELKStudios
       '924': 2, // Booongo
       '949': 2, // Platipus
       '901': 2, // BGaming
-      '850': 2, // HacksawGaming
       '899': 2, // MascotGaming
       '895': 2, // Spribe
       '955': 2, // GameArt
       // Tier 3 — decent
       '307': 3, // Novomatic
       '987': 3, // TomHorn
-      '986': 3, // MrSlotty
       '979': 3, // WorldMatch
       '977': 3, // BoomingGames
       '975': 3, // AmaticDirect
@@ -102,6 +126,10 @@ router.get('/games', async (req, res) => {
       '910': 3, // RedRakeGaming
       '879': 3, // Gamzix
       '869': 3, // SmartSoft
+      // Tier 4 — live casino (after slots)
+      '998': 4, // Evolution
+      '913': 4, // VivoGaming
+      '990': 4, // LuckyStreak
     };
     
     if (apiData.games && Array.isArray(apiData.games)) {
@@ -138,12 +166,19 @@ router.get('/games', async (req, res) => {
         // Max win multiplier
         const maxMultiplier = parseFloat(game.MaxMultiplier) || null;
 
-        // Provider tier for sorting (1 = best, 5 = unknown)
-        const tier = providerTier[merchantId] || 5;
-        // Fundist Sort — lower = more important
-        const fundistSort = parseInt(game.Sort || game.GSort || '999999', 10);
-        // Combined score: tier * 1000000 + fundistSort (lower = better)
-        const sortScore = tier * 1000000 + Math.min(fundistSort, 999999);
+        // Sort score: curated top games first (tier 0), then by provider tier
+        const pageCode = game.PageCode || '';
+        const topIdx = topGameOrder.indexOf(pageCode);
+        let sortScore;
+        if (topIdx !== -1) {
+          // Curated top game — use its position (0-19)
+          sortScore = topIdx;
+        } else {
+          // Provider tier for sorting (1 = best, 6 = unknown)
+          const tier = providerTier[merchantId] || 6;
+          const fundistSort = parseInt(game.Sort || game.GSort || '999999', 10);
+          sortScore = 1000 + tier * 1000000 + Math.min(fundistSort, 999999);
+        }
 
         processedGames.push({
           id: game.PageCode,
@@ -181,6 +216,9 @@ router.get('/games', async (req, res) => {
   }
 });
 
+// Shared keep-alive agent for image proxying (reuses TCP connections)
+const imgProxyAgent = new https.Agent({ family: 4, keepAlive: true, maxSockets: 50, maxFreeSockets: 10 });
+
 // Image proxy (Fundist recommends caching/proxying game images).
 // Allows only whitelisted hosts to avoid SSRF.
 router.get('/img', async (req, res) => {
@@ -199,7 +237,7 @@ router.get('/img', async (req, res) => {
     return res.status(403).send('Host not allowed');
   }
 
-  const agent = new https.Agent({ family: 4, keepAlive: true });
+  const agent = imgProxyAgent;
 
   const fetchOnce = (url, redirectsLeft) =>
     new Promise((resolve, reject) => {
@@ -231,7 +269,7 @@ router.get('/img', async (req, res) => {
           const contentType = up.headers['content-type'] || 'application/octet-stream';
           res.setHeader('Content-Type', contentType);
           if (up.headers['content-length']) res.setHeader('Content-Length', up.headers['content-length']);
-          res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+          res.setHeader('Cache-Control', 'public, max-age=604800, s-maxage=604800'); // 7 days
 
           up.pipe(res);
           up.on('error', reject);

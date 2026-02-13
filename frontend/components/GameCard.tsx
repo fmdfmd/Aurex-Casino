@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { Play, Heart, Star, DollarSign } from 'lucide-react';
 import { useTranslation } from '../hooks/useTranslation';
@@ -50,7 +50,6 @@ const getGameGradient = (gameId: string | number) => {
 export default function GameCard({ game, onPlay, onFavorite, isFavorite = false }: GameCardProps) {
   const { t } = useTranslation();
   const [imageError, setImageError] = useState(false);
-  const timeoutRef = useRef<number | null>(null);
 
   const handlePlay = () => {
     if (onPlay) {
@@ -68,19 +67,9 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
   const imageUrl = game.image || game.imageUrl;
   const gradient = getGameGradient(game.id);
 
-  // If remote images are slow/unreachable, don't show "blank gradient" forever.
+  // Reset image error when game changes
   useEffect(() => {
     setImageError(false);
-
-    if (!imageUrl) return;
-    timeoutRef.current = window.setTimeout(() => {
-      setImageError(true);
-    }, 2500);
-
-    return () => {
-      if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-      timeoutRef.current = null;
-    };
   }, [imageUrl, game.id]);
 
   return (
@@ -96,10 +85,7 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
               fill
               className="object-cover transition-transform duration-300 group-hover:scale-110"
               onError={() => setImageError(true)}
-              onLoadingComplete={() => {
-                if (timeoutRef.current) window.clearTimeout(timeoutRef.current);
-                timeoutRef.current = null;
-              }}
+              loading="lazy"
               unoptimized
             />
           </div>
