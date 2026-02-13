@@ -1,6 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { X, Maximize2, Minimize2, Play, DollarSign } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import axios from 'axios';
+import toast from 'react-hot-toast';
 
 interface GameModalProps {
   isOpen: boolean;
@@ -12,8 +14,10 @@ interface GameModalProps {
 
 export default function GameModal({ isOpen, onClose, game, mode, onModeChange }: GameModalProps) {
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [gameUrl, setGameUrl] = useState('');
+  const [gameHtml, setGameHtml] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
   const { user } = useAuthStore();
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -33,38 +37,56 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   }, [isOpen, isFullscreen, onClose]);
 
   useEffect(() => {
-    if (game && isOpen) {
-      // Формируем URL для игры
-      const slotsApiBase = process.env.NEXT_PUBLIC_SLOTS_API_URL || 'https://int.apichannel.cloud';
-      const baseUrl = `${slotsApiBase}/games/${game.gameUrl}`;
-      
-      // Определяем user_id и auth_token в зависимости от режима
-      let userId = 'aurex_demo_001'; // По умолчанию демо
-      let authToken = 'demo';
-      
-      if (mode === 'demo') {
-        userId = 'aurex_demo_001'; // B2B ID демо пользователя
-        authToken = 'demo';
-      } else if (user) {
-        // В реальном режиме используем данные текущего пользователя
-        userId = user.odid || user.id;
-        authToken = 'real_token_' + user.id;
+    const run = async () => {
+      if (!game || !isOpen) return;
+      setIsLoading(true);
+      setGameHtml('');
+
+      try {
+        const currency = (user as any)?.currency || 'RUB';
+        const resp = await axios.post('/api/slots/start-game', {
+          gameCode: game.id,
+          systemId: (game as any).systemId,
+          currency,
+          language: 'en',
+          mode
+        });
+
+        const html = resp.data?.data?.html;
+        if (!html) throw new Error('No HTML fragment received');
+
+        setGameHtml(html);
+      } catch (e: any) {
+        console.error('Failed to start game:', e);
+        toast.error(e?.response?.data?.error || e?.message || 'Не удалось запустить игру');
+      } finally {
+        setIsLoading(false);
       }
-      
-      const operatorId = process.env.NEXT_PUBLIC_OPERATOR_ID || '40282';
-      const params = new URLSearchParams({
-        operator_id: operatorId,
-        user_id: userId,
-        auth_token: authToken,
-        currency: 'RUB',
-        lang: 'ru',
-        mode: mode === 'demo' ? 'demo' : 'real',
-        callback_url: `${typeof window !== 'undefined' ? window.location.origin : ''}/api/game-callback/`
-      });
-      
-      setGameUrl(`${baseUrl}?${params.toString()}`);
-    }
+    };
+
+    run();
   }, [game, mode, isOpen, user]);
+
+  // Inject HTML and execute scripts (Fundist AuthHTML returns HTML fragment with scripts)
+  useEffect(() => {
+    if (!isOpen || !gameHtml) return;
+    const el = containerRef.current;
+    if (!el) return;
+
+    // Reset
+    el.innerHTML = gameHtml;
+
+    // Recreate scripts so they execute
+    const scripts = Array.from(el.querySelectorAll('script'));
+    for (const oldScript of scripts) {
+      const s = document.createElement('script');
+      for (const attr of Array.from(oldScript.attributes)) {
+        s.setAttribute(attr.name, attr.value);
+      }
+      if (oldScript.textContent) s.textContent = oldScript.textContent;
+      oldScript.parentNode?.replaceChild(s, oldScript);
+    }
+  }, [isOpen, gameHtml]);
 
   // Golden Drops - выпадает только во время РЕАЛЬНОЙ игры (не демо)
   useEffect(() => {
@@ -155,14 +177,8 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 
         {/* Game Frame */}
         <div className="flex-1 relative" style={{ height: isFullscreen ? 'calc(100vh - 200px)' : 'calc(80vh - 120px)' }}>
-          {gameUrl ? (
-            <iframe
-              src={gameUrl}
-              className="w-full h-full border-0"
-              allow="fullscreen; autoplay; encrypted-media"
-              sandbox="allow-same-origin allow-scripts allow-forms allow-popups allow-presentation"
-              title={`${game.name} - ${mode === 'demo' ? 'Демо' : 'Реальные деньги'}`}
-            />
+          {!isLoading && gameHtml ? (
+            <div ref={containerRef} className="w-full h-full" />
           ) : (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">

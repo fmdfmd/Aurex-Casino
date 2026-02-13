@@ -183,8 +183,8 @@ router.post('/make-bet', async (req, res) => {
       // Создаём транзакцию
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
-         VALUES ($1, 'bet', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
-        [user.id, -amount, 'Ставка в игре', game_round_id]
+         VALUES ($1, 'bet', $2, $5, 'completed', $3, $4) RETURNING id`,
+        [user.id, -amount, 'Ставка в игре', game_round_id, session.currency || 'RUB']
       );
       
       // VIP очки
@@ -207,7 +207,7 @@ router.post('/make-bet', async (req, res) => {
     res.json({
       success: true,
       balance: result.newBalance,
-      currency: 'RUB',
+      currency: session.currency || 'RUB',
       transaction_id: result.txId
     });
 
@@ -269,8 +269,8 @@ router.post('/win', async (req, res) => {
       // Создаём транзакцию
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description, round_id)
-         VALUES ($1, 'win', $2, 'RUB', 'completed', $3, $4) RETURNING id`,
-        [user.id, amount, 'Выигрыш в игре', game_round_id]
+         VALUES ($1, 'win', $2, $5, 'completed', $3, $4) RETURNING id`,
+        [user.id, amount, 'Выигрыш в игре', game_round_id, session.currency || 'RUB']
       );
       
       return { newBalance, txId: txResult.rows[0].id.toString(), username: user.username };
@@ -281,7 +281,7 @@ router.post('/win', async (req, res) => {
     res.json({
       success: true,
       balance: result.newBalance,
-      currency: 'RUB',
+      currency: session.currency || 'RUB',
       transaction_id: result.txId
     });
 
@@ -331,8 +331,8 @@ router.post('/cancel-bet', async (req, res) => {
       
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description)
-         VALUES ($1, 'cancel', $2, 'RUB', 'completed', 'Отмена ставки') RETURNING id`,
-        [user.id, amount]
+         VALUES ($1, 'cancel', $2, $3, 'completed', 'Отмена ставки') RETURNING id`,
+        [user.id, amount, session.currency || 'RUB']
       );
       
       return { newBalance, txId: txResult.rows[0].id.toString(), username: user.username };
@@ -343,7 +343,7 @@ router.post('/cancel-bet', async (req, res) => {
     res.json({
       success: true,
       balance: result.newBalance,
-      currency: 'RUB',
+      currency: session.currency || 'RUB',
       transaction_id: result.txId
     });
 

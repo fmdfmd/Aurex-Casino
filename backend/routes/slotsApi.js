@@ -1,274 +1,107 @@
 const express = require('express');
-const axios = require('axios');
-const crypto = require('crypto');
-const config = require('../config/config');
-const pool = require('../config/database');
-const { updateVipLevel: centralUpdateVipLevel } = require('../config/vipLevels');
 const { auth } = require('../middleware/auth');
+const fundistService = require('../services/fundistApiService');
+const axios = require('axios');
+const https = require('https');
+const merchantFallback = require('../constants/fundistMerchants');
 const router = express.Router();
 
-// Slots API Service Class
-class SlotsApiService {
-  constructor() {
-    this.baseUrl = config.slotsApi.baseUrl;
-    this.fallbackUrl = config.slotsApi.fallbackUrl;
-    this.operatorId = config.slotsApi.operatorId;
-    this.callbackUrl = config.slotsApi.callbackUrl;
-  }
-
-  // Get all games list
-  async getGamesList() {
-    try {
-      const cmd = {
-        api: "ls-games-by-operator-id-get",
-        operator_id: this.operatorId
-      };
-      
-      const response = await axios.get(`${this.baseUrl}/frontendsrv/apihandler.api`, {
-        params: { cmd: JSON.stringify(cmd) },
-        timeout: 10000
-      });
-      
-      return response.data;
-    } catch (error) {
-      console.error('Error fetching games list:', error);
-      throw new Error('Failed to fetch games list');
-    }
-  }
-
-  // Authenticate user with slots provider
-  async authenticateUser(userId, gameCode, currency = 'RUB', reqIp = null) {
-    try {
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length === 0) throw new Error('User not found');
-      const user = userResult.rows[0];
-
-      const authData = {
-        user_id: userId,
-        user_ip: reqIp || '0.0.0.0',
-        user_auth_token: this.generateAuthToken(userId),
-        currency: currency,
-        game_code: gameCode
-      };
-
-      const response = await axios.post(`${this.baseUrl}/auth`, authData, {
-        timeout: 10000
-      });
-
-      return response.data;
-    } catch (error) {
-      console.error('Authentication error:', error);
-      throw new Error('Authentication failed');
-    }
-  }
-
-  // Start game session
-  async startGameSession(userId, gameCode, currency = 'RUB', language = 'ru') {
-    try {
-      const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
-      if (userResult.rows.length === 0) throw new Error('User not found');
-      const user = userResult.rows[0];
-
-      // Create game session
-      const sessionId = this.generateSessionId();
-      
-      const result = await pool.query(
-        `INSERT INTO game_sessions (user_id, game_id, game_name, session_id, provider, currency, status, bet_amount, win_amount)
-         VALUES ($1, $2, $3, $4, 'slots-api', $5, 'active', 0, 0) RETURNING *`,
-        [userId, gameCode, gameCode, sessionId, currency]
-      );
-
-      // Generate game URL
-      const gameUrl = this.generateGameUrl(userId, gameCode, sessionId, currency, language);
-
-      return {
-        sessionId: sessionId,
-        gameUrl: gameUrl,
-        balance: parseFloat(user.balance),
-        currency: currency
-      };
-    } catch (error) {
-      console.error('Start game session error:', error);
-      throw new Error('Failed to start game session');
-    }
-  }
-
-  // Generate game URL
-  generateGameUrl(userId, gameCode, sessionId, currency, language) {
-    const params = new URLSearchParams({
-      operator_id: this.operatorId,
-      user_id: userId,
-      auth_token: this.generateAuthToken(userId),
-      currency: currency,
-      language: language,
-      home_url: config.server.frontendUrl
-    });
-
-    return `${this.baseUrl}/games/${gameCode}/game?${params.toString()}`;
-  }
-
-  // Generate auth token
-  generateAuthToken(userId) {
-    const timestamp = Date.now();
-    const data = `${userId}:${timestamp}:${config.jwt.secret}`;
-    return crypto.createHash('sha256').update(data).digest('hex');
-  }
-
-  // Generate session ID
-  generateSessionId() {
-    return crypto.randomBytes(16).toString('hex');
-  }
-
-  // Update VIP level based on points (centralized)
-  async updateVipLevel(userId) {
-    try {
-      await centralUpdateVipLevel(pool, userId);
-    } catch (error) {
-      console.error('Update VIP level error:', error);
-    }
-  }
-
-  // Process bet transaction (with DB transaction + row lock)
-  async processBet(transactionData) {
-    const { user_id, session_id, bet_amount, currency, game_code, round_id, transaction_id } = transactionData;
-    const { withTransaction } = require('../utils/dbTransaction');
-
-    return await withTransaction(pool, async (client) => {
-      // Lock user row
-      const userResult = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user_id]);
-      if (userResult.rows.length === 0) throw new Error('User not found');
-      const user = userResult.rows[0];
-
-      const sessionResult = await client.query(
-        "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
-        [session_id]
-      );
-      if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
-      const gameSession = sessionResult.rows[0];
-
-      if (parseFloat(user.balance) < bet_amount) {
-        throw new Error('Insufficient balance');
-      }
-
-      const loyaltyPoints = Math.floor(bet_amount / 100);
-      const updatedUser = await client.query(
-        `UPDATE users SET 
-          balance = balance - $1, 
-          total_wagered = total_wagered + $1, 
-          games_played = games_played + 1,
-          vip_points = COALESCE(vip_points, 0) + $3
-        WHERE id = $2 RETURNING balance`,
-        [bet_amount, user_id, loyaltyPoints]
-      );
-      
-      // Обновляем прогресс вейджера активных бонусов
-      await client.query(
-        `UPDATE bonuses SET wagering_completed = wagering_completed + $1
-         WHERE user_id = $2 AND status = 'active'`,
-        [bet_amount, user_id]
-      );
-      
-      await client.query(
-        `UPDATE bonuses SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-         WHERE user_id = $1 AND status = 'active' AND wagering_completed >= wagering_requirement`,
-        [user_id]
-      );
-
-      await client.query(
-        'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
-        [bet_amount, gameSession.id]
-      );
-
-      await client.query(
-        `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
-         VALUES ($1, 'bet', $2, $3, 'completed', $4, $5, $6)`,
-        [user_id, -bet_amount, currency, `Ставка в ${game_code}`, gameSession.id, round_id]
-      );
-
-      // VIP level update (non-critical, outside lock is fine)
-      try { await this.updateVipLevel(user_id); } catch(e) { console.error('VIP update:', e); }
-
-      return {
-        success: true,
-        balance: parseFloat(updatedUser.rows[0].balance),
-        transaction_id: transaction_id
-      };
-    });
-  }
-
-  // Process win transaction (with DB transaction + row lock)
-  async processWin(transactionData) {
-    const { user_id, session_id, win_amount, currency, game_code, round_id, transaction_id } = transactionData;
-    const { withTransaction } = require('../utils/dbTransaction');
-
-    return await withTransaction(pool, async (client) => {
-      const userResult = await client.query('SELECT * FROM users WHERE id = $1 FOR UPDATE', [user_id]);
-      if (userResult.rows.length === 0) throw new Error('User not found');
-
-      const sessionResult = await client.query(
-        "SELECT * FROM game_sessions WHERE session_id = $1 AND status = 'active'",
-        [session_id]
-      );
-      if (sessionResult.rows.length === 0) throw new Error('Game session not found or inactive');
-      const gameSession = sessionResult.rows[0];
-
-      const updatedUser = await client.query(
-        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance',
-        [win_amount, user_id]
-      );
-
-      await client.query(
-        'UPDATE game_sessions SET win_amount = win_amount + $1 WHERE id = $2',
-        [win_amount, gameSession.id]
-      );
-
-      await client.query(
-        `INSERT INTO transactions (user_id, type, amount, currency, status, description, game_session_id, round_id)
-         VALUES ($1, 'win', $2, $3, 'completed', $4, $5, $6)`,
-        [user_id, win_amount, currency, `Выигрыш в ${game_code}`, gameSession.id, round_id]
-      );
-
-      return {
-        success: true,
-        balance: parseFloat(updatedUser.rows[0].balance),
-        transaction_id: transaction_id
-      };
-    });
-  }
-}
-
-const slotsService = new SlotsApiService();
-
 // Routes
+
+// Helper to determine category
+const determineCategory = (game, categoriesMap) => {
+  const mid = String(game.MerchantID || game.System || '');
+
+  // Known live casino providers
+  const liveProviders = new Set(['998', '913', '990', '983', '934', '980', '968', '904', '945', '866', '314']);
+  if (liveProviders.has(mid)) return 'live';
+
+  // Known sports providers
+  const sportProviders = new Set(['952', '974', '84']);
+  if (sportProviders.has(mid)) return 'sport';
+
+  // Check categories (FullList uses CategoryID, List uses Categories)
+  const catIds = game.CategoryID || game.Categories || [];
+  if (Array.isArray(catIds)) {
+    for (const catId of catIds) {
+      const cat = categoriesMap[String(catId)];
+      if (cat) {
+        const nameEn = (cat.Name?.en || cat.Trans?.en || '').toLowerCase();
+        const tags = cat.Tags || [];
+        if (tags.includes('live') || nameEn.includes('live')) return 'live';
+        if (nameEn.includes('table') || nameEn.includes('baccarat') || nameEn.includes('roulette') || nameEn.includes('blackjack') || nameEn.includes('poker')) return 'table';
+        if (nameEn.includes('sport') || nameEn.includes('virtual sport')) return 'sport';
+        if (nameEn.includes('crash')) return 'crash';
+      }
+    }
+  }
+
+  return 'slots';
+};
 
 // Get games list
 router.get('/games', async (req, res) => {
   try {
-    const apiData = await slotsService.getGamesList();
+    const apiData = await fundistService.getGamesList();
     
+    // Create categories map for quick lookup
+    const categoriesMap = {};
+    if (apiData.categories && Array.isArray(apiData.categories)) {
+      apiData.categories.forEach(cat => {
+        categoriesMap[cat.ID] = cat;
+      });
+    }
+
+    // Transform Fundist format to our frontend format
     const processedGames = [];
     
-    if (apiData && apiData.locator && apiData.locator.groups) {
-      apiData.locator.groups.forEach(group => {
-        if (group.games && Array.isArray(group.games)) {
-          group.games.forEach(game => {
-            processedGames.push({
-              id: game.gm_bk_id,
-              name: game.gm_title,
-              provider: group.gr_title,
-              image: game.icons && game.icons[0] ? 
-                `https://icdnchannel.com${apiData.locator.ico_baseurl}${game.icons[0].ic_name}` : 
-                null,
-              gameUrl: game.gm_url,
-              category: 'slots',
-              lines: game.gm_ln,
-              isNew: game.gm_new || false,
-              isHot: (game.gm_bk_id % 4 === 0),
-              rtp: 90 + (game.gm_bk_id % 10),
-              popularity: 70 + (game.gm_bk_id % 30)
-            });
-          });
+    // Log response structure for debugging
+    console.log('Fundist response keys:', Object.keys(apiData));
+    if (apiData.games) console.log('Games count:', apiData.games.length);
+    if (apiData.merchants) console.log('Merchants count:', Object.keys(apiData.merchants).length);
+
+    const merchants = apiData.merchants || {};
+    
+    if (apiData.games && Array.isArray(apiData.games)) {
+      apiData.games.forEach(game => {
+        const merchantId = String(game.MerchantID || game.System || '');
+        const merchantsName = merchants[merchantId]?.Name;
+        const isPlaceholder = typeof merchantsName === 'string' && /^(Merchant|Provider)\s+\d+$/.test(merchantsName);
+
+        const merchantName =
+          (!isPlaceholder ? merchantsName : null) ||
+          game.MerchantName ||
+          game.SubMerchantName ||
+          merchantFallback[merchantId] ||
+          merchantsName ||
+          (merchantId ? `Provider ${merchantId}` : 'Unknown');
+
+        // Handle image: FullList has ImageFullPath, List has ImageURL (relative)
+        let imageUrl = game.ImageFullPath;
+        if (!imageUrl && game.ImageURL) {
+          // ImageURL is relative, e.g. /gstatic/games/foo.jpg → https://agstatic.com/games/foo.jpg
+          const rel = game.ImageURL.replace(/^\/gstatic/, '');
+          imageUrl = `https://agstatic.com${rel}`;
         }
+        const imageProxyUrl = imageUrl
+          ? `/api/slots/img?u=${encodeURIComponent(String(imageUrl))}`
+          : undefined;
+
+        // Handle name: FullList/Sorting has Name: {en:...}, List has Trans: {en:...}
+        const nameObj = game.Name || game.Trans || {};
+        const gameName = (typeof nameObj === 'string') ? nameObj : (nameObj.en || nameObj.ru || Object.values(nameObj)[0] || 'Unknown');
+
+        processedGames.push({
+          id: game.PageCode,
+          systemId: merchantId,
+          name: gameName,
+          provider: merchantName,
+          image: imageProxyUrl,
+          category: determineCategory(game, categoriesMap),
+          hasDemo: game.hasDemo === '1' || game.HasDemo === '1',
+          isNew: false,
+          popularity: parseInt(game.GSort || game.Sort || '0', 10) || 0
+        });
       });
     }
     
@@ -276,177 +109,179 @@ router.get('/games', async (req, res) => {
       success: true, 
       data: {
         games: processedGames,
-        total: processedGames.length,
-        groups: apiData.locator ? apiData.locator.groups : []
+        total: processedGames.length
       }
     });
   } catch (error) {
     console.error('Error in /games endpoint:', error);
-    res.status(500).json({ success: false, error: error.message });
+    res.status(500).json({ 
+      success: false, 
+      error: error.message,
+      stack: process.env.NODE_ENV === 'development' ? error.stack : undefined
+    });
+  }
+});
+
+// Image proxy (Fundist recommends caching/proxying game images).
+// Allows only whitelisted hosts to avoid SSRF.
+router.get('/img', async (req, res) => {
+  const u = String(req.query.u || '');
+  if (!u) return res.status(400).send('Missing u');
+
+  let parsed;
+  try {
+    parsed = new URL(u);
+  } catch {
+    return res.status(400).send('Invalid url');
+  }
+
+  const allowedHosts = new Set(['agstatic.com', 'img.cdn-fundist.com']);
+  if (!allowedHosts.has(parsed.hostname)) {
+    return res.status(403).send('Host not allowed');
+  }
+
+  const agent = new https.Agent({ family: 4, keepAlive: true });
+
+  const fetchOnce = (url, redirectsLeft) =>
+    new Promise((resolve, reject) => {
+      const reqUp = https.get(
+        url,
+        {
+          agent,
+          timeout: 30000,
+          headers: {
+            'user-agent': 'AUREX-ImageProxy/1.0',
+            accept: '*/*'
+          }
+        },
+        (up) => {
+          const status = up.statusCode || 500;
+
+          // Redirects
+          if ([301, 302, 303, 307, 308].includes(status) && redirectsLeft > 0 && up.headers.location) {
+            const nextUrl = new URL(up.headers.location, url).toString();
+            up.resume();
+            return resolve(fetchOnce(nextUrl, redirectsLeft - 1));
+          }
+
+          if (status !== 200) {
+            up.resume();
+            return reject(new Error(`Upstream HTTP ${status}`));
+          }
+
+          const contentType = up.headers['content-type'] || 'application/octet-stream';
+          res.setHeader('Content-Type', contentType);
+          if (up.headers['content-length']) res.setHeader('Content-Length', up.headers['content-length']);
+          res.setHeader('Cache-Control', 'public, max-age=86400'); // 1 day
+
+          up.pipe(res);
+          up.on('error', reject);
+          up.on('end', resolve);
+        }
+      );
+
+      reqUp.on('timeout', () => reqUp.destroy(new Error('Upstream timeout')));
+      reqUp.on('error', reject);
+
+      // Abort upstream if client closes
+      res.on('close', () => {
+        try {
+          reqUp.destroy();
+        } catch {}
+      });
+    });
+
+  try {
+    await fetchOnce(u, 3);
+  } catch (e) {
+    if (res.headersSent) {
+      try {
+        return res.end();
+      } catch {
+        return;
+      }
+    }
+    return res.status(502).send('Upstream error');
+  }
+});
+
+// Fundist catalog status (debug/ops)
+router.get('/catalog/status', async (req, res) => {
+  try {
+    return res.json({ success: true, data: fundistService.getCatalogStatus() });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to get catalog status' });
+  }
+});
+
+// Trigger full catalog refresh (debug/ops)
+router.post('/catalog/refresh', async (req, res) => {
+  try {
+    fundistService.ensureFullListRefresh().catch(() => {});
+    return res.json({ success: true, data: { started: true } });
+  } catch (e) {
+    return res.status(500).json({ success: false, error: 'Failed to start catalog refresh' });
+  }
+});
+
+// Upload game catalog JSON (admin/ops — for when Game/FullList can't be downloaded directly)
+router.post('/catalog/upload', express.json({ limit: '100mb' }), async (req, res) => {
+  try {
+    const jsonData = req.body;
+    if (!jsonData || typeof jsonData !== 'object') {
+      return res.status(400).json({ success: false, error: 'Request body must be JSON (Game/FullList or Game/List format)' });
+    }
+    const result = fundistService.importCatalog(jsonData);
+    return res.json({ success: true, data: result });
+  } catch (e) {
+    return res.status(400).json({ success: false, error: e.message });
   }
 });
 
 // Start game session
 router.post('/start-game', auth, async (req, res) => {
   try {
-    const { gameCode, currency = 'RUB', language = 'ru' } = req.body;
+    const { gameCode, systemId: systemIdFromClient, currency = 'RUB', language = 'en', mode = 'real' } = req.body;
     const userId = req.user.id;
+    const userIp = req.ip || '0.0.0.0';
 
-    const gameData = await slotsService.startGameSession(userId, gameCode, currency, language);
+    if (!gameCode) {
+      return res.status(400).json({ success: false, error: 'Missing gameCode' });
+    }
+
+    // `systemId` is required by Fundist AuthHTML, but frontend doesn't always send it.
+    // Resolve it from cached Fundist catalog if missing.
+    let resolvedSystemId = systemIdFromClient;
+    if (!resolvedSystemId) {
+      const apiData = await fundistService.getGamesList();
+      const game = Array.isArray(apiData?.games)
+        ? apiData.games.find((g) =>
+            String(g.PageCode) === String(gameCode) || String(g.ID) === String(gameCode) || String(g.Url) === String(gameCode)
+          )
+        : null;
+
+      if (!game) {
+        return res.status(404).json({ success: false, error: 'Game not found in catalog (missing systemId)' });
+      }
+      resolvedSystemId = game.MerchantID;
+    }
+
+    const extParam = `aurex_${userId}_${Date.now()}`;
+    const referer = req.headers.referer || '';
+
+    const gameData = await fundistService.startGameSession(
+      userId,
+      gameCode,
+      resolvedSystemId,
+      currency,
+      userIp,
+      language,
+      { extParam, referer, demo: mode === 'demo' }
+    );
     
     res.json({ success: true, data: gameData });
   } catch (error) {
     res.status(400).json({ success: false, error: error.message });
-  }
-});
-
-// Callback endpoints for slots provider
-// Middleware для валидации callback запросов от провайдера
-const validateProviderCallback = (req, res, next) => {
-  // TODO: Добавить проверку IP whitelist провайдера (Slotegrator)
-  // const allowedIPs = (process.env.SLOTS_PROVIDER_IPS || '').split(',').filter(Boolean);
-  // const clientIP = req.ip || req.connection.remoteAddress;
-  // if (allowedIPs.length > 0 && !allowedIPs.includes(clientIP)) {
-  //   console.warn(`[Callback] Rejected callback from unauthorized IP: ${clientIP}`);
-  //   return res.status(403).json({ error: 'Forbidden', error_code: 403 });
-  // }
-  
-  // Логируем все callback запросы для аудита
-  console.log(`[Callback] ${req.method} ${req.path} from ${req.ip}`, JSON.stringify(req.body).slice(0, 500));
-  next();
-};
-
-// Auth callback
-router.post('/callback/auth', validateProviderCallback, async (req, res) => {
-  try {
-    const { user_id, user_auth_token } = req.body;
-    
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userResult.rows[0];
-
-    res.json({
-      api: 'do-auth-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        user_id: user_id,
-        user_nickname: user.username,
-        balance: parseFloat(user.balance),
-        bonus_balance: parseFloat(user.bonus_balance),
-        auth_token: user_auth_token,
-        game_token: slotsService.generateAuthToken(user_id),
-        error_code: 0,
-        error_description: 'ok',
-        currency: 'RUB',
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: true
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Authentication failed', error_code: 1 });
-  }
-});
-
-// Bet callback
-router.post('/callback/bet', validateProviderCallback, async (req, res) => {
-  try {
-    const result = await slotsService.processBet(req.body);
-    
-    res.json({
-      api: 'do-debit-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        transaction_id: req.body.transaction_id,
-        user_id: req.body.user_id,
-        user_nickname: 'Player',
-        balance: result.balance,
-        error_code: 0,
-        error_description: 'ok',
-        currency: req.body.currency,
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: true
-    });
-  } catch (error) {
-    res.status(400).json({
-      api: 'do-debit-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        transaction_id: req.body.transaction_id,
-        error_code: 2,
-        error_description: error.message,
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: false
-    });
-  }
-});
-
-// Win callback
-router.post('/callback/win', validateProviderCallback, async (req, res) => {
-  try {
-    const result = await slotsService.processWin(req.body);
-    
-    res.json({
-      api: 'do-credit-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        transaction_id: req.body.transaction_id,
-        user_id: req.body.user_id,
-        user_nickname: 'Player',
-        balance: result.balance,
-        error_code: 0,
-        error_description: 'ok',
-        currency: req.body.currency,
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: true
-    });
-  } catch (error) {
-    res.status(400).json({
-      api: 'do-credit-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        transaction_id: req.body.transaction_id,
-        error_code: 2,
-        error_description: error.message,
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: false
-    });
-  }
-});
-
-// Get user balance
-router.post('/callback/balance', validateProviderCallback, async (req, res) => {
-  try {
-    const { user_id } = req.body;
-    
-    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [user_id]);
-    if (userResult.rows.length === 0) {
-      return res.status(404).json({ error: 'User not found' });
-    }
-    const user = userResult.rows[0];
-
-    res.json({
-      api: 'do-get-balance-user-ingame',
-      answer: {
-        operator_id: slotsService.operatorId,
-        user_id: user_id,
-        user_nickname: user.username,
-        balance: parseFloat(user.balance),
-        bonus_balance: parseFloat(user.bonus_balance),
-        error_code: 0,
-        error_description: 'ok',
-        currency: 'RUB',
-        timestamp: Math.floor(Date.now() / 1000)
-      },
-      success: true
-    });
-  } catch (error) {
-    res.status(500).json({ error: 'Failed to get balance', error_code: 1 });
   }
 });
 

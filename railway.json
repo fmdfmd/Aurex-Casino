@@ -24,15 +24,20 @@
         "buildCommand": "npm install"
       },
       "deploy": {
-        "startCommand": "npm run setup && npm start",
+        "startCommand": "npm start",
         "healthcheckPath": "/health",
         "restartPolicyType": "ON_FAILURE"
       },
       "variables": {
         "NODE_ENV": "production",
         "PORT": "6000",
-        "JWT_SECRET": "change-this-to-random-secret-key-in-production-min-32-chars",
-        "FRONTEND_URL": "${{frontend.url}}"
+        "JWT_SECRET": "001f3a87772fd6ea602397cdaa87dc70d61028f7e731f90dedb3a3cf79acf385aceb7c2d6c521450ffa0a40b616c2c53",
+        "FRONTEND_URL": "${{frontend.url}}",
+        "SLOTS_API_BASE_URL": "https://apitest.fundist.org",
+        "SLOTS_API_KEY": "437e6b584169d07e82f9a1c13339baf8",
+        "SLOTS_API_PASSWORD": "0708739935452648",
+        "SLOTS_HMAC_SECRET": "p8mlp1ydk33510g2i9oil0xxgtkisbj8n3sq8n4q1djev5184syflj769ox0fuv3",
+        "CALLBACK_URL": "https://aurex-casino-production.up.railway.app/api/callback/softgamings"
       },
       "serviceReferences": {
         "DATABASE_URL": "${{postgres.DATABASE_URL}}"

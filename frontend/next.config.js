@@ -8,7 +8,9 @@ const nextConfig = {
       'icdnchannel.com',
       'api.aurex.io',
       'lh3.googleusercontent.com',
-      't.me'
+      't.me',
+      'img.cdn-fundist.com',
+      'agstatic.com'
     ],
     dangerouslyAllowSVG: true,
     contentSecurityPolicy: "default-src 'self'; script-src 'none'; sandbox;",

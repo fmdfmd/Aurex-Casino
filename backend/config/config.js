@@ -30,12 +30,13 @@ module.exports = {
     expiresIn: process.env.JWT_EXPIRE || '7d'
   },
 
-  // Slots Provider API Configuration
+  // Slots Provider API Configuration (SoftGamings / Fundist)
   slotsApi: {
-    baseUrl: process.env.SLOTS_API_BASE_URL || 'https://int.apichannel.cloud',
-    fallbackUrl: process.env.SLOTS_API_FALLBACK_URL || 'https://icdnchannel.com',
-    operatorId: '40282', // Жестко задаём правильный operator_id
-    callbackUrl: process.env.CALLBACK_URL || 'https://api.aurex.io/api/'
+    baseUrl: process.env.SLOTS_API_BASE_URL || 'https://apitest.fundist.org',
+    apiKey: process.env.SLOTS_API_KEY || '437e6b584169d07e82f9a1c13339baf8',
+    apiPassword: process.env.SLOTS_API_PASSWORD || '0708739935452648',
+    hmacSecret: process.env.SLOTS_HMAC_SECRET || 'p8mlp1ydk33510g2i9oil0xxgtkisbj8n3sq8n4q1djev5184syflj769ox0fuv3',
+    callbackUrl: process.env.CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/callback/softgamings'
   },
 
   // Lava Top Payment System

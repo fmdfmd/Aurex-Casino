@@ -17,6 +17,7 @@ const paymentRoutes = require('./routes/payments');
 const adminRoutes = require('./routes/admin');
 const slotsApiRoutes = require('./routes/slotsApi');
 const gameCallbackRoutes = require('./routes/gameCallback');
+const softgamingsCallbackRoutes = require('./routes/softgamingsCallback');
 const tournamentRoutes = require('./routes/tournaments');
 const promocodeRoutes = require('./routes/promocodes');
 const ticketRoutes = require('./routes/tickets');
@@ -108,7 +109,8 @@ app.use('/api/vault', vaultRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
 
 // Game callback routes (специфический путь для callback от провайдера)
-app.use('/api/callback', gameCallbackRoutes);
+app.use('/api/callback/softgamings', softgamingsCallbackRoutes); // SoftGamings (более специфичный путь)
+app.use('/api/callback', gameCallbackRoutes); // Основной callback (менее специфичный)
 
 // Health check (Railway needs /health without /api)
 app.get('/health', (req, res) => {
@@ -181,6 +183,21 @@ server.listen(PORT, () => {
   
   // Run setup after server is listening (non-blocking)
   setTimeout(() => runProductionSetup(), 1000);
+
+  // Warm up Fundist catalog cache (non-blocking)
+  setTimeout(() => {
+    try {
+      const fundistService = require('./services/fundistApiService');
+      fundistService.getGamesList().then((data) => {
+        const count = Array.isArray(data?.games) ? data.games.length : 0;
+        console.log(`🎰 Fundist catalog warmup done (${count} games)`);
+      }).catch((err) => {
+        console.log('⚠️ Fundist catalog warmup failed:', err.message);
+      });
+    } catch (e) {
+      console.log('⚠️ Fundist catalog warmup error:', e.message);
+    }
+  }, 2000);
 });
 
 module.exports = app;
