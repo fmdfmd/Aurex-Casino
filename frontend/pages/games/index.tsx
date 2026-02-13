@@ -35,10 +35,10 @@ const categories = [
   { id: 'all', nameKey: 'games.allGames', icon: Grid3X3 },
   { id: 'slots', nameKey: 'games.slots', icon: Gamepad2 },
   { id: 'live', nameKey: 'games.liveCasino', icon: Zap },
-  { id: 'new', nameKey: 'games.new', icon: Clock },
-  { id: 'popular', nameKey: 'games.popular', icon: Flame },
-  { id: 'jackpot', nameKey: 'games.jackpot', icon: Trophy },
+  { id: 'sport', nameKey: 'games.sport', icon: Trophy },
   { id: 'table', nameKey: 'games.table', icon: List },
+  { id: 'crash', nameKey: 'games.crash', icon: TrendingUp },
+  { id: 'popular', nameKey: 'games.popular', icon: Flame },
 ];
 
 const sortOptions = [
@@ -130,6 +130,8 @@ export default function GamesPage() {
       else if (selectedCategory === 'slots') filtered = filtered.filter(g => g.category === 'slots');
       else if (selectedCategory === 'live') filtered = filtered.filter(g => g.category === 'live');
       else if (selectedCategory === 'table') filtered = filtered.filter(g => g.category === 'table');
+      else if (selectedCategory === 'sport') filtered = filtered.filter(g => g.category === 'sport');
+      else if (selectedCategory === 'crash') filtered = filtered.filter(g => g.category === 'crash');
     }
 
     // Provider filter
@@ -198,15 +200,7 @@ export default function GamesPage() {
   const slotGames = useMemo(() => allGames.filter(g => g.category === 'slots'), [allGames]);
 
   const handleSportClick = (e: React.MouseEvent) => {
-    e.preventDefault();
-    toast.error('Раздел "Спорт" находится в разработке. Скоро открытие!', {
-      style: {
-        background: '#1F2937',
-        color: '#fff',
-        border: '1px solid #D4AF37',
-      },
-      icon: '🚧',
-    });
+    handleCategoryClick(e, 'sport');
   };
 
   const handleCategoryClick = (e: React.MouseEvent, category: string) => {
