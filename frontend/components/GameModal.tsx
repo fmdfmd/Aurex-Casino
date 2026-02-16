@@ -84,11 +84,24 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     const iframe = iframeRef.current;
     
     // Build a full HTML document for the iframe
+    // Force any inner iframes/divs/objects to fill the entire viewport
     const doc = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}</style>
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+iframe,object,embed,div.game-container,.game-frame{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+body>iframe,body>div,body>object,body>embed{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+</style>
 </head><body>${gameHtml}</body></html>`;
 
     // Use srcdoc for inline HTML — bypasses CSP restrictions on script-src
