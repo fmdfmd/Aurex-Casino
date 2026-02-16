@@ -160,6 +160,38 @@ router.get('/games', async (req, res) => {
       'endorphina2_VikingsWay@ENDORPHINA',                // Vikings Way — Endorphina
       'endorphina2_RoyalXmass2@ENDORPHINA',               // Royal Xmass 2 — Endorphina
       'endorphina_Minotaur@ENDORPHINA',                   // Minotaurus — Endorphina
+
+      // =============================================
+      // === LIVE CASINO — curated order (per Dragon Money) ===
+      // =============================================
+      'crazytime:CrazyTime0000001',                         // Crazy Time — Evolution
+      'roulette:LightningTable01',                          // Lightning Roulette — Evolution
+      'funkytime:FunkyTime0000001',                         // Funky Time — Evolution
+      'crazycoinflip:CrazyCoinFlip001',                     // Crazy Coin Flip — Evolution
+      'megaball:MegaBall00000001',                          // Mega Ball — Evolution
+      'roulette:InstantRo0000001',                          // Instant Roulette — Evolution
+      'moneywheel:MOWDream00000001',                        // Dream Catcher — Evolution
+      'lightningstorm:LightningStorm01',                    // Lightning Storm — Evolution
+      'stockmarket:StockMarket00001',                       // Stock Market — Evolution
+      'lightningdice:LightningDice001',                     // Lightning Dice — Evolution
+      'deadoralivesaloon:doasaloon0000001',                 // Dead or Alive: Saloon — Evolution
+      'crazypachinko:CrazyPachinko001',                     // Crazy Pachinko — Evolution
+      'monopoly:Monopoly00000001',                          // MONOPOLY Live — Evolution
+      'extrachilliepicspins:ExChEpicSpins001',              // Extra Chilli Epic Spins — Evolution
+      'dragontiger:LightningDT00001',                       // Lightning Dragon Tiger — Evolution
+      'balloonrace:BalloonRace00001',                       // Balloon Race — Evolution
+      'reddoorroulette:RedDoorRoulette1',                   // Red Door Roulette — Evolution
+      'baccarat:XXXtremeLB000001',                          // XXXtreme Lightning Baccarat — Evolution
+      'blackjack:PowerInfiniteBJ1',                         // Power Infinite Blackjack — Evolution
+      'classicbetstackerbj:clabetstack00001',               // Bet Stacker Blackjack — Evolution
+      'bacbo:BacBo00000000001',                             // Bac Bo — Evolution
+      'baccarat:gwbaccarat000001',                          // Golden Wealth Baccarat — Evolution
+      '1601',                                               // Snakes & Ladders Live — Pragmatic Play Live
+      'rng-roulette:rng-rt-lightning',                      // First Person Lightning Roulette — Evolution
+      'rng-videopoker:FPVP000000000001',                    // First Person Video Poker — Evolution
+      'rng-blackjack:rng-bj-standard0',                     // First Person Blackjack — Evolution
+      'rng-baccarat:rng-gwbaccarat00',                      // First Person Golden Wealth Baccarat — Evolution
+      'rng-roulette:rng-rt-xxxtreme1',                      // First Person XXXtreme Lightning Roulette — Evolution
     ]);
     const topGameOrder = [...topGameCodes];
 
