@@ -687,14 +687,27 @@ router.get('/freerounds', auth, async (req, res) => {
     if (Array.isArray(data)) {
       freerounds = data;
     } else if (data && typeof data === 'object') {
-      freerounds = Object.values(data).filter(v => typeof v === 'object');
+      freerounds = Object.values(data).filter(v => v && typeof v === 'object' && !Array.isArray(v));
     }
 
-    // Filter active ones
-    const active = freerounds.filter(fr =>
-      fr && (fr.Status === 'Active' || fr.Status === 'active' || fr.FreespinsLeft > 0)
-    );
+    // Filter active freerounds:
+    // - GetUserFreerounds returns items with Count, Games, ExpireDate (no Status field)
+    // - Freerounds/Info returns items with FreespinsLeft, Status
+    // - Consider active if: not expired AND (has Count > 0 OR FreespinsLeft > 0 OR Status is Active OR no status field)
+    const now = new Date();
+    const active = freerounds.filter(fr => {
+      if (!fr || !fr.Games) return false;
+      // Check expiry
+      if (fr.ExpireDate && new Date(fr.ExpireDate) < now) return false;
+      // If Status is explicitly set to something non-active, skip
+      if (fr.Status && fr.Status !== 'Active' && fr.Status !== 'active') return false;
+      // Must have count or freespins remaining
+      const count = parseInt(fr.FreespinsLeft || fr.Count || 0);
+      if (count <= 0) return false;
+      return true;
+    });
 
+    console.log(`[freerounds] User ${fundistLogin}: ${freerounds.length} total, ${active.length} active`);
     res.json({ success: true, data: active });
   } catch (error) {
     // If user has no freerounds, Fundist may return an error
