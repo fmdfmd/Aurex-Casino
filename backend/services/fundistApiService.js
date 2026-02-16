@@ -334,6 +334,10 @@ class FundistApiService {
    * to trigger user creation. The HTML result is discarded.
    * Safe to call multiple times — Fundist updates existing users.
    */
+  /**
+   * Create a user in Fundist via User/AuthHTML with UserAutoCreate=1.
+   * Tries multiple provider systems and countries to maximize success.
+   */
   async createFundistUser(userId, currency = 'RUB', opts = {}) {
     const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
     if (userResult.rows.length === 0) throw new Error('User not found');
@@ -341,62 +345,92 @@ class FundistApiService {
 
     const fundistLogin = `aurex_${user.id}_${currency}`;
     const password = this.generateUserPassword(userId);
-    const tid = this.generateTid();
-    const systemId = '960'; // PragmaticPlay — commonly available
 
-    // Hash: User/AuthHTML/[IP]/[TID]/[KEY]/[LOGIN]/[PASSWORD]/[SYSTEM]/[PWD]
-    const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${fundistLogin}/${password}/${systemId}/${this.apiPassword}`;
-    const hash = this.generateHash(hashString);
+    // Try multiple providers/countries — some may be restricted on test account
+    const attempts = [
+      { systemId: '901', page: 'BoomCity',        country: 'CY' },   // BGaming
+      { systemId: '960', page: 'vs20doghouse',    country: 'CY' },   // PragmaticPlay
+      { systemId: '940', page: 'WildTiger',       country: 'CY' },   // EvoPlay
+      { systemId: '901', page: 'BoomCity',        country: 'MT' },   // BGaming Malta
+      { systemId: '960', page: 'vs20doghouse',    country: 'MT' },   // PragmaticPlay Malta
+      { systemId: '773', page: 'aviator',         country: 'CY' },   // Spribe
+    ];
 
-    const params = new URLSearchParams({
-      Login: fundistLogin,
-      Password: password,
-      System: systemId,
-      TID: tid,
-      Hash: hash,
-      Page: 'vs20doghouse',
-      UserIP: opts.ip || '0.0.0.0',
-      Language: opts.language || 'ru',
-      UserAutoCreate: '1',
-      Currency: currency,
-      Country: user.country || opts.country || 'CY',
-      Nick: user.username || `Player${user.id}`
-    });
+    let lastResult = '';
 
-    const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
+    for (const attempt of attempts) {
+      const tid = this.generateTid();
+      const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${fundistLogin}/${password}/${attempt.systemId}/${this.apiPassword}`;
+      const hash = this.generateHash(hashString);
 
-    console.log(`[Fundist] Creating user via AuthHTML: ${fundistLogin} (${currency})`);
+      const params = new URLSearchParams({
+        Login: fundistLogin,
+        Password: password,
+        System: attempt.systemId,
+        TID: tid,
+        Hash: hash,
+        Page: attempt.page,
+        UserIP: opts.ip || '0.0.0.0',
+        Language: opts.language || 'ru',
+        UserAutoCreate: '1',
+        Currency: currency,
+        Country: user.country || opts.country || attempt.country,
+        Nick: user.username || `Player${user.id}`
+      });
 
-    try {
-      const response = await axios.get(url, { timeout: 30000, family: 4 });
-      const data = String(response.data || '');
+      const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
 
-      if (data.startsWith('1,')) {
-        console.log(`[Fundist] User created/confirmed: ${fundistLogin}`);
-        return { success: true, login: fundistLogin };
+      try {
+        console.log(`[Fundist] Creating user ${fundistLogin} via AuthHTML (System=${attempt.systemId}, Country=${attempt.country})...`);
+        const response = await axios.get(url, { timeout: 15000, family: 4 });
+        const data = String(response.data || '');
+        lastResult = data.slice(0, 200);
+
+        // Success: response contains HTML (game launch page) — user was created
+        if (data.length > 200 || data.includes('<html') || data.includes('<script') || data.includes('<!DOCTYPE')) {
+          console.log(`[Fundist] User ${fundistLogin} created OK (System=${attempt.systemId}, got HTML response)`);
+          return { success: true, login: fundistLogin, created: true };
+        }
+
+        // Fundist "1," prefix = success
+        if (data.startsWith('1,')) {
+          console.log(`[Fundist] User ${fundistLogin} created/confirmed`);
+          return { success: true, login: fundistLogin, created: true };
+        }
+
+        // "24,Redirect error,Restricted country" = game restricted, but user MAY have been created
+        // Continue trying other systems
+        console.log(`[Fundist] AuthHTML attempt (System=${attempt.systemId}): ${data.slice(0, 120)}`);
+
+      } catch (err) {
+        console.log(`[Fundist] AuthHTML attempt (System=${attempt.systemId}) error: ${err.message}`);
       }
+    }
 
-      // Even if game launch fails (e.g. restricted country), the user may still be created
-      // Freerounds/Add will work regardless
-      console.log(`[Fundist] AuthHTML result for ${fundistLogin}: ${data.slice(0, 100)}`);
-      return { success: true, login: fundistLogin, note: data.slice(0, 100) };
-    } catch (err) {
-      console.log(`[Fundist] createFundistUser warning: ${err.message}`);
-      return { success: true, login: fundistLogin, warning: err.message };
+    // After all attempts, verify user exists by trying Freerounds/GetUserFreerounds
+    // If user exists, this returns data (even empty); if not, it errors
+    try {
+      console.log(`[Fundist] Verifying user ${fundistLogin} exists...`);
+      await this.getUserFreerounds(fundistLogin);
+      console.log(`[Fundist] User ${fundistLogin} confirmed to exist (freerounds check passed)`);
+      return { success: true, login: fundistLogin, created: false, verified: true };
+    } catch (verifyErr) {
+      console.error(`[Fundist] User ${fundistLogin} NOT found after all creation attempts. Last result: ${lastResult}`);
+      throw new Error(`Failed to create Fundist user ${fundistLogin}. Last response: ${lastResult}`);
     }
   }
 
   /**
    * Ensure a Fundist user exists — create if not.
-   * Returns the Fundist login string.
+   * Returns the Fundist login string. Throws if creation fails.
    */
   async ensureFundistUser(userId, currency = 'RUB', opts = {}) {
     const fundistLogin = `aurex_${userId}_${currency}`;
-    try {
-      await this.createFundistUser(userId, currency, opts);
-    } catch (err) {
-      console.log(`[Fundist] ensureFundistUser warning: ${err.message}`);
+    const result = await this.createFundistUser(userId, currency, opts);
+    if (!result.success) {
+      throw new Error(`Could not create/verify Fundist user ${fundistLogin}`);
     }
+    console.log(`[Fundist] ensureFundistUser OK: ${fundistLogin} (created=${result.created}, verified=${result.verified || false})`);
     return fundistLogin;
   }
 
