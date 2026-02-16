@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { X, ArrowLeft } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { ArrowLeft, X } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -17,7 +17,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const { user } = useAuthStore();
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
+  const containerRef = useRef<HTMLDivElement | null>(null);
 
   // Lock body scroll when game is open
   useEffect(() => {
@@ -73,46 +73,60 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     run();
   }, [game, mode, isOpen, user]);
 
-  // Write HTML into iframe via document.write (NOT srcdoc!)
-  // srcdoc gives null origin which blocks WebSocket/WebRTC for live casino.
-  // document.write inherits parent origin (aurex.casino) so everything works.
+  // Insert HTML fragment directly into the page (per Fundist docs)
+  // and execute any script tags it contains
   useEffect(() => {
-    if (!isOpen || !gameHtml || !iframeRef.current) return;
-    const iframe = iframeRef.current;
-    
-    const doc = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-iframe,object,embed,div.game-container,.game-frame{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-body>iframe,body>div,body>object,body>embed{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-</style>
-</head><body>${gameHtml}</body></html>`;
+    if (!isOpen || !gameHtml || !containerRef.current) return;
+    const container = containerRef.current;
 
-    try {
-      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (iframeDoc) {
-        iframeDoc.open();
-        iframeDoc.write(doc);
-        iframeDoc.close();
+    // Clear previous content
+    container.innerHTML = '';
+
+    // Parse the HTML fragment
+    const temp = document.createElement('div');
+    temp.innerHTML = gameHtml;
+
+    // Move all nodes into container, handling scripts specially
+    const scripts: HTMLScriptElement[] = [];
+    
+    Array.from(temp.childNodes).forEach(node => {
+      if (node instanceof HTMLScriptElement) {
+        scripts.push(node);
       } else {
-        // Fallback to srcdoc if document not accessible
-        iframe.srcdoc = doc;
+        container.appendChild(node.cloneNode(true));
       }
-    } catch (e) {
-      // Cross-origin fallback
-      iframe.srcdoc = doc;
-    }
+    });
+
+    // Force any iframes inside the fragment to fill the container
+    const iframes = container.querySelectorAll('iframe');
+    iframes.forEach(iframe => {
+      iframe.style.width = '100%';
+      iframe.style.height = '100%';
+      iframe.style.border = '0';
+      iframe.style.position = 'absolute';
+      iframe.style.top = '0';
+      iframe.style.left = '0';
+      iframe.setAttribute('allow', 'autoplay; fullscreen; camera; microphone; encrypted-media');
+    });
+
+    // Execute scripts by creating new script elements
+    scripts.forEach(origScript => {
+      const newScript = document.createElement('script');
+      // Copy attributes
+      Array.from(origScript.attributes).forEach(attr => {
+        newScript.setAttribute(attr.name, attr.value);
+      });
+      // Copy inline content
+      if (origScript.textContent) {
+        newScript.textContent = origScript.textContent;
+      }
+      container.appendChild(newScript);
+    });
+
+    // Cleanup on unmount
+    return () => {
+      container.innerHTML = '';
+    };
   }, [isOpen, gameHtml]);
 
   if (!isOpen || !game) return null;
@@ -122,7 +136,7 @@ body>iframe,body>div,body>object,body>embed{
       className="fixed left-0 right-0 bottom-0 z-40 bg-black flex flex-col"
       style={{ top: '64px' }}
     >
-      {/* Thin game bar with back button and game name */}
+      {/* Thin bar: back + name + close */}
       <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900/95 border-b border-gray-800 shrink-0">
         <button 
           onClick={onClose}
@@ -140,8 +154,8 @@ body>iframe,body>div,body>object,body>embed{
         </button>
       </div>
 
-      {/* Game iframe — fills all remaining space below the bar */}
-      <div className="flex-1 relative min-h-0">
+      {/* Game content area */}
+      <div className="flex-1 relative min-h-0 bg-black">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -161,12 +175,10 @@ body>iframe,body>div,body>object,body>embed{
             </div>
           </div>
         ) : gameHtml ? (
-          <iframe
-            ref={iframeRef}
-            className="w-full h-full border-0"
-            allow="autoplay; fullscreen; camera; microphone; display-capture; encrypted-media; picture-in-picture; web-share"
-            referrerPolicy="no-referrer-when-downgrade"
-            title={game?.name || 'Game'}
+          <div 
+            ref={containerRef}
+            className="w-full h-full relative overflow-hidden"
+            style={{ background: '#000' }}
           />
         ) : null}
       </div>
