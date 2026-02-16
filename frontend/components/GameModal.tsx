@@ -82,6 +82,29 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     // Clear previous content
     container.innerHTML = '';
 
+    // Inject a <style> tag that forces ALL iframes/objects/embeds (present AND future)
+    // to fill the container. This catches dynamically created elements from Fundist scripts.
+    const style = document.createElement('style');
+    style.textContent = `
+      .game-inject-container { position: absolute; inset: 0; }
+      .game-inject-container iframe,
+      .game-inject-container object,
+      .game-inject-container embed,
+      .game-inject-container video {
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        width: 100% !important;
+        height: 100% !important;
+        border: 0 !important;
+      }
+      .game-inject-container > div {
+        width: 100% !important;
+        height: 100% !important;
+      }
+    `;
+    container.appendChild(style);
+
     // Parse the HTML fragment
     const temp = document.createElement('div');
     temp.innerHTML = gameHtml;
@@ -97,26 +120,38 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
       }
     });
 
-    // Force any iframes inside the fragment to fill the container
-    const iframes = container.querySelectorAll('iframe');
-    iframes.forEach(iframe => {
-      iframe.style.width = '100%';
-      iframe.style.height = '100%';
-      iframe.style.border = '0';
-      iframe.style.position = 'absolute';
-      iframe.style.top = '0';
-      iframe.style.left = '0';
-      iframe.setAttribute('allow', 'autoplay; fullscreen; camera; microphone; encrypted-media');
+    // Helper: force-fill an iframe
+    const forceIframeFullscreen = (iframe: HTMLIFrameElement) => {
+      iframe.setAttribute('allow', 'autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write');
+      iframe.removeAttribute('width');
+      iframe.removeAttribute('height');
+      iframe.removeAttribute('sandbox');
+    };
+
+    // Style any iframes already in the fragment
+    container.querySelectorAll('iframe').forEach(forceIframeFullscreen);
+
+    // MutationObserver to catch iframes created dynamically by Fundist scripts
+    const observer = new MutationObserver((mutations) => {
+      for (const mutation of mutations) {
+        mutation.addedNodes.forEach(node => {
+          if (node instanceof HTMLIFrameElement) {
+            forceIframeFullscreen(node);
+          }
+          if (node instanceof HTMLElement) {
+            node.querySelectorAll?.('iframe')?.forEach(forceIframeFullscreen);
+          }
+        });
+      }
     });
+    observer.observe(container, { childList: true, subtree: true });
 
     // Execute scripts by creating new script elements
     scripts.forEach(origScript => {
       const newScript = document.createElement('script');
-      // Copy attributes
       Array.from(origScript.attributes).forEach(attr => {
         newScript.setAttribute(attr.name, attr.value);
       });
-      // Copy inline content
       if (origScript.textContent) {
         newScript.textContent = origScript.textContent;
       }
@@ -125,6 +160,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 
     // Cleanup on unmount
     return () => {
+      observer.disconnect();
       container.innerHTML = '';
     };
   }, [isOpen, gameHtml]);
@@ -177,7 +213,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         ) : gameHtml ? (
           <div 
             ref={containerRef}
-            className="w-full h-full relative overflow-hidden"
+            className="game-inject-container overflow-hidden"
             style={{ background: '#000' }}
           />
         ) : null}
