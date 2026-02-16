@@ -53,7 +53,7 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
 
   const handlePlay = () => {
     if (onPlay) {
-      onPlay(game);
+      onPlay({ ...game, mode: 'real' });
     }
   };
 

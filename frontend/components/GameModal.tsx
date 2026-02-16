@@ -58,7 +58,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
           gameCode: game.id,
           systemId: (game as any).systemId,
           currency,
-          language: 'en',
+          language: 'ru',
           mode
         });
 

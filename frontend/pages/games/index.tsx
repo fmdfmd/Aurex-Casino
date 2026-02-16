@@ -81,13 +81,14 @@ export default function GamesPage() {
   
   // Game Modal state
   const [selectedGame, setSelectedGame] = useState<any>(null);
-  const [gameMode, setGameMode] = useState<'demo' | 'real'>('demo');
+  const [gameMode, setGameMode] = useState<'demo' | 'real'>('real');
   const [isGameModalOpen, setIsGameModalOpen] = useState(false);
 
   // Game handlers
   const handleGamePlay = (gameData: any) => {
     setSelectedGame(gameData);
-    setGameMode(gameData.mode || 'demo');
+    // Default to 'real' for logged-in users, 'demo' for guests
+    setGameMode(gameData.mode || (isAuthenticated ? 'real' : 'demo'));
     setIsGameModalOpen(true);
   };
 
