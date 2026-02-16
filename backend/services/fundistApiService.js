@@ -364,7 +364,7 @@ class FundistApiService {
         : {
             UserAutoCreate: '1',
             Currency: String(currency),
-            Country: user.country || 'UZB',
+            Country: user.country || 'RUS',
             Nick: user.username
           }),
       ...(opts.extParam ? { ExtParam: String(opts.extParam) } : {}),
