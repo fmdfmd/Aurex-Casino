@@ -44,6 +44,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { href: '/admin/tournaments', label: 'Турниры', icon: Trophy },
     { href: '/admin/promocodes', label: 'Промокоды', icon: Tag },
     { href: '/admin/bonuses', label: 'Бонусы', icon: Gift },
+    { href: '/admin/freerounds', label: 'Фриспины', icon: Gamepad2 },
     { href: '/admin/tickets', label: 'Тикеты', icon: MessageSquare },
     { href: '/admin/verification', label: 'Верификация (KYC)', icon: FileCheck },
     { href: '/admin/settings', label: 'Настройки', icon: Settings },

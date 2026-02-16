@@ -29,6 +29,7 @@ import { useTranslation } from '../../hooks/useTranslation';
 import { useAuthStore } from '../../store/authStore';
 
 import GameCategorySection from '../../components/GameCategorySection';
+import FreeroundsBanner from '../../components/FreeroundsBanner';
 import { toast } from 'react-hot-toast';
 
 const categories = [
@@ -248,6 +249,11 @@ export default function GamesPage() {
             </div>
 
             <div className="max-w-7xl mx-auto px-4 mt-8">
+
+            {/* Freerounds Banner */}
+            {isAuthenticated && (
+              <FreeroundsBanner onPlayGame={handleGamePlay} allGames={allGames} />
+            )}
 
             {/* NEW: Dragon Money Style Category Sections (Wide blocks with game previews) */}
             {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && (

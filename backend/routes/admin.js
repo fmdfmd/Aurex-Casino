@@ -582,4 +582,101 @@ router.post('/settings/reset', adminAuth, async (req, res) => {
   }
 });
 
+// =========================================================================
+// Freerounds Management
+// =========================================================================
+
+const fundistApi = require('../services/fundistApiService');
+
+// Issue freerounds to a user
+router.post('/freerounds', adminAuth, [
+  body('userId').isInt({ min: 1 }),
+  body('gameCode').isString().notEmpty(),
+  body('operator').isString().notEmpty(),
+  body('count').isInt({ min: 1, max: 1000 }),
+  body('betLevel').optional().isInt({ min: 1 }),
+  body('expireDays').optional().isInt({ min: 1, max: 365 })
+], async (req, res) => {
+  try {
+    const errors = validationResult(req);
+    if (!errors.isEmpty()) {
+      return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
+    }
+
+    const { userId, gameCode, operator, count, betLevel, expireDays = 7 } = req.body;
+
+    // Get user info
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+    const currency = user.currency || 'RUB';
+    const fundistLogin = `aurex_${user.id}_${currency}`;
+
+    // Calculate expire date
+    const expireDate = new Date();
+    expireDate.setDate(expireDate.getDate() + expireDays);
+    const expire = expireDate.toISOString().replace('T', ' ').split('.')[0];
+
+    console.log(`[freerounds] Issuing ${count} freerounds to ${fundistLogin} on ${gameCode} (${operator}), betLevel=${betLevel || 1}, expire=${expire}`);
+
+    const result = await fundistApi.addFreerounds(
+      operator,
+      fundistLogin,
+      gameCode,
+      count,
+      expire,
+      { betLevel: betLevel || undefined }
+    );
+
+    // Log to DB
+    try {
+      await pool.query(
+        `INSERT INTO transactions (user_id, type, amount, currency, status, description, metadata)
+         VALUES ($1, 'freerounds', 0, $2, 'completed', $3, $4)`,
+        [
+          userId,
+          currency,
+          `${count} фриспинов на ${gameCode}`,
+          JSON.stringify({ operator, gameCode, count, betLevel, expire, tid: result.tid })
+        ]
+      );
+    } catch (dbErr) {
+      console.log('[freerounds] Failed to log transaction:', dbErr.message);
+    }
+
+    res.json({
+      success: true,
+      message: `${count} фриспинов выдано пользователю ${user.username}`,
+      data: { tid: result.tid, login: fundistLogin, expire }
+    });
+  } catch (error) {
+    console.error('[freerounds] Error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get user's freerounds
+router.get('/freerounds/:userId', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const user = userResult.rows[0];
+    const currency = user.currency || 'RUB';
+    const fundistLogin = `aurex_${user.id}_${currency}`;
+
+    const data = await fundistApi.getUserFreerounds(fundistLogin);
+
+    res.json({ success: true, data, login: fundistLogin });
+  } catch (error) {
+    console.error('[freerounds] Get user freerounds error:', error.message);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;

@@ -427,6 +427,133 @@ class FundistApiService {
     // Any other unexpected response
     throw new Error(`Не удалось запустить игру: ${data.slice(0, 200)}`);
   }
+  // ---------------------------------------------------------------------------
+  // Freerounds API
+  // ---------------------------------------------------------------------------
+
+  /**
+   * Assign free rounds to a user
+   * @param {string} operator - Merchant system name (e.g. 'PragmaticPlay')
+   * @param {string|string[]} login - Fundist login(s)
+   * @param {string|string[]} games - PageCode(s)
+   * @param {number} count - Number of free rounds
+   * @param {string} expire - Expiry date 'YYYY-MM-DD HH:mm:ss'
+   * @param {object} opts - { betLevel, typeOfBet, freeBonus }
+   */
+  async addFreerounds(operator, login, games, count, expire, opts = {}) {
+    const tid = this.generateTid();
+    const hashString = `${operator}/Freerounds/${this.casinoIp}/${tid}/${this.apiKey}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const params = new URLSearchParams();
+    params.append('Operator', operator);
+
+    // Support single or multiple logins
+    const logins = Array.isArray(login) ? login : [login];
+    if (logins.length === 1) {
+      params.append('Login', logins[0]);
+    } else {
+      logins.forEach(l => params.append('Login[]', l));
+    }
+
+    // Support single or multiple games
+    const gamesList = Array.isArray(games) ? games : [games];
+    if (gamesList.length === 1) {
+      params.append('Games', gamesList[0]);
+    } else {
+      gamesList.forEach(g => params.append('Games[]', g));
+    }
+
+    params.append('Count', String(count));
+    params.append('Expire', expire);
+    params.append('TID', tid);
+    params.append('Hash', hash);
+
+    if (opts.betLevel) params.append('BetLevel', String(opts.betLevel));
+    if (opts.typeOfBet) params.append('typeOfBet', 'true');
+    if (opts.freeBonus) params.append('FreeBonus', String(opts.freeBonus));
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/Freerounds/Add/?&${params.toString()}`;
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    const data = String(response.data || '');
+
+    if (data.trim() === '1') {
+      return { success: true, tid };
+    }
+
+    throw new Error(`Freerounds/Add error: ${data.slice(0, 300)}`);
+  }
+
+  /**
+   * Get remaining free rounds for a user from a specific operator
+   */
+  async getFreeroundsInfo(operator, login) {
+    const tid = this.generateTid();
+    const hashString = `${operator}/Freerounds/${this.casinoIp}/${tid}/${this.apiKey}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/Freerounds/Info/?&Operator=${encodeURIComponent(operator)}&Login=${encodeURIComponent(login)}&TID=${tid}&Hash=${hash}`;
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    const data = response.data;
+
+    if (typeof data === 'string' && /^\d+,/.test(data)) {
+      throw new Error(`Freerounds/Info error: ${data.slice(0, 300)}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Get all freerounds for a user across all operators
+   */
+  async getUserFreerounds(login) {
+    const tid = this.generateTid();
+    const hashString = `Freerounds/GetUserFreerounds/${this.casinoIp}/${tid}/${this.apiKey}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const loginsParam = Array.isArray(login)
+      ? login.map(l => `Login[]=${encodeURIComponent(l)}`).join('&')
+      : `Login=${encodeURIComponent(login)}`;
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/Freerounds/GetUserFreerounds/?&${loginsParam}&TID=${tid}&Hash=${hash}`;
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    const data = response.data;
+
+    if (typeof data === 'string' && /^\d+,/.test(data)) {
+      throw new Error(`Freerounds/GetUserFreerounds error: ${data.slice(0, 300)}`);
+    }
+
+    return data;
+  }
+
+  /**
+   * Check status of a specific freerounds batch by its TID
+   */
+  async checkFreeroundsStatus(freeroundsTid) {
+    const tid = this.generateTid();
+    const hashString = `Freerounds/Check/${this.casinoIp}/${tid}/${this.apiKey}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/Freerounds/Check/?&TID=${tid}&FRTID=${encodeURIComponent(freeroundsTid)}&Hash=${hash}`;
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    return response.data;
+  }
+
+  /**
+   * Remove free rounds from a user
+   */
+  async removeFreerounds(operator, login, extId) {
+    const tid = this.generateTid();
+    const hashString = `${operator}/Freerounds/${this.casinoIp}/${tid}/${this.apiKey}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/Freerounds/Remove/?&Operator=${encodeURIComponent(operator)}&ExtID=${encodeURIComponent(extId)}&Login=${encodeURIComponent(login)}&TID=${tid}&Hash=${hash}`;
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    const data = String(response.data || '');
+
+    if (data.trim() === '1') return { success: true };
+    throw new Error(`Freerounds/Remove error: ${data.slice(0, 300)}`);
+  }
 }
 
 module.exports = new FundistApiService();

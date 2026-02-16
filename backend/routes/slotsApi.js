@@ -671,4 +671,39 @@ body>iframe,body>div,body>object,body>embed{
   res.send(page);
 });
 
+// =========================================================================
+// User freerounds check
+// =========================================================================
+router.get('/freerounds', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const currency = req.user.currency || 'RUB';
+    const fundistLogin = `aurex_${userId}_${currency}`;
+
+    const data = await fundistService.getUserFreerounds(fundistLogin);
+
+    // Normalize: data can be array or object
+    let freerounds = [];
+    if (Array.isArray(data)) {
+      freerounds = data;
+    } else if (data && typeof data === 'object') {
+      freerounds = Object.values(data).filter(v => typeof v === 'object');
+    }
+
+    // Filter active ones
+    const active = freerounds.filter(fr =>
+      fr && (fr.Status === 'Active' || fr.Status === 'active' || fr.FreespinsLeft > 0)
+    );
+
+    res.json({ success: true, data: active });
+  } catch (error) {
+    // If user has no freerounds, Fundist may return an error
+    if (error.message && error.message.includes('error')) {
+      return res.json({ success: true, data: [] });
+    }
+    console.error('[freerounds] User check error:', error.message);
+    res.json({ success: true, data: [] });
+  }
+});
+
 module.exports = router;
