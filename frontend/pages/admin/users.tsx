@@ -29,29 +29,20 @@ import { useAuthStore } from '../../store/authStore';
 import toast from 'react-hot-toast';
 
 interface User {
-  _id: string;
+  id: number;
   odid: string;
   username: string;
   email: string;
   balance: number;
   bonusBalance: number;
   vipLevel: number;
+  vipPoints: number;
+  isVerified: boolean;
   isAdmin: boolean;
   isActive: boolean;
+  referralCode: string;
   depositCount: number;
-  usedBonuses: {
-    firstDeposit: boolean;
-    secondDeposit: boolean;
-    thirdDeposit: boolean;
-    fourthDeposit: boolean;
-  };
-  statistics: {
-    totalDeposits: number;
-    totalWithdrawals: number;
-    totalWagered: number;
-    totalWon: number;
-    gamesPlayed: number;
-  };
+  lastLogin: string;
   createdAt: string;
 }
 
@@ -84,7 +75,7 @@ export default function AdminUsersPage() {
       });
       if (response.ok) {
         const data = await response.json();
-        const usersArray = Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []);
+        const usersArray = data.data?.users || (Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
         setUsers(usersArray);
       } else {
         console.error('Failed to fetch users: API error');
@@ -130,7 +121,7 @@ export default function AdminUsersPage() {
 
     try {
       // Try API call first
-      const response = await fetch(`/api/admin/users/${selectedUser._id}/balance`, {
+      const response = await fetch(`/api/admin/users/${selectedUser.id}/balance`, {
         method: 'POST',
         headers: { 
           'Authorization': `Bearer ${token}`,
@@ -152,7 +143,7 @@ export default function AdminUsersPage() {
 
     // Update local state
     setUsers(users.map(u => {
-      if (u._id === selectedUser._id) {
+      if (u.id === selectedUser.id) {
         return {
           ...u,
           [balanceCategory === 'main' ? 'balance' : 'bonusBalance']: newBalance
@@ -178,7 +169,7 @@ export default function AdminUsersPage() {
   const filteredUsers = usersArray.filter(user => 
     (user.username || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
     (user.email || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (user.odid || user._id || '').toLowerCase().includes(searchTerm.toLowerCase())
+    (user.odid || String(user.id) || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getVipBadge = (level: number) => {
@@ -268,15 +259,9 @@ export default function AdminUsersPage() {
                   ) : (
                     filteredUsers.map((user) => {
                       const vipBadge = getVipBadge(user.vipLevel);
-                      const usedBonusCount = [
-                        user.usedBonuses?.firstDeposit,
-                        user.usedBonuses?.secondDeposit,
-                        user.usedBonuses?.thirdDeposit,
-                        user.usedBonuses?.fourthDeposit
-                      ].filter(Boolean).length;
 
                       return (
-                        <tr key={user._id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
+                        <tr key={user.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex flex-col">
                               <div className="flex items-center space-x-2">
@@ -287,10 +272,10 @@ export default function AdminUsersPage() {
                               </div>
                               <span className="text-sm text-aurex-platinum-500">{user.email}</span>
                               <button 
-                                onClick={() => copyToClipboard(user.odid || user._id || '')}
+                                onClick={() => copyToClipboard(user.odid || String(user.id))}
                                 className="flex items-center space-x-1 text-xs text-aurex-gold-500 hover:text-aurex-gold-400 mt-1"
                               >
-                                <span>{user.odid || user._id}</span>
+                                <span>{user.odid || `#${user.id}`}</span>
                                 <Copy className="w-3 h-3" />
                               </button>
                             </div>
@@ -308,33 +293,12 @@ export default function AdminUsersPage() {
                             </div>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex flex-col">
-                              <span className="text-white">{user.depositCount || 0} депозитов</span>
-                              <span className="text-sm text-aurex-platinum-500">
-                                ₽{(user.statistics?.totalDeposits || 0).toLocaleString('ru-RU')} всего
-                              </span>
-                            </div>
+                            <span className="text-white">{user.depositCount || 0}</span>
                           </td>
                           <td className="px-6 py-4">
-                            <div className="flex gap-1">
-                              {[1, 2, 3, 4].map((dep) => {
-                                const bonusKeys = ['firstDeposit', 'secondDeposit', 'thirdDeposit', 'fourthDeposit'];
-                                const isUsed = user.usedBonuses?.[bonusKeys[dep - 1] as keyof typeof user.usedBonuses];
-                                return (
-                                  <div
-                                    key={dep}
-                                    className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold ${
-                                      isUsed 
-                                        ? 'bg-green-500/20 text-green-400' 
-                                        : 'bg-aurex-obsidian-700 text-aurex-platinum-500'
-                                    }`}
-                                    title={`${dep}-й депозит ${isUsed ? 'использован' : 'доступен'}`}
-                                  >
-                                    {dep}
-                                  </div>
-                                );
-                              })}
-                            </div>
+                            <span className="text-aurex-gold-500 font-medium">
+                              ₽{(user.bonusBalance || 0).toLocaleString('ru-RU')}
+                            </span>
                           </td>
                           <td className="px-6 py-4">
                             {user.isActive ? (
