@@ -68,7 +68,7 @@ export default function FreeroundsBanner({ onPlayGame, allGames }: FreeroundsBan
     return allGames.find(g => g.gameCode === gameCode || g.id === gameCode);
   };
 
-  const totalSpins = freerounds.reduce((sum, fr) => sum + (fr.FreespinsLeft || fr.Count || 0), 0);
+  const totalSpins = freerounds.reduce((sum, fr) => sum + parseInt(fr.FreespinsLeft || fr.Count || '0', 10), 0);
   const firstFr = freerounds[0];
   const gameCodes = firstFr?.Games || [];
   const firstGameCode = Array.isArray(gameCodes) ? gameCodes[0] : gameCodes;
@@ -152,8 +152,10 @@ export default function FreeroundsBanner({ onPlayGame, allGames }: FreeroundsBan
           </div>
         )}
 
-        {/* Wager Progress Banner */}
-        {hasWagers && bonusStatus && bonusStatus.active_wagers.map(wager => (
+        {/* Wager Progress Banner — only show when there are actual wins to wager */}
+        {hasWagers && bonusStatus && bonusStatus.active_wagers
+          .filter(w => w.wager_required > 0 && w.win_amount > 0)
+          .map(wager => (
           <div
             key={wager.id}
             className="relative overflow-hidden rounded-2xl border border-orange-500/30 bg-gradient-to-r from-orange-900/20 via-aurex-obsidian-800 to-orange-500/10"

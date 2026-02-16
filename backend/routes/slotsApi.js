@@ -781,7 +781,7 @@ router.get('/bonus-status', auth, async (req, res) => {
           win_amount: parseFloat(b.win_amount),
           wager_required: parseFloat(b.wager_required),
           wager_completed: parseFloat(b.wager_completed),
-          progress: b.wager_required > 0 ? Math.min(100, Math.round((parseFloat(b.wager_completed) / parseFloat(b.wager_required)) * 100)) : 100,
+          progress: parseFloat(b.wager_required) > 0 ? Math.min(100, Math.round((parseFloat(b.wager_completed) / parseFloat(b.wager_required)) * 100)) : 0,
           status: b.status,
           expire_at: b.expire_at,
           created_at: b.created_at
