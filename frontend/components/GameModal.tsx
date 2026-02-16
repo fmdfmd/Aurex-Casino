@@ -133,8 +133,8 @@ body>iframe,body>div,body>object,body>embed{
           : 'fixed inset-0 md:inset-4 md:rounded-lg'
         }
       `}>
-        {/* Header — compact on mobile */}
-        <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 bg-gray-900/95 border-b border-gray-800 shrink-0">
+        {/* Header — compact on mobile, z-20 to stay above iframe */}
+        <div className="flex items-center justify-between px-3 py-2 md:px-4 md:py-3 bg-gray-900/95 border-b border-gray-800 shrink-0 relative z-20">
           <div className="flex items-center gap-2 min-w-0">
             <h2 className="text-sm md:text-lg font-bold text-white truncate">{game?.name || 'Игра'}</h2>
             <span className="text-xs text-gray-500 hidden md:inline">{game?.provider || ''}</span>
@@ -164,14 +164,14 @@ body>iframe,body>div,body>object,body>embed{
             <button onClick={toggleFullscreen} className="p-1.5 md:p-2 text-gray-400 hover:text-white hidden md:block">
               {isFullscreen ? <Minimize2 className="w-4 h-4 md:w-5 md:h-5" /> : <Maximize2 className="w-4 h-4 md:w-5 md:h-5" />}
             </button>
-            <button onClick={onClose} className="p-1.5 md:p-2 text-gray-400 hover:text-white">
+            <button onClick={onClose} className="p-2 md:p-2.5 bg-red-600/80 hover:bg-red-500 text-white rounded-lg transition-colors">
               <X className="w-5 h-5 md:w-6 md:h-6" />
             </button>
           </div>
         </div>
 
-        {/* Game Frame — takes all remaining space */}
-        <div className="flex-1 relative bg-black min-h-0">
+        {/* Game Frame — takes all remaining space, z-10 below header */}
+        <div className="flex-1 relative bg-black min-h-0 z-10">
           {isLoading ? (
             <div className="flex items-center justify-center h-full">
               <div className="text-center">
