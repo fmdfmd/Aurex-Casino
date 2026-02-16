@@ -328,6 +328,73 @@ class FundistApiService {
       .substring(0, 16);
   }
 
+  /**
+   * Create a user in Fundist system using User/Add API.
+   * This is needed BEFORE issuing freerounds.
+   * Safe to call multiple times — Fundist updates existing users.
+   */
+  async createFundistUser(userId, currency = 'RUB', opts = {}) {
+    const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) throw new Error('User not found');
+    const user = userResult.rows[0];
+
+    const fundistLogin = `aurex_${user.id}_${currency}`;
+    const password = this.generateUserPassword(userId);
+    const tid = this.generateTid();
+
+    // Hash: User/Add/[IP]/[TID]/[KEY]/[LOGIN]/[PASSWORD]/[CURRENCY]/[PWD]
+    const hashString = `User/Add/${this.casinoIp}/${tid}/${this.apiKey}/${fundistLogin}/${password}/${currency}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const params = new URLSearchParams({
+      Login: fundistLogin,
+      Password: password,
+      TID: tid,
+      Currency: currency,
+      Hash: hash,
+      Language: opts.language || 'ru',
+      RegistrationIP: opts.ip || '0.0.0.0',
+      Nick: user.username || `Player${user.id}`,
+      Country: user.country || opts.country || 'RUS'
+    });
+
+    if (user.email) params.append('Email', user.email);
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/Add/?&${params.toString()}`;
+
+    console.log(`[Fundist] Creating user: ${fundistLogin} (${currency})`);
+
+    const response = await axios.get(url, { timeout: 30000, family: 4 });
+    const data = String(response.data || '');
+
+    if (data.trim() === '1') {
+      console.log(`[Fundist] User created/updated: ${fundistLogin}`);
+      return { success: true, login: fundistLogin };
+    }
+
+    // Error 16 = user already exists with different currency — that's okay
+    if (data.startsWith('16,')) {
+      console.log(`[Fundist] User ${fundistLogin} already exists: ${data}`);
+      return { success: true, login: fundistLogin, alreadyExists: true };
+    }
+
+    throw new Error(`User/Add error: ${data.slice(0, 300)}`);
+  }
+
+  /**
+   * Ensure a Fundist user exists — create if not.
+   * Returns the Fundist login string.
+   */
+  async ensureFundistUser(userId, currency = 'RUB', opts = {}) {
+    const fundistLogin = `aurex_${userId}_${currency}`;
+    try {
+      await this.createFundistUser(userId, currency, opts);
+    } catch (err) {
+      console.log(`[Fundist] ensureFundistUser warning: ${err.message}`);
+    }
+    return fundistLogin;
+  }
+
   async startGameSession(
     userId,
     pageCode,

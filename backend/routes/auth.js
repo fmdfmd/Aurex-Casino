@@ -7,6 +7,7 @@ const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 const router = express.Router();
 const { normalizePhone } = require('../utils/phone');
+const fundistService = require('../services/fundistApiService');
 
 // Format user for response
 const formatUser = (user) => {
@@ -157,6 +158,12 @@ router.post('/register', [
     );
 
     const user = result.rows[0];
+
+    // Create user in Fundist system (non-blocking, for freerounds etc.)
+    fundistService.ensureFundistUser(user.id, 'RUB', {
+      ip: req.ip || '0.0.0.0',
+      language: 'ru'
+    }).catch(err => console.log('[reg] Fundist user creation deferred:', err.message));
 
     // Generate token
     const token = generateToken(user.id);
@@ -690,6 +697,10 @@ router.get('/google/callback', async (req, res) => {
         [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode]
       );
       user = insertResult.rows[0];
+
+      // Create user in Fundist (non-blocking)
+      fundistService.ensureFundistUser(user.id, 'RUB', { language: 'ru' })
+        .catch(err => console.log('[google-reg] Fundist user creation deferred:', err.message));
     }
 
     if (!user.is_active) {
@@ -769,6 +780,10 @@ async function processTelegramAuth(telegramData) {
       [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode]
     );
     user = insertResult.rows[0];
+
+    // Create user in Fundist (non-blocking)
+    fundistService.ensureFundistUser(user.id, 'RUB', { language: 'ru' })
+      .catch(err => console.log('[tg-reg] Fundist user creation deferred:', err.message));
   }
 
   if (!user.is_active) {

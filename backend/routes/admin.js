@@ -612,7 +612,9 @@ router.post('/freerounds', adminAuth, [
     }
     const user = userResult.rows[0];
     const currency = user.currency || 'RUB';
-    const fundistLogin = `aurex_${user.id}_${currency}`;
+
+    // Ensure user exists in Fundist before issuing freerounds
+    const fundistLogin = await fundistApi.ensureFundistUser(user.id, currency, { language: 'ru' });
 
     // Calculate expire date
     const expireDate = new Date();
