@@ -428,10 +428,16 @@ const handleCredit = async (req, res) => {
       return sendOwError(res, 'User not found', '0.00');
     }
 
-    // Check if this is a freeround win (game_extra = "FREEROUNDS_XXX")
+    // Check if this is a freeround win
+    // Method 1: game_extra = "FREEROUNDS_XXX" (requires Fundist to enable this field)
     const gameExtra = req.body.game_extra || '';
     const freeroundTidMatch = gameExtra.match(/^FREEROUNDS_(.+)$/);
-    const freeroundTid = freeroundTidMatch ? freeroundTidMatch[1] : null;
+    let freeroundTid = freeroundTidMatch ? freeroundTidMatch[1] : null;
+
+    // Method 2: detect freeround by matching game + checking no debit in same round
+    // Extract game page code from i_gamedesc (format: "960:vs10bbbonanza")
+    const gameDesc = req.body.i_gamedesc || '';
+    const gamePageCode = gameDesc.includes(':') ? gameDesc.split(':')[1] : gameDesc;
 
     const result = await withTransaction(pool, async (client) => {
       // 0) Idempotency by TID
@@ -471,15 +477,51 @@ const handleCredit = async (req, res) => {
       if (userResult.rows.length === 0) throw { code: 404, msg: 'User not found' };
       const user = userResult.rows[0];
 
-      // Log currency mismatch but process anyway
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
         console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
       }
 
-      // Check if this freeround has a wager requirement
+      // Detect freeround win: Method 2 (fallback when game_extra is not available)
+      // If no freeroundTid from game_extra, check if this game matches an active freeround
+      // AND there was no debit (bet) in this game round — freerounds have no bets
       let hasWager = false;
       let freeroundBonus = null;
-      if (freeroundTid && creditAmount > 0) {
+
+      if (!freeroundTid && creditAmount > 0 && gamePageCode) {
+        try {
+          // Check if user has active freerounds for this game
+          const bonusRes = await client.query(
+            `SELECT * FROM freerounds_bonuses 
+             WHERE user_id = $1 AND game_code = $2 
+               AND status IN ('active', 'wagering') 
+               AND expire_at > NOW()
+             ORDER BY created_at ASC LIMIT 1`,
+            [userId, gamePageCode]
+          );
+          if (bonusRes.rows.length > 0) {
+            // Check if there was any debit in this game round (i_gameid)
+            // Freerounds = credit WITHOUT debit. Regular play = debit then credit.
+            const debitCheck = await client.query(
+              `SELECT COUNT(*) as cnt FROM onewallet_requests 
+               WHERE userid = $1 AND i_gameid = $2 AND type = 'debit'`,
+              [String(userid), String(i_gameid)]
+            );
+            const hasDebit = parseInt(debitCheck.rows[0]?.cnt || '0') > 0;
+
+            if (!hasDebit) {
+              freeroundBonus = bonusRes.rows[0];
+              freeroundTid = freeroundBonus.fundist_tid;
+              hasWager = freeroundBonus.wager_multiplier > 0;
+              console.log(`🎰 Detected freeround win (no-debit method): ${creditAmount} on ${gamePageCode}, TID=${freeroundTid}, wager=${freeroundBonus.wager_multiplier}`);
+            }
+          }
+        } catch (detectErr) {
+          console.error('[freeround-detect] Error:', detectErr.message);
+        }
+      }
+
+      // Method 1: game_extra was available
+      if (freeroundTid && !freeroundBonus && creditAmount > 0) {
         const bonusRes = await client.query(
           `SELECT * FROM freerounds_bonuses WHERE fundist_tid = $1 AND user_id = $2 AND wager_multiplier > 0`,
           [freeroundTid, userId]
