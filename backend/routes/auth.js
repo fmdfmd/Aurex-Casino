@@ -14,6 +14,7 @@ const formatUser = (user) => {
   const id = user.id;
   const balance = parseFloat(user.balance) || 0;
   const bonusBalance = parseFloat(user.bonus_balance) || 0;
+  const currency = user.currency || 'RUB';
   return {
     id,
     odid: user.odid || `AUREX-${String(id).padStart(6, '0')}`,
@@ -26,6 +27,7 @@ const formatUser = (user) => {
     birthDate: user.birth_date || null,
     balance,
     bonusBalance,
+    currency,
     totalBalanceRUB: balance + bonusBalance,
     vipLevel: user.vip_level || 1,
     vipPoints: user.vip_points || 0,

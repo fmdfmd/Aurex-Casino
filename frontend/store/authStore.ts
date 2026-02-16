@@ -2,6 +2,18 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import axios from 'axios';
 import toast from 'react-hot-toast';
+import { useSettingsStore, type Currency } from './settingsStore';
+
+// Sync user DB currency to display settings
+function syncCurrencyFromUser(user: any) {
+  if (user?.currency) {
+    const validCurrencies: Currency[] = ['RUB', 'USD', 'EUR', 'BTC', 'USDT'];
+    const userCurrency = user.currency as Currency;
+    if (validCurrencies.includes(userCurrency)) {
+      useSettingsStore.getState().setCurrency(userCurrency);
+    }
+  }
+}
 
 interface Wager {
   required: number;
@@ -36,6 +48,7 @@ interface User {
   birthDate?: string;
   balance: number;
   bonusBalance: number;
+  currency?: string;
   totalBalanceRUB?: number;
   vipLevel: number;
   vipPoints: number;
@@ -161,6 +174,8 @@ export const useAuthStore = create<AuthState>()(
           // Set auth header for future requests
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
+          syncCurrencyFromUser(user);
+
           set({
             user,
             token,
@@ -184,6 +199,8 @@ export const useAuthStore = create<AuthState>()(
           const response = await axios.get('/api/auth/me');
           const { user } = response.data?.data || {};
           if (!user) throw new Error('Invalid token');
+
+          syncCurrencyFromUser(user);
 
           set({
             user,
@@ -213,6 +230,7 @@ export const useAuthStore = create<AuthState>()(
           const { user, token } = resData;
 
           axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          syncCurrencyFromUser(user);
 
           set({
             user,
@@ -281,6 +299,7 @@ export const useAuthStore = create<AuthState>()(
           const response = await axios.get('/api/auth/me');
           const { user } = response.data?.data || {};
           
+          syncCurrencyFromUser(user);
           set({ user });
         } catch (error: any) {
           console.error('Failed to refresh user:', error);
