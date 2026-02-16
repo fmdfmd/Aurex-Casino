@@ -12,28 +12,57 @@ const router = express.Router();
 const determineCategory = (game, categoriesMap) => {
   const mid = String(game.MerchantID || game.System || '');
 
-  // Known live casino providers
-  const liveProviders = new Set(['998', '913', '990', '983', '934', '980', '968', '904', '945', '866', '314']);
+  // 1. Provider-based detection (most reliable)
+  const liveProviders = new Set([
+    '998',  // Evolution
+    '913',  // Pragmatic Play Live
+    '990',  // BetGames.tv
+    '983',  // Ezugi
+    '934',  // LiveGames
+    '980',  // LuckyStreak
+    '968',  // SA Gaming
+    '904',  // HoGaming
+    '945',  // VivoGaming
+    '866',  // WM Casino
+    '314',  // ICONIC21 Live
+    '814',  // Oriental Games
+    '900',  // TVBet
+  ]);
   if (liveProviders.has(mid)) return 'live';
 
-  // Known sports providers
-  const sportProviders = new Set(['952', '974', '84']);
+  const sportProviders = new Set([
+    '952',  // BetradarVS
+    '974',  // Kiron
+  ]);
   if (sportProviders.has(mid)) return 'sport';
 
-  // Check categories (FullList uses CategoryID, List uses Categories)
+  // 2. CategoryID-based detection (direct Fundist category IDs)
   const catIds = game.CategoryID || game.Categories || [];
-  if (Array.isArray(catIds)) {
-    for (const catId of catIds) {
-      const cat = categoriesMap[String(catId)];
-      if (cat) {
-        const nameEn = (cat.Name?.en || cat.Trans?.en || '').toLowerCase();
-        const tags = cat.Tags || [];
-        if (tags.includes('live') || nameEn.includes('live')) return 'live';
-        if (nameEn.includes('table') || nameEn.includes('baccarat') || nameEn.includes('roulette') || nameEn.includes('blackjack') || nameEn.includes('poker')) return 'table';
-        if (nameEn.includes('sport') || nameEn.includes('virtual sport')) return 'sport';
-        if (nameEn.includes('crash')) return 'crash';
+  if (Array.isArray(catIds) && catIds.length > 0) {
+    const catSet = new Set(catIds.map(String));
+    const isSlot = catSet.has('16'); // CategoryID 16 = "Slots"
+
+    // Live Casino (CategoryID 37) — always takes priority
+    if (catSet.has('37')) return 'live';
+
+    // Crash Games (CategoryID 3604)
+    if (catSet.has('3604')) return 'crash';
+
+    // Table games: CategoryID 7=Table, 1366=Roulette, 1364=Baccarat, 41=Blackjacks, 10=VideoPoker, 1368=Poker
+    const tableIds = ['7', '1366', '1364', '41', '10', '1368'];
+    const hasTable = tableIds.some(id => catSet.has(id));
+    if (hasTable && !isSlot) return 'table';
+    if (hasTable && isSlot) {
+      // Ambiguous: both Slots and Table tags — check game name
+      const nameObj = game.Name || {};
+      const gameName = (typeof nameObj === 'string' ? nameObj : (nameObj.en || '')).toLowerCase();
+      if (gameName.includes('roulette') || gameName.includes('blackjack') || gameName.includes('baccarat') || gameName.includes('poker') || gameName.includes('keno')) {
+        return 'table';
       }
     }
+
+    // Virtual Sports (CategoryID 84) — only if NOT also tagged as Slots
+    if (catSet.has('84') && !isSlot) return 'sport';
   }
 
   return 'slots';
@@ -259,10 +288,10 @@ router.get('/games', async (req, res) => {
       '810': 3, // RevDev
       // Tier 4 — live casino (after slots)
       '998': 4, // Evolution
-      '913': 4, // VivoGaming
-      '945': 4, // VivoGaming (alt)
-      '990': 4, // LuckyStreak
-      '980': 4, // LuckyStreak (alt)
+      '913': 4, // Pragmatic Play Live
+      '945': 4, // VivoGaming
+      '990': 4, // BetGames.tv
+      '980': 4, // LuckyStreak
       '983': 4, // Ezugi
       '904': 4, // HoGaming
       '866': 4, // WM Casino
@@ -270,6 +299,7 @@ router.get('/games', async (req, res) => {
       '934': 4, // LiveGames
       '968': 4, // SA Gaming
       '900': 4, // TVBet
+      '314': 4, // ICONIC21 Live
     };
     
     if (apiData.games && Array.isArray(apiData.games)) {
@@ -337,6 +367,11 @@ router.get('/games', async (req, res) => {
 
       // Sort: best providers first, then by Fundist sort within each tier
       processedGames.sort((a, b) => a.sortScore - b.sortScore);
+
+      // Log category distribution
+      const catDist = {};
+      processedGames.forEach(g => { catDist[g.category] = (catDist[g.category] || 0) + 1; });
+      console.log('[games] Category distribution:', JSON.stringify(catDist));
     }
     
     res.json({ 
