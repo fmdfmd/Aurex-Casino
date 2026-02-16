@@ -540,8 +540,10 @@ router.post('/start-game', auth, async (req, res) => {
       { extParam, referer, demo: mode === 'demo', isMobile }
     );
     
+    console.log(`[start-game] OK: gameCode=${effectiveGameCode}, systemId=${resolvedSystemId}, html size=${gameData?.html?.length || 0}`);
     res.json({ success: true, data: gameData });
   } catch (error) {
+    console.error(`[start-game] ERROR: ${error.message}`);
     res.status(400).json({ success: false, error: error.message });
   }
 });
@@ -557,20 +559,23 @@ router.post('/game-frame', auth, async (req, res) => {
     
     const token = `gf_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
     gameFrameStore.set(token, { html, created: Date.now(), userId: req.user.id });
+    console.log(`[game-frame] POST: stored token=${token}, html size=${html.length}, store size=${gameFrameStore.size}`);
     
-    // Cleanup old entries (> 5 min)
+    // Cleanup old entries (> 10 min)
     for (const [key, val] of gameFrameStore) {
-      if (Date.now() - val.created > 5 * 60 * 1000) gameFrameStore.delete(key);
+      if (Date.now() - val.created > 10 * 60 * 1000) gameFrameStore.delete(key);
     }
     
     res.json({ success: true, token });
   } catch (e) {
+    console.error('[game-frame] POST error:', e.message);
     res.status(500).json({ success: false, error: e.message });
   }
 });
 
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
+  console.log(`[game-frame] GET: token=${req.params.token}, found=${!!entry}, store size=${gameFrameStore.size}`);
   if (!entry) {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
