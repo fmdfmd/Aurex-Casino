@@ -116,6 +116,9 @@ router.get('/games', async (req, res) => {
       '899': 2, // MascotGaming
       '895': 2, // Spribe
       '955': 2, // GameArt
+      // Tier 2.5 — newly enabled quality providers
+      '842': 2, // NucleusGaming
+      '846': 2, // Slotmill
       // Tier 3 — decent
       '307': 3, // Novomatic
       '987': 3, // TomHorn

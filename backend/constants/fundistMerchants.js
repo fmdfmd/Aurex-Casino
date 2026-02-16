@@ -28,6 +28,8 @@ module.exports = {
   '900': 'TVBet',
   '968': 'SAGaming',
   '983': 'Ezugi',
-  '904': 'HoGaming'
+  '904': 'HoGaming',
+  '842': 'NucleusGaming',
+  '846': 'Slotmill'
 };
 
