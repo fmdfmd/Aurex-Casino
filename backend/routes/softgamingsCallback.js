@@ -283,7 +283,7 @@ const handleDebit = async (req, res) => {
       if (sessionRes.rows.length > 0) {
         sessionId = sessionRes.rows[0].id;
         await client.query(
-          'UPDATE game_sessions SET bet_amount = bet_amount + $1, updated_at = NOW() WHERE id = $2',
+          'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
           [debitAmount, sessionId]
         );
       } else {
@@ -419,7 +419,7 @@ const handleCredit = async (req, res) => {
 
       // Update Game Session
       await client.query(
-        "UPDATE game_sessions SET win_amount = win_amount + $1, updated_at = NOW() WHERE session_id = $2",
+        "UPDATE game_sessions SET win_amount = win_amount + $1 WHERE session_id = $2",
         [creditAmount, i_gameid]
       );
 
@@ -571,7 +571,7 @@ const handleRollback = async (req, res) => {
       // Update Session (best-effort)
       if (i_gameid) {
         await client.query(
-          "UPDATE game_sessions SET bet_amount = GREATEST(bet_amount - $1, 0), updated_at = NOW() WHERE session_id = $2",
+          "UPDATE game_sessions SET bet_amount = GREATEST(bet_amount - $1, 0) WHERE session_id = $2",
           [rollbackAmount, i_gameid]
         );
       }
