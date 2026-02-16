@@ -335,6 +335,37 @@ class FundistApiService {
    * Safe to call multiple times — Fundist updates existing users.
    */
   /**
+   * Normalize country to ISO 3166-1 alpha-2 code.
+   * Handles Russian names, full names, and invalid values.
+   */
+  normalizeCountry(raw) {
+    if (!raw) return null;
+    const s = String(raw).trim();
+    // Already a 2-letter ISO code
+    if (/^[A-Z]{2}$/.test(s)) return s;
+    if (/^[a-z]{2}$/.test(s)) return s.toUpperCase();
+
+    const map = {
+      'россия': 'RU', 'russia': 'RU', 'рф': 'RU', 'rus': 'RU',
+      'беларусь': 'BY', 'belarus': 'BY', 'белоруссия': 'BY', 'blr': 'BY',
+      'украина': 'UA', 'ukraine': 'UA', 'ukr': 'UA',
+      'казахстан': 'KZ', 'kazakhstan': 'KZ', 'kaz': 'KZ',
+      'узбекистан': 'UZ', 'uzbekistan': 'UZ', 'uzb': 'UZ',
+      'кипр': 'CY', 'cyprus': 'CY', 'cyp': 'CY',
+      'мальта': 'MT', 'malta': 'MT', 'mlt': 'MT',
+      'грузия': 'GE', 'georgia': 'GE', 'geo': 'GE',
+      'армения': 'AM', 'armenia': 'AM', 'arm': 'AM',
+      'азербайджан': 'AZ', 'azerbaijan': 'AZ', 'aze': 'AZ',
+      'молдова': 'MD', 'moldova': 'MD', 'mda': 'MD',
+      'германия': 'DE', 'germany': 'DE', 'deu': 'DE',
+      'турция': 'TR', 'turkey': 'TR', 'tur': 'TR',
+      'латвия': 'LV', 'latvia': 'LV', 'эстония': 'EE', 'estonia': 'EE',
+      'литва': 'LT', 'lithuania': 'LT',
+    };
+    return map[s.toLowerCase()] || null;
+  }
+
+  /**
    * Create a user in Fundist via User/AuthHTML with UserAutoCreate=1.
    * Tries multiple provider systems and countries to maximize success.
    */
@@ -346,14 +377,18 @@ class FundistApiService {
     const fundistLogin = `aurex_${user.id}_${currency}`;
     const password = this.generateUserPassword(userId);
 
+    // Normalize user country to ISO code; fallback to CY if invalid
+    const userCountryIso = this.normalizeCountry(user.country) || this.normalizeCountry(opts.country) || 'CY';
+
     // Try multiple providers/countries — some may be restricted on test account
     const attempts = [
-      { systemId: '901', page: 'BoomCity',        country: 'CY' },   // BGaming
-      { systemId: '960', page: 'vs20doghouse',    country: 'CY' },   // PragmaticPlay
-      { systemId: '940', page: 'WildTiger',       country: 'CY' },   // EvoPlay
-      { systemId: '901', page: 'BoomCity',        country: 'MT' },   // BGaming Malta
-      { systemId: '960', page: 'vs20doghouse',    country: 'MT' },   // PragmaticPlay Malta
-      { systemId: '773', page: 'aviator',         country: 'CY' },   // Spribe
+      { systemId: '901', page: 'BoomCity',        country: userCountryIso },  // BGaming with user's country
+      { systemId: '960', page: 'vs20doghouse',    country: userCountryIso },  // PragmaticPlay with user's country
+      { systemId: '901', page: 'BoomCity',        country: 'CY' },            // BGaming Cyprus
+      { systemId: '960', page: 'vs20doghouse',    country: 'CY' },            // PragmaticPlay Cyprus
+      { systemId: '940', page: 'WildTiger',       country: 'CY' },            // EvoPlay Cyprus
+      { systemId: '773', page: 'aviator',         country: 'CY' },            // Spribe Cyprus
+      { systemId: '901', page: 'BoomCity',        country: 'MT' },            // BGaming Malta
     ];
 
     let lastResult = '';
@@ -374,7 +409,7 @@ class FundistApiService {
         Language: opts.language || 'ru',
         UserAutoCreate: '1',
         Currency: currency,
-        Country: user.country || opts.country || attempt.country,
+        Country: attempt.country,
         Nick: user.username || `Player${user.id}`
       });
 
@@ -473,7 +508,7 @@ class FundistApiService {
         : {
             UserAutoCreate: '1',
             Currency: String(currency),
-            Country: user.country || 'RUS',
+            Country: this.normalizeCountry(user.country) || 'CY',
             Nick: user.username
           }),
       ...(opts.extParam ? { ExtParam: String(opts.extParam) } : {}),
