@@ -21,10 +21,16 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Lock body scroll when modal is open
+  // Lock body scroll and set viewport-fit when modal is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      // Ensure viewport-fit=cover for iOS safe areas
+      const meta = document.querySelector('meta[name="viewport"]');
+      const origContent = meta?.getAttribute('content') || '';
+      if (meta && !origContent.includes('viewport-fit=cover')) {
+        meta.setAttribute('content', origContent + ',viewport-fit=cover');
+      }
     } else {
       document.body.style.overflow = '';
     }
@@ -109,9 +115,16 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     const doc = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+body{
+  padding-top:env(safe-area-inset-top,0);
+  padding-bottom:env(safe-area-inset-bottom,0);
+  padding-left:env(safe-area-inset-left,0);
+  padding-right:env(safe-area-inset-right,0);
+  box-sizing:border-box;
+}
 iframe,object,embed,div.game-container,.game-frame{
   width:100%!important;height:100%!important;
   position:absolute!important;top:0!important;left:0!important;
@@ -131,7 +144,15 @@ body>iframe,body>div,body>object,body>embed{
   if (!isOpen || !game) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black">
+    <div 
+      className="fixed inset-0 z-50 bg-black"
+      style={{
+        paddingTop: 'env(safe-area-inset-top, 0px)',
+        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
+        paddingLeft: 'env(safe-area-inset-left, 0px)',
+        paddingRight: 'env(safe-area-inset-right, 0px)',
+      }}
+    >
       {/* Full-screen game iframe */}
       <div className="w-full h-full relative">
         {isLoading ? (
