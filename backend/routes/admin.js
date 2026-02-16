@@ -595,7 +595,8 @@ router.post('/freerounds', adminAuth, [
   body('operator').isString().notEmpty(),
   body('count').isInt({ min: 1, max: 1000 }),
   body('betLevel').optional().isInt({ min: 1 }),
-  body('expireDays').optional().isInt({ min: 1, max: 365 })
+  body('expireDays').optional().isInt({ min: 1, max: 365 }),
+  body('wagerMultiplier').optional().isFloat({ min: 0, max: 100 })
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
@@ -603,7 +604,7 @@ router.post('/freerounds', adminAuth, [
       return res.status(400).json({ success: false, error: 'Validation failed', details: errors.array() });
     }
 
-    const { userId, gameCode, operator, count, betLevel, expireDays = 7 } = req.body;
+    const { userId, gameCode, operator, count, betLevel, expireDays = 7, wagerMultiplier = 0 } = req.body;
 
     // Get user info
     const userResult = await pool.query('SELECT * FROM users WHERE id = $1', [userId]);
@@ -621,7 +622,7 @@ router.post('/freerounds', adminAuth, [
     expireDate.setDate(expireDate.getDate() + expireDays);
     const expire = expireDate.toISOString().replace('T', ' ').split('.')[0];
 
-    console.log(`[freerounds] Issuing ${count} freerounds to ${fundistLogin} on ${gameCode} (${operator}), betLevel=${betLevel || 1}, expire=${expire}`);
+    console.log(`[freerounds] Issuing ${count} freerounds to ${fundistLogin} on ${gameCode} (${operator}), betLevel=${betLevel || 1}, wager=x${wagerMultiplier}, expire=${expire}`);
 
     const result = await fundistApi.addFreerounds(
       operator,
@@ -632,7 +633,19 @@ router.post('/freerounds', adminAuth, [
       { betLevel: betLevel || undefined }
     );
 
-    // Log to DB
+    // Save to freerounds_bonuses table (for wager tracking)
+    try {
+      await pool.query(
+        `INSERT INTO freerounds_bonuses 
+         (user_id, fundist_tid, operator, game_code, count, bet_level, wager_multiplier, status, expire_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, 'active', $8)`,
+        [userId, result.tid, operator, gameCode, count, betLevel || 1, wagerMultiplier, expireDate]
+      );
+    } catch (dbErr) {
+      console.log('[freerounds] Failed to save bonus record:', dbErr.message);
+    }
+
+    // Log transaction
     try {
       await pool.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, description, metadata)
@@ -640,8 +653,8 @@ router.post('/freerounds', adminAuth, [
         [
           userId,
           currency,
-          `${count} фриспинов на ${gameCode}`,
-          JSON.stringify({ operator, gameCode, count, betLevel, expire, tid: result.tid })
+          `${count} фриспинов на ${gameCode}${wagerMultiplier > 0 ? ` (вейджер x${wagerMultiplier})` : ''}`,
+          JSON.stringify({ operator, gameCode, count, betLevel, wagerMultiplier, expire, tid: result.tid })
         ]
       );
     } catch (dbErr) {
@@ -650,8 +663,8 @@ router.post('/freerounds', adminAuth, [
 
     res.json({
       success: true,
-      message: `${count} фриспинов выдано пользователю ${user.username}`,
-      data: { tid: result.tid, login: fundistLogin, expire }
+      message: `${count} фриспинов выдано пользователю ${user.username}${wagerMultiplier > 0 ? ` (вейджер x${wagerMultiplier})` : ''}`,
+      data: { tid: result.tid, login: fundistLogin, expire, wagerMultiplier }
     });
   } catch (error) {
     console.error('[freerounds] Error:', error.message);

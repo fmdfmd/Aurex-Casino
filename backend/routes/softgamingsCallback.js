@@ -174,7 +174,7 @@ const handleBalance = async (req, res) => {
       return sendOwError(res, 'User not found', '0.00');
     }
 
-    const result = await pool.query('SELECT balance, currency FROM users WHERE id = $1', [userId]);
+    const result = await pool.query('SELECT balance, bonus_balance, currency FROM users WHERE id = $1', [userId]);
     
     if (result.rows.length === 0) {
       return sendOwError(res, 'User not found', '0.00');
@@ -182,13 +182,15 @@ const handleBalance = async (req, res) => {
     
     const user = result.rows[0];
     
-    // Log currency mismatch but don't error — Fundist user may have been created with wrong currency
     if (currency && user.currency && String(user.currency) !== String(currency)) {
       console.warn(`⚠️ OneWallet balance: currency mismatch for user ${userid}: Fundist=${currency}, DB=${user.currency}. Returning balance anyway.`);
     }
 
+    // Return main + bonus balance (Fundist sees total; wager is our internal logic)
+    const totalBalance = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+
     return sendOk(res, {
-      balance: formatAmount(user.balance)
+      balance: formatAmount(totalBalance)
     });
   } catch (error) {
     console.error('Balance Error:', error);
@@ -253,27 +255,83 @@ const handleDebit = async (req, res) => {
       if (userResult.rows.length === 0) throw { code: 404, msg: 'User not found' };
       
       const user = userResult.rows[0];
+      const mainBal = parseFloat(user.balance || 0);
+      const bonusBal = parseFloat(user.bonus_balance || 0);
+      const totalAvailable = mainBal + bonusBal;
 
-      // Log currency mismatch but process anyway — Fundist user may have been created with wrong currency
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
         console.warn(`⚠️ OneWallet debit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
       }
       
-      if (parseFloat(user.balance) < debitAmount) {
-        const errorResponse = buildOwErrorResponse('INSUFFICIENT_FUNDS', user.balance);
+      if (totalAvailable < debitAmount) {
+        const errorResponse = buildOwErrorResponse('INSUFFICIENT_FUNDS', formatAmount(totalAvailable));
         await saveResponse(client, tid, errorResponse);
         return { responseJson: errorResponse, done: true };
       }
 
-      // Deduct balance
+      // Deduct from main balance first, then bonus_balance
+      let fromMain = Math.min(debitAmount, mainBal);
+      let fromBonus = debitAmount - fromMain;
+
       const updateRes = await client.query(
-        'UPDATE users SET balance = balance - $1, total_wagered = total_wagered + $1 WHERE id = $2 RETURNING balance',
-        [debitAmount, userId]
+        `UPDATE users 
+         SET balance = balance - $1, 
+             bonus_balance = bonus_balance - $2, 
+             total_wagered = total_wagered + $3 
+         WHERE id = $4 
+         RETURNING balance, bonus_balance`,
+        [fromMain, fromBonus, debitAmount, userId]
       );
-      const newBalance = updateRes.rows[0].balance;
+      const newMainBal = parseFloat(updateRes.rows[0].balance);
+      const newBonusBal = parseFloat(updateRes.rows[0].bonus_balance);
+      const newTotalBalance = newMainBal + newBonusBal;
+
+      // Track wager progress for active freerounds bonuses
+      if (debitAmount > 0) {
+        try {
+          const activeWagers = await client.query(
+            `SELECT id, wager_required, wager_completed, win_amount 
+             FROM freerounds_bonuses 
+             WHERE user_id = $1 AND status = 'wagering' AND expire_at > NOW()
+             ORDER BY created_at ASC`,
+            [userId]
+          );
+          for (const bonus of activeWagers.rows) {
+            const remaining = parseFloat(bonus.wager_required) - parseFloat(bonus.wager_completed);
+            if (remaining <= 0) continue;
+            const contribution = Math.min(debitAmount, remaining);
+            await client.query(
+              `UPDATE freerounds_bonuses 
+               SET wager_completed = wager_completed + $1, updated_at = NOW() 
+               WHERE id = $2`,
+              [contribution, bonus.id]
+            );
+            const newCompleted = parseFloat(bonus.wager_completed) + contribution;
+            // Check if wager is now met
+            if (newCompleted >= parseFloat(bonus.wager_required)) {
+              // Move remaining bonus balance to main balance and mark completed
+              const bonusWin = parseFloat(bonus.win_amount);
+              // The win_amount was added to bonus_balance; transfer what's left
+              const transferAmount = Math.min(bonusWin, newBonusBal);
+              if (transferAmount > 0) {
+                await client.query(
+                  `UPDATE users SET balance = balance + $1, bonus_balance = bonus_balance - $1 WHERE id = $2`,
+                  [transferAmount, userId]
+                );
+                console.log(`✅ Wager completed! Transferred ${transferAmount} from bonus to main for user ${userId}`);
+              }
+              await client.query(
+                `UPDATE freerounds_bonuses SET status = 'completed', completed_at = NOW(), updated_at = NOW() WHERE id = $1`,
+                [bonus.id]
+              );
+            }
+          }
+        } catch (wagerErr) {
+          console.error('[wager] Error tracking wager:', wagerErr.message);
+        }
+      }
 
       // Create/Update Game Session
-      // Try to find active session for this game round
       let sessionId = null;
       const sessionRes = await client.query(
         "SELECT id, session_id FROM game_sessions WHERE session_id = $1", 
@@ -287,7 +345,6 @@ const handleDebit = async (req, res) => {
           [debitAmount, sessionId]
         );
       } else {
-        // Create new session
         const newSession = await client.query(
           `INSERT INTO game_sessions (user_id, game_id, session_id, provider, currency, status, bet_amount, win_amount)
            VALUES ($1, $2, $3, 'softgamings', $4, 'active', $5, 0) RETURNING id`,
@@ -312,15 +369,19 @@ const handleDebit = async (req, res) => {
       );
 
       // VIP Points
-      const loyaltyPoints = Math.floor(debitAmount / 100); // 1 point per 100 currency units
+      const loyaltyPoints = Math.floor(debitAmount / 100);
       if (loyaltyPoints > 0) {
         await client.query('UPDATE users SET vip_points = COALESCE(vip_points, 0) + $1 WHERE id = $2', [loyaltyPoints, userId]);
       }
 
+      // Re-read balance after potential wager transfer
+      const finalBal = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+      const finalTotal = parseFloat(finalBal.rows[0].balance) + parseFloat(finalBal.rows[0].bonus_balance);
+
       const okResponse = {
         status: 'OK',
         tid: String(tid),
-        balance: formatAmount(newBalance)
+        balance: formatAmount(finalTotal)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
@@ -367,6 +428,11 @@ const handleCredit = async (req, res) => {
       return sendOwError(res, 'User not found', '0.00');
     }
 
+    // Check if this is a freeround win (game_extra = "FREEROUNDS_XXX")
+    const gameExtra = req.body.game_extra || '';
+    const freeroundTidMatch = gameExtra.match(/^FREEROUNDS_(.+)$/);
+    const freeroundTid = freeroundTidMatch ? freeroundTidMatch[1] : null;
+
     const result = await withTransaction(pool, async (client) => {
       // 0) Idempotency by TID
       const existingByTid = await findExistingByTid(client, tid);
@@ -405,17 +471,92 @@ const handleCredit = async (req, res) => {
       if (userResult.rows.length === 0) throw { code: 404, msg: 'User not found' };
       const user = userResult.rows[0];
 
-      // Log currency mismatch but process anyway — Fundist user may have been created with wrong currency
+      // Log currency mismatch but process anyway
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
         console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
       }
-      
-      // Add balance
+
+      // Check if this freeround has a wager requirement
+      let hasWager = false;
+      let freeroundBonus = null;
+      if (freeroundTid && creditAmount > 0) {
+        const bonusRes = await client.query(
+          `SELECT * FROM freerounds_bonuses WHERE fundist_tid = $1 AND user_id = $2 AND wager_multiplier > 0`,
+          [freeroundTid, userId]
+        );
+        if (bonusRes.rows.length > 0) {
+          freeroundBonus = bonusRes.rows[0];
+          hasWager = true;
+        }
+      }
+
+      let newBalance;
+      if (hasWager && freeroundBonus) {
+        // Freeround win WITH wager — add to bonus_balance instead of main balance
+        const updateRes = await client.query(
+          'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2 RETURNING balance, bonus_balance',
+          [creditAmount, userId]
+        );
+        newBalance = updateRes.rows[0].balance;
+        const newBonusBalance = updateRes.rows[0].bonus_balance;
+
+        // Update freerounds_bonuses record
+        const wagerRequired = creditAmount * freeroundBonus.wager_multiplier;
+        await client.query(
+          `UPDATE freerounds_bonuses 
+           SET win_amount = win_amount + $1, 
+               wager_required = wager_required + $2,
+               status = CASE WHEN status = 'active' THEN 'wagering' ELSE status END,
+               updated_at = NOW()
+           WHERE id = $3`,
+          [creditAmount, wagerRequired, freeroundBonus.id]
+        );
+
+        console.log(`🎰 Freeround win: ${creditAmount} → bonus_balance (wager x${freeroundBonus.wager_multiplier}, need ${wagerRequired})`);
+
+        // Return balance = main + bonus (Fundist sees total, wager is our internal logic)
+        const totalBalance = parseFloat(newBalance) + parseFloat(newBonusBalance);
+        
+        // Record Transaction as freeround_win
+        await client.query(
+          `INSERT INTO transactions 
+          (user_id, type, amount, currency, status, description, round_id, payment_details)
+          VALUES ($1, 'freeround_win', $2, $3, 'completed', $4, $5, $6)`,
+          [
+            userId, creditAmount, req.body.currency,
+            `Freeround win (wager x${freeroundBonus.wager_multiplier})`,
+            i_actionid,
+            JSON.stringify({ tid: tid.toString(), game_id: i_gameid, freeround_tid: freeroundTid, wager_multiplier: freeroundBonus.wager_multiplier })
+          ]
+        );
+
+        const okResponse = {
+          status: 'OK',
+          tid: String(tid),
+          balance: formatAmount(totalBalance)
+        };
+        okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
+        await saveResponse(client, tid, okResponse);
+        return { responseJson: okResponse, done: true };
+      }
+
+      // Normal credit (no wager, or freeround without wager) — add to main balance
       const updateRes = await client.query(
-        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance',
+        'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance, bonus_balance',
         [creditAmount, userId]
       );
-      const newBalance = updateRes.rows[0].balance;
+      newBalance = updateRes.rows[0].balance;
+      const bonusBal = parseFloat(updateRes.rows[0].bonus_balance || 0);
+
+      // If this is a freeround win without wager, update the bonus record too
+      if (freeroundTid) {
+        await client.query(
+          `UPDATE freerounds_bonuses 
+           SET win_amount = win_amount + $1, status = 'completed', completed_at = NOW(), updated_at = NOW()
+           WHERE fundist_tid = $2 AND user_id = $3`,
+          [creditAmount, freeroundTid, userId]
+        ).catch(() => {});
+      }
 
       // Update Game Session
       await client.query(
@@ -424,24 +565,25 @@ const handleCredit = async (req, res) => {
       );
 
       // Record Transaction
+      const txType = freeroundTid ? 'freeround_win' : 'win';
+      const txDesc = freeroundTid ? `Freeround win in ${req.body.i_gamedesc}` : `Win in ${req.body.i_gamedesc}`;
       await client.query(
         `INSERT INTO transactions 
         (user_id, type, amount, currency, status, description, round_id, payment_details)
-        VALUES ($1, 'win', $2, $3, 'completed', $4, $5, $6)`,
+        VALUES ($1, $2, $3, $4, 'completed', $5, $6, $7)`,
         [
-          userId, 
-          creditAmount, 
-          req.body.currency, 
-          `Win in ${req.body.i_gamedesc}`, 
-          i_actionid,
-          JSON.stringify({ tid: tid.toString(), game_id: i_gameid })
+          userId, txType, creditAmount, req.body.currency, txDesc, i_actionid,
+          JSON.stringify({ tid: tid.toString(), game_id: i_gameid, ...(freeroundTid ? { freeround_tid: freeroundTid } : {}) })
         ]
       );
+
+      // Return total balance (main + bonus) to Fundist
+      const totalBalance = parseFloat(newBalance) + bonusBal;
 
       const okResponse = {
         status: 'OK',
         tid: String(tid),
-        balance: formatAmount(newBalance)
+        balance: formatAmount(totalBalance)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);

@@ -4,6 +4,7 @@ const fundistService = require('../services/fundistApiService');
 const axios = require('axios');
 const https = require('https');
 const merchantFallback = require('../constants/fundistMerchants');
+const pool = require('../config/database');
 const router = express.Router();
 
 // Routes
@@ -707,15 +708,89 @@ router.get('/freerounds', auth, async (req, res) => {
       return true;
     });
 
+    // Enrich freerounds with wager info from our DB
+    let wagerBonuses = [];
+    try {
+      const bonusRes = await pool.query(
+        `SELECT fundist_tid, wager_multiplier, win_amount, wager_required, wager_completed, status as wager_status
+         FROM freerounds_bonuses WHERE user_id = $1 AND status IN ('active', 'wagering')`,
+        [userId]
+      );
+      wagerBonuses = bonusRes.rows;
+    } catch (e) {}
+
+    const enriched = active.map(fr => {
+      const bonus = wagerBonuses.find(b => fr.TID && String(b.fundist_tid) === String(fr.TID));
+      return {
+        ...fr,
+        wager_multiplier: bonus ? parseFloat(bonus.wager_multiplier) : 0,
+        win_amount: bonus ? parseFloat(bonus.win_amount) : 0,
+        wager_required: bonus ? parseFloat(bonus.wager_required) : 0,
+        wager_completed: bonus ? parseFloat(bonus.wager_completed) : 0,
+        wager_status: bonus ? bonus.wager_status : null
+      };
+    });
+
     console.log(`[freerounds] User ${fundistLogin}: ${freerounds.length} total, ${active.length} active`);
-    res.json({ success: true, data: active });
+    res.json({ success: true, data: enriched });
   } catch (error) {
-    // If user has no freerounds, Fundist may return an error
     if (error.message && error.message.includes('error')) {
       return res.json({ success: true, data: [] });
     }
     console.error('[freerounds] User check error:', error.message);
     res.json({ success: true, data: [] });
+  }
+});
+
+// Get user's bonus/wager status
+router.get('/bonus-status', auth, async (req, res) => {
+  try {
+    const userId = req.user.id;
+
+    // Get user balances
+    const userRes = await pool.query(
+      'SELECT balance, bonus_balance FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userRes.rows.length === 0) {
+      return res.json({ success: true, data: { balance: 0, bonus_balance: 0, active_wagers: [] } });
+    }
+    const user = userRes.rows[0];
+
+    // Get active wager bonuses
+    const bonusRes = await pool.query(
+      `SELECT id, fundist_tid, game_code, operator, count, wager_multiplier, 
+              win_amount, wager_required, wager_completed, status, expire_at, created_at
+       FROM freerounds_bonuses 
+       WHERE user_id = $1 AND status IN ('active', 'wagering')
+       ORDER BY created_at DESC`,
+      [userId]
+    );
+
+    res.json({
+      success: true,
+      data: {
+        balance: parseFloat(user.balance || 0),
+        bonus_balance: parseFloat(user.bonus_balance || 0),
+        active_wagers: bonusRes.rows.map(b => ({
+          id: b.id,
+          game_code: b.game_code,
+          operator: b.operator,
+          count: b.count,
+          wager_multiplier: parseFloat(b.wager_multiplier),
+          win_amount: parseFloat(b.win_amount),
+          wager_required: parseFloat(b.wager_required),
+          wager_completed: parseFloat(b.wager_completed),
+          progress: b.wager_required > 0 ? Math.min(100, Math.round((parseFloat(b.wager_completed) / parseFloat(b.wager_required)) * 100)) : 100,
+          status: b.status,
+          expire_at: b.expire_at,
+          created_at: b.created_at
+        }))
+      }
+    });
+  } catch (error) {
+    console.error('[bonus-status] Error:', error.message);
+    res.json({ success: true, data: { balance: 0, bonus_balance: 0, active_wagers: [] } });
   }
 });
 

@@ -90,6 +90,7 @@ export default function AdminFreeroundsPage() {
   const [count, setCount] = useState('50');
   const [betLevel, setBetLevel] = useState('1');
   const [expireDays, setExpireDays] = useState('7');
+  const [wagerMultiplier, setWagerMultiplier] = useState('0');
 
   // State
   const [isLoading, setIsLoading] = useState(false);
@@ -176,14 +177,16 @@ export default function AdminFreeroundsPage() {
           operator: selectedOperator,
           count: countNum,
           betLevel: betLevelNum,
-          expireDays: expireDaysNum
+          expireDays: expireDaysNum,
+          wagerMultiplier: parseFloat(wagerMultiplier) || 0
         })
       });
 
       const data = await response.json();
 
       if (data.success) {
-        toast.success(`${countNum} фриспинов выдано ${selectedUser.username}!`);
+        const wagerNum = parseFloat(wagerMultiplier) || 0;
+        toast.success(`${countNum} фриспинов выдано ${selectedUser.username}!${wagerNum > 0 ? ` (вейджер x${wagerNum})` : ''}`);
         setHistory(prev => [{
           id: Date.now(),
           user: selectedUser.username,
@@ -193,6 +196,7 @@ export default function AdminFreeroundsPage() {
           provider: selectedGame.provider,
           count: countNum,
           betLevel: betLevelNum,
+          wager: wagerNum,
           expire: data.data?.expire,
           tid: data.data?.tid,
           time: new Date().toLocaleString('ru-RU')
@@ -361,7 +365,7 @@ export default function AdminFreeroundsPage() {
             </div>
 
             {/* Parameters */}
-            <div className="grid grid-cols-3 gap-4 mb-6">
+            <div className="grid grid-cols-3 gap-4 mb-4">
               <div>
                 <label className="block text-sm font-medium text-aurex-platinum-300 mb-2">
                   Кол-во спинов
@@ -396,7 +400,7 @@ export default function AdminFreeroundsPage() {
                   className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white text-lg font-bold focus:border-aurex-gold-500/50 focus:outline-none"
                 />
                 <p className="text-aurex-platinum-500 text-xs mt-1">
-                  Pragmatic: bet = BL × 0.01 × rate × lines
+                  Pragmatic: bet = BL x 0.01 x rate x lines
                 </p>
               </div>
 
@@ -423,6 +427,56 @@ export default function AdminFreeroundsPage() {
               </div>
             </div>
 
+            {/* Wager Multiplier */}
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-aurex-platinum-300 mb-2">
+                Вейджер (множитель отыгрыша)
+              </label>
+              <div className="flex items-center gap-2 flex-wrap">
+                {[
+                  { label: 'Без вейджера', value: '0' },
+                  { label: 'x1', value: '1' },
+                  { label: 'x3', value: '3' },
+                  { label: 'x5', value: '5' },
+                  { label: 'x10', value: '10' },
+                  { label: 'x20', value: '20' },
+                  { label: 'x30', value: '30' },
+                  { label: 'x50', value: '50' },
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => setWagerMultiplier(opt.value)}
+                    className={`px-4 py-2 rounded-xl text-sm font-medium transition-all ${
+                      wagerMultiplier === opt.value
+                        ? opt.value === '0'
+                          ? 'bg-green-500/20 text-green-400 border border-green-500/40'
+                          : 'bg-aurex-gold-500/20 text-aurex-gold-500 border border-aurex-gold-500/40'
+                        : 'bg-aurex-obsidian-900 text-aurex-platinum-400 border border-aurex-gold-500/10 hover:border-aurex-gold-500/30'
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+                <div className="flex items-center gap-2 ml-2">
+                  <span className="text-aurex-platinum-500 text-sm">или</span>
+                  <input
+                    type="number"
+                    value={wagerMultiplier}
+                    onChange={(e) => setWagerMultiplier(e.target.value)}
+                    min="0"
+                    max="100"
+                    step="1"
+                    className="w-20 px-3 py-2 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white text-center focus:border-aurex-gold-500/50 focus:outline-none"
+                  />
+                </div>
+              </div>
+              <p className="text-aurex-platinum-500 text-xs mt-2">
+                {parseFloat(wagerMultiplier) > 0
+                  ? `Выигрыш с фриспинов попадает на бонусный баланс. Для вывода нужно отыграть сумму выигрыша x${wagerMultiplier}.`
+                  : 'Выигрыш с фриспинов сразу зачисляется на основной баланс без отыгрыша.'}
+              </p>
+            </div>
+
             {/* Summary */}
             {selectedUser && selectedGame && (
               <div className="p-4 bg-aurex-obsidian-900/50 rounded-xl mb-6 border border-aurex-gold-500/10">
@@ -438,6 +492,10 @@ export default function AdminFreeroundsPage() {
                   <div className="text-white font-bold">{count}</div>
                   <div className="text-aurex-platinum-400">BetLevel:</div>
                   <div className="text-white font-bold">{betLevel}</div>
+                  <div className="text-aurex-platinum-400">Вейджер:</div>
+                  <div className={`font-bold ${parseFloat(wagerMultiplier) > 0 ? 'text-orange-400' : 'text-green-400'}`}>
+                    {parseFloat(wagerMultiplier) > 0 ? `x${wagerMultiplier}` : 'Без вейджера'}
+                  </div>
                   <div className="text-aurex-platinum-400">Истекает через:</div>
                   <div className="text-white">{expireDays} дней</div>
                 </div>
@@ -479,6 +537,9 @@ export default function AdminFreeroundsPage() {
                   >
                     <div>
                       <span className="text-green-400 font-bold">{item.count} фриспинов</span>
+                      {item.wager > 0 && (
+                        <span className="text-orange-400 text-sm ml-1 px-1.5 py-0.5 bg-orange-500/10 rounded">x{item.wager}</span>
+                      )}
                       <span className="text-aurex-platinum-400 mx-2">&rarr;</span>
                       <span className="text-white font-medium">{item.user}</span>
                       <span className="text-aurex-platinum-500 text-sm ml-2">на {item.game}</span>
