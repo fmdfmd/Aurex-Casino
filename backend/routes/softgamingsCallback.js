@@ -291,7 +291,7 @@ const handleDebit = async (req, res) => {
         const newSession = await client.query(
           `INSERT INTO game_sessions (user_id, game_id, session_id, provider, currency, status, bet_amount, win_amount)
            VALUES ($1, $2, $3, 'softgamings', $4, 'active', $5, 0) RETURNING id`,
-          [userid, req.body.i_gamedesc, i_gameid, req.body.currency, debitAmount]
+          [userId, req.body.i_gamedesc, i_gameid, req.body.currency, debitAmount]
         );
         sessionId = newSession.rows[0].id;
       }
