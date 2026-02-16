@@ -143,6 +143,20 @@ async function saveResponse(client, tid, responseJson) {
   }
 }
 
+// --- Helpers ---
+
+// Parse numeric user ID from Fundist userid field.
+// Supports both old format ("1") and new tagged format ("aurex_1_RUB").
+function parseUserId(userid) {
+  const s = String(userid || '');
+  // New format: aurex_{id}_{currency}
+  const taggedMatch = s.match(/^aurex_(\d+)_/);
+  if (taggedMatch) return parseInt(taggedMatch[1], 10);
+  // Old format: plain numeric
+  const num = parseInt(s, 10);
+  return Number.isNaN(num) ? NaN : num;
+}
+
 // --- HANDLERS ---
 
 // 1. PING
@@ -155,7 +169,7 @@ const handleBalance = async (req, res) => {
   const { userid, currency } = req.body;
   
   try {
-    const userId = parseInt(String(userid), 10);
+    const userId = parseUserId(userid);
     if (Number.isNaN(userId)) {
       return sendOwError(res, 'User not found', '0.00');
     }
@@ -168,9 +182,9 @@ const handleBalance = async (req, res) => {
     
     const user = result.rows[0];
     
-    // Optional: Check currency match
+    // Log currency mismatch but don't error — Fundist user may have been created with wrong currency
     if (currency && user.currency && String(user.currency) !== String(currency)) {
-      return sendOwError(res, 'Currency mismatch', user.balance);
+      console.warn(`⚠️ OneWallet balance: currency mismatch for user ${userid}: Fundist=${currency}, DB=${user.currency}. Returning balance anyway.`);
     }
 
     return sendOk(res, {
@@ -195,7 +209,7 @@ const handleDebit = async (req, res) => {
       return handleRollback(req, res);
     }
 
-    const userId = parseInt(String(userid), 10);
+    const userId = parseUserId(userid);
     if (Number.isNaN(userId)) {
       return sendOwError(res, 'User not found', '0.00');
     }
@@ -240,11 +254,9 @@ const handleDebit = async (req, res) => {
       
       const user = userResult.rows[0];
 
-      // Currency check (spec requires error)
+      // Log currency mismatch but process anyway — Fundist user may have been created with wrong currency
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
-        const errorResponse = buildOwErrorResponse('Currency mismatch', user.balance);
-        await saveResponse(client, tid, errorResponse);
-        return { responseJson: errorResponse, done: true };
+        console.warn(`⚠️ OneWallet debit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
       }
       
       if (parseFloat(user.balance) < debitAmount) {
@@ -350,7 +362,7 @@ const handleCredit = async (req, res) => {
       return handleRollback(req, res);
     }
 
-    const userId = parseInt(String(userid), 10);
+    const userId = parseUserId(userid);
     if (Number.isNaN(userId)) {
       return sendOwError(res, 'User not found', '0.00');
     }
@@ -393,10 +405,9 @@ const handleCredit = async (req, res) => {
       if (userResult.rows.length === 0) throw { code: 404, msg: 'User not found' };
       const user = userResult.rows[0];
 
+      // Log currency mismatch but process anyway — Fundist user may have been created with wrong currency
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
-        const errorResponse = buildOwErrorResponse('Currency mismatch', user.balance);
-        await saveResponse(client, tid, errorResponse);
-        return { responseJson: errorResponse, done: true };
+        console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
       }
       
       // Add balance
@@ -458,7 +469,7 @@ const handleRollback = async (req, res) => {
   try {
     if (!HMAC_SECRET) return res.status(500).json({ error: 'HMAC secret not configured' });
 
-    const userId = parseInt(String(userid), 10);
+    const userId = parseUserId(userid);
     if (Number.isNaN(userId)) {
       return sendOwError(res, 'User not found', '0.00');
     }

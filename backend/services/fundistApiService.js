@@ -342,7 +342,10 @@ class FundistApiService {
     const user = userResult.rows[0];
 
     const demo = Boolean(opts.demo);
-    const login = demo ? '$DemoUser$' : String(user.id);
+    // Use currency-tagged login so Fundist creates a fresh account with correct currency.
+    // Old format "1" may have been created with wrong currency (USD). New format: "aurex_{id}_{currency}"
+    const fundistLogin = `aurex_${user.id}_${currency}`;
+    const login = demo ? '$DemoUser$' : fundistLogin;
     const password = demo ? 'Demo' : this.generateUserPassword(userId);
     const tid = this.generateTid();
 
