@@ -178,8 +178,8 @@ body>iframe,body>div,body>object,body>embed{
           <iframe
             ref={iframeRef}
             className="w-full h-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-modals"
-            allow="autoplay; fullscreen"
+            allow="autoplay; fullscreen; camera; microphone; display-capture; encrypted-media; picture-in-picture; web-share"
+            referrerPolicy="no-referrer-when-downgrade"
             title={game?.name || 'Game'}
           />
         ) : null}
