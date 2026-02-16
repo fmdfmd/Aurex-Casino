@@ -57,11 +57,15 @@ app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 const path = require('path');
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Rate limiting
+// Rate limiting (skip image proxy and game catalog — they're high-traffic read-only endpoints)
 const limiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 1000, // limit each IP to 1000 requests per windowMs
-  message: 'Too many requests from this IP'
+  max: 5000, // limit each IP to 5000 requests per windowMs
+  message: 'Too many requests from this IP',
+  skip: (req) => {
+    const url = req.originalUrl || req.url || '';
+    return url.startsWith('/api/slots/img') || url.startsWith('/api/slots/games');
+  }
 });
 app.use('/api/', limiter);
 
