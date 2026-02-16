@@ -126,20 +126,30 @@ export default function AdminFreeroundsPage() {
     fetch('/api/slots/games')
       .then(r => r.json())
       .then(d => {
+        // API can return: array directly, { data: [...] }, or { data: { games: [...] } }
+        let rawGames: any[] = [];
         if (Array.isArray(d)) {
-          const supported = d.filter((g: any) => {
-            const mid = String(g.merchantId || g.systemId || '');
-            return OPERATOR_MAP[mid];
-          });
-          setAllGames(supported.map((g: any) => ({
-            id: g.id || g.gameCode,
-            name: g.name,
-            provider: g.provider || g.merchantName || '',
-            merchantId: String(g.merchantId || g.systemId || ''),
-            merchantName: g.merchantName || g.provider || '',
-            image: g.image || ''
-          })));
+          rawGames = d;
+        } else if (d?.data) {
+          if (Array.isArray(d.data)) {
+            rawGames = d.data;
+          } else if (d.data?.games && Array.isArray(d.data.games)) {
+            rawGames = d.data.games;
+          }
         }
+
+        const supported = rawGames.filter((g: any) => {
+          const mid = String(g.systemId || g.merchantId || '');
+          return OPERATOR_MAP[mid];
+        });
+        setAllGames(supported.map((g: any) => ({
+          id: g.id || g.gameCode,
+          name: g.name,
+          provider: g.provider || g.merchantName || '',
+          merchantId: String(g.systemId || g.merchantId || ''),
+          merchantName: g.merchantName || g.provider || '',
+          image: g.image || ''
+        })));
       })
       .catch(() => {});
   }, []);
