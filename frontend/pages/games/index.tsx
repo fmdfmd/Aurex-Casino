@@ -62,26 +62,6 @@ export default function GamesPage() {
   const [providers, setProviders] = useState<string[]>([]);
   const [providerSearch, setProviderSearch] = useState('');
   
-  // Extract real providers from loaded games (most accurate)
-  useEffect(() => {
-    if (!allGames || allGames.length === 0) return;
-    
-    const providerMap: Record<string, number> = {};
-    allGames.forEach((game: any) => {
-      const name = game.provider;
-      if (name && name !== 'Unknown') {
-        providerMap[name] = (providerMap[name] || 0) + 1;
-      }
-    });
-    
-    // Sort by game count descending
-    const sorted = Object.entries(providerMap)
-      .sort((a, b) => b[1] - a[1])
-      .map(([name]) => name);
-    
-    setProviders(sorted);
-  }, [allGames]);
-  
   // Game Modal state
   const [selectedGame, setSelectedGame] = useState<any>(null);
   const [gameMode, setGameMode] = useState<'demo' | 'real'>('real');
@@ -111,6 +91,25 @@ export default function GamesPage() {
     }
     return gamesData.data.games;
   }, [gamesData]);
+
+  // Extract real providers from loaded games
+  useEffect(() => {
+    if (!allGames || allGames.length === 0) return;
+    
+    const providerMap: Record<string, number> = {};
+    allGames.forEach((game: any) => {
+      const name = game.provider;
+      if (name && name !== 'Unknown') {
+        providerMap[name] = (providerMap[name] || 0) + 1;
+      }
+    });
+    
+    const sorted = Object.entries(providerMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+    
+    setProviders(sorted);
+  }, [allGames]);
 
   // Filter and sort games
   const filteredGames = useMemo(() => {
