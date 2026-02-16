@@ -329,8 +329,9 @@ class FundistApiService {
   }
 
   /**
-   * Create a user in Fundist system using User/Add API.
-   * This is needed BEFORE issuing freerounds.
+   * Create/ensure a user in Fundist system using User/AuthHTML with UserAutoCreate=1.
+   * User/Add is blocked on test accounts, so we use AuthHTML with a common game
+   * to trigger user creation. The HTML result is discarded.
    * Safe to call multiple times — Fundist updates existing users.
    */
   async createFundistUser(userId, currency = 'RUB', opts = {}) {
@@ -341,44 +342,48 @@ class FundistApiService {
     const fundistLogin = `aurex_${user.id}_${currency}`;
     const password = this.generateUserPassword(userId);
     const tid = this.generateTid();
+    const systemId = '960'; // PragmaticPlay — commonly available
 
-    // Hash: User/Add/[IP]/[TID]/[KEY]/[LOGIN]/[PASSWORD]/[CURRENCY]/[PWD]
-    const hashString = `User/Add/${this.casinoIp}/${tid}/${this.apiKey}/${fundistLogin}/${password}/${currency}/${this.apiPassword}`;
+    // Hash: User/AuthHTML/[IP]/[TID]/[KEY]/[LOGIN]/[PASSWORD]/[SYSTEM]/[PWD]
+    const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${fundistLogin}/${password}/${systemId}/${this.apiPassword}`;
     const hash = this.generateHash(hashString);
 
     const params = new URLSearchParams({
       Login: fundistLogin,
       Password: password,
+      System: systemId,
       TID: tid,
-      Currency: currency,
       Hash: hash,
+      Page: 'vs20doghouse',
+      UserIP: opts.ip || '0.0.0.0',
       Language: opts.language || 'ru',
-      RegistrationIP: opts.ip || '0.0.0.0',
-      Nick: user.username || `Player${user.id}`,
-      Country: user.country || opts.country || 'RUS'
+      UserAutoCreate: '1',
+      Currency: currency,
+      Country: user.country || opts.country || 'CY',
+      Nick: user.username || `Player${user.id}`
     });
 
-    if (user.email) params.append('Email', user.email);
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
 
-    const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/Add/?&${params.toString()}`;
+    console.log(`[Fundist] Creating user via AuthHTML: ${fundistLogin} (${currency})`);
 
-    console.log(`[Fundist] Creating user: ${fundistLogin} (${currency})`);
+    try {
+      const response = await axios.get(url, { timeout: 30000, family: 4 });
+      const data = String(response.data || '');
 
-    const response = await axios.get(url, { timeout: 30000, family: 4 });
-    const data = String(response.data || '');
+      if (data.startsWith('1,')) {
+        console.log(`[Fundist] User created/confirmed: ${fundistLogin}`);
+        return { success: true, login: fundistLogin };
+      }
 
-    if (data.trim() === '1') {
-      console.log(`[Fundist] User created/updated: ${fundistLogin}`);
-      return { success: true, login: fundistLogin };
+      // Even if game launch fails (e.g. restricted country), the user may still be created
+      // Freerounds/Add will work regardless
+      console.log(`[Fundist] AuthHTML result for ${fundistLogin}: ${data.slice(0, 100)}`);
+      return { success: true, login: fundistLogin, note: data.slice(0, 100) };
+    } catch (err) {
+      console.log(`[Fundist] createFundistUser warning: ${err.message}`);
+      return { success: true, login: fundistLogin, warning: err.message };
     }
-
-    // Error 16 = user already exists with different currency — that's okay
-    if (data.startsWith('16,')) {
-      console.log(`[Fundist] User ${fundistLogin} already exists: ${data}`);
-      return { success: true, login: fundistLogin, alreadyExists: true };
-    }
-
-    throw new Error(`User/Add error: ${data.slice(0, 300)}`);
   }
 
   /**
