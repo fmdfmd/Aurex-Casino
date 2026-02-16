@@ -58,7 +58,9 @@ export default function GamesPage() {
   const [selectedProviders, setSelectedProviders] = useState<string[]>([]);
   const [sortBy, setSortBy] = useState('popularity');
   const [showFilters, setShowFilters] = useState(false);
+  const [showProviders, setShowProviders] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
+  const [providerSearch, setProviderSearch] = useState('');
   
   // Extract real providers from loaded games (most accurate)
   useEffect(() => {
@@ -302,6 +304,108 @@ export default function GamesPage() {
 
               </div>
             )}
+
+            {/* PROVIDER SELECTOR — always visible */}
+            <div className="mb-6">
+              <button
+                onClick={() => setShowProviders(!showProviders)}
+                className={`flex items-center gap-2 px-5 py-3 rounded-xl font-bold text-sm transition-all duration-300 border ${
+                  showProviders || selectedProviders.length > 0
+                    ? 'bg-aurex-gold-500/10 border-aurex-gold-500/30 text-aurex-gold-500'
+                    : 'bg-aurex-obsidian-800 border-white/10 text-aurex-platinum-400 hover:text-white hover:border-white/20'
+                }`}
+              >
+                <Filter className="w-4 h-4" />
+                Провайдеры
+                {selectedProviders.length > 0 && (
+                  <span className="bg-aurex-gold-500 text-black text-xs font-black rounded-full w-5 h-5 flex items-center justify-center">
+                    {selectedProviders.length}
+                  </span>
+                )}
+                <ChevronRight className={`w-4 h-4 transition-transform duration-200 ${showProviders ? 'rotate-90' : ''}`} />
+              </button>
+
+              {/* Selected providers pills */}
+              {selectedProviders.length > 0 && !showProviders && (
+                <div className="flex flex-wrap gap-2 mt-3">
+                  {selectedProviders.map(p => (
+                    <button
+                      key={p}
+                      onClick={() => handleProviderToggle(p)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 bg-aurex-gold-500/15 border border-aurex-gold-500/30 rounded-lg text-xs text-aurex-gold-500 font-medium hover:bg-red-500/15 hover:border-red-500/30 hover:text-red-400 transition-colors"
+                    >
+                      {p}
+                      <X className="w-3 h-3" />
+                    </button>
+                  ))}
+                  <button
+                    onClick={() => setSelectedProviders([])}
+                    className="px-3 py-1.5 text-xs text-gray-500 hover:text-white transition-colors"
+                  >
+                    Сбросить все
+                  </button>
+                </div>
+              )}
+
+              <AnimatePresence>
+                {showProviders && (
+                  <motion.div
+                    initial={{ height: 0, opacity: 0 }}
+                    animate={{ height: 'auto', opacity: 1 }}
+                    exit={{ height: 0, opacity: 0 }}
+                    transition={{ duration: 0.2 }}
+                    className="overflow-hidden"
+                  >
+                    <div className="mt-3 p-4 bg-aurex-obsidian-800/80 backdrop-blur-sm rounded-xl border border-white/10">
+                      {/* Search within providers */}
+                      <div className="relative mb-3">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500" />
+                        <input
+                          type="text"
+                          placeholder="Найти провайдера..."
+                          value={providerSearch}
+                          onChange={(e) => setProviderSearch(e.target.value)}
+                          className="w-full bg-aurex-obsidian-900 border border-white/10 rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-gray-500 focus:border-aurex-gold-500/50 focus:outline-none"
+                        />
+                      </div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                        {providers
+                          .filter(p => !providerSearch || p.toLowerCase().includes(providerSearch.toLowerCase()))
+                          .map(p => {
+                            const count = allGames.filter(g => g.provider === p).length;
+                            const isSelected = selectedProviders.includes(p);
+                            return (
+                              <button
+                                key={p}
+                                onClick={() => handleProviderToggle(p)}
+                                className={`flex items-center justify-between px-3 py-2.5 rounded-lg text-xs transition-all ${
+                                  isSelected
+                                    ? 'bg-aurex-gold-500 text-black font-bold shadow-lg shadow-aurex-gold-500/10'
+                                    : 'bg-white/5 text-gray-400 hover:bg-white/10 hover:text-white'
+                                }`}
+                              >
+                                <span className="truncate">{p}</span>
+                                <span className={`ml-1 text-[10px] ${isSelected ? 'text-black/60' : 'text-gray-600'}`}>{count}</span>
+                              </button>
+                            );
+                          })}
+                      </div>
+                      {selectedProviders.length > 0 && (
+                        <div className="flex items-center justify-between mt-3 pt-3 border-t border-white/10">
+                          <span className="text-xs text-gray-500">Выбрано: {selectedProviders.length} провайдер(ов)</span>
+                          <button
+                            onClick={() => { setSelectedProviders([]); setShowProviders(false); }}
+                            className="text-xs text-red-400 hover:text-red-300 transition-colors"
+                          >
+                            Сбросить
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+              </AnimatePresence>
+            </div>
 
             {/* TOP GAMES section — shown on default view */}
             {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && topGames.length > 0 && (
