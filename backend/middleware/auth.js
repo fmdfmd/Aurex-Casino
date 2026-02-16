@@ -34,7 +34,9 @@ const auth = async (req, res, next) => {
       isAdmin: user.is_admin,
       vipLevel: user.vip_level,
       balance: parseFloat(user.balance),
-      bonusBalance: parseFloat(user.bonus_balance)
+      bonusBalance: parseFloat(user.bonus_balance),
+      currency: user.currency || 'RUB',
+      country: user.country || 'RUS'
     };
     req.token = token;
     
@@ -108,7 +110,9 @@ const optionalAuth = async (req, res, next) => {
           isAdmin: user.is_admin,
           vipLevel: user.vip_level,
           balance: parseFloat(user.balance),
-          bonusBalance: parseFloat(user.bonus_balance)
+          bonusBalance: parseFloat(user.bonus_balance),
+          currency: user.currency || 'RUB',
+          country: user.country || 'RUS'
         };
       }
     }

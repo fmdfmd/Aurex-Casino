@@ -376,8 +376,8 @@ router.post('/start-game', auth, async (req, res) => {
   try {
     const { gameCode, systemId: systemIdFromClient, language = 'en', mode = 'real' } = req.body;
     const userId = req.user.id;
-    // Use the user's actual currency from DB, fallback to request body, then USD
-    const currency = req.body.currency || req.user.currency || 'USD';
+    // Use the user's currency from DB first, then request body, default RUB
+    const currency = req.user.currency || req.body.currency || 'RUB';
     // Get real user IP behind proxy (Railway, nginx, etc.)
     const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
 

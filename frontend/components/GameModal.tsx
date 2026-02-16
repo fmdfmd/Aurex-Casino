@@ -53,7 +53,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
       setLoadError('');
 
       try {
-        const currency = (user as any)?.currency || 'USD';
+        const currency = (user as any)?.currency || 'RUB';
         const resp = await axios.post('/api/slots/start-game', {
           gameCode: game.id,
           systemId: (game as any).systemId,
