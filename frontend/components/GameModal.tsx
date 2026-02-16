@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X, ArrowLeft } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -16,54 +16,20 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   const [gameHtml, setGameHtml] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
-  const [showClose, setShowClose] = useState(true);
   const { user } = useAuthStore();
   const iframeRef = useRef<HTMLIFrameElement | null>(null);
-  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Lock body scroll and set viewport-fit when modal is open
+  // Lock body scroll when game is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
-      // Ensure viewport-fit=cover for iOS safe areas
-      const meta = document.querySelector('meta[name="viewport"]');
-      const origContent = meta?.getAttribute('content') || '';
-      if (meta && !origContent.includes('viewport-fit=cover')) {
-        meta.setAttribute('content', origContent + ',viewport-fit=cover');
-      }
     } else {
       document.body.style.overflow = '';
     }
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  // Auto-hide close button after 3s, show on tap/move
-  useEffect(() => {
-    if (!isOpen) return;
-    setShowClose(true);
-
-    const startHideTimer = () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-      hideTimer.current = setTimeout(() => setShowClose(false), 3000);
-    };
-
-    const handleInteraction = () => {
-      setShowClose(true);
-      startHideTimer();
-    };
-
-    startHideTimer();
-    window.addEventListener('mousemove', handleInteraction);
-    window.addEventListener('touchstart', handleInteraction);
-
-    return () => {
-      if (hideTimer.current) clearTimeout(hideTimer.current);
-      window.removeEventListener('mousemove', handleInteraction);
-      window.removeEventListener('touchstart', handleInteraction);
-    };
-  }, [isOpen]);
-
-  // Keyboard shortcuts
+  // Keyboard: Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -107,7 +73,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     run();
   }, [game, mode, isOpen, user]);
 
-  // Write HTML into a sandboxed iframe
+  // Write HTML into iframe via srcdoc
   useEffect(() => {
     if (!isOpen || !gameHtml || !iframeRef.current) return;
     const iframe = iframeRef.current;
@@ -118,13 +84,6 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-body{
-  padding-top:env(safe-area-inset-top,0);
-  padding-bottom:env(safe-area-inset-bottom,0);
-  padding-left:env(safe-area-inset-left,0);
-  padding-right:env(safe-area-inset-right,0);
-  box-sizing:border-box;
-}
 iframe,object,embed,div.game-container,.game-frame{
   width:100%!important;height:100%!important;
   position:absolute!important;top:0!important;left:0!important;
@@ -145,31 +104,43 @@ body>iframe,body>div,body>object,body>embed{
 
   return (
     <div 
-      className="fixed inset-0 z-50 bg-black"
-      style={{
-        paddingTop: 'env(safe-area-inset-top, 0px)',
-        paddingBottom: 'env(safe-area-inset-bottom, 0px)',
-        paddingLeft: 'env(safe-area-inset-left, 0px)',
-        paddingRight: 'env(safe-area-inset-right, 0px)',
-      }}
+      className="fixed left-0 right-0 bottom-0 z-40 bg-black flex flex-col"
+      style={{ top: '64px' }}
     >
-      {/* Full-screen game iframe */}
-      <div className="w-full h-full relative">
+      {/* Thin game bar with back button and game name */}
+      <div className="flex items-center justify-between px-3 py-1.5 bg-gray-900/95 border-b border-gray-800 shrink-0">
+        <button 
+          onClick={onClose}
+          className="flex items-center gap-1.5 text-gray-400 hover:text-white transition-colors py-1"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span className="text-xs font-medium">Назад</span>
+        </button>
+        <span className="text-xs text-gray-500 truncate max-w-[50%]">{game?.name}</span>
+        <button 
+          onClick={onClose}
+          className="p-1.5 text-gray-400 hover:text-red-400 transition-colors"
+        >
+          <X className="w-4 h-4" />
+        </button>
+      </div>
+
+      {/* Game iframe — fills all remaining space below the bar */}
+      <div className="flex-1 relative min-h-0">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
               <p className="text-gray-400 text-sm">Загрузка игры...</p>
-              <p className="text-gray-600 text-xs mt-1">{game?.name}</p>
             </div>
           </div>
         ) : loadError ? (
           <div className="flex items-center justify-center h-full">
             <div className="text-center px-6 max-w-md">
               <div className="text-red-500 text-5xl mb-4">⚠</div>
-              <p className="text-white font-bold text-lg mb-2">Не удалось загрузить игру</p>
+              <p className="text-white font-bold text-lg mb-2">Не удалось загрузить</p>
               <p className="text-gray-400 text-sm mb-6">{loadError}</p>
-              <button onClick={onClose} className="px-8 py-3 bg-yellow-500 text-black rounded-xl font-bold text-sm hover:bg-yellow-400 transition-colors">
+              <button onClick={onClose} className="px-8 py-3 bg-yellow-500 text-black rounded-xl font-bold text-sm">
                 Назад к играм
               </button>
             </div>
@@ -183,23 +154,6 @@ body>iframe,body>div,body>object,body>embed{
             title={game?.name || 'Game'}
           />
         ) : null}
-
-        {/* Floating close button — auto-hides after 3s, shows on mouse/touch */}
-        <button 
-          onClick={onClose}
-          className={`
-            fixed top-3 left-3 z-[60] 
-            w-10 h-10 rounded-full 
-            bg-black/60 backdrop-blur-sm border border-white/20
-            flex items-center justify-center
-            hover:bg-red-600/80 hover:border-red-500/50
-            transition-all duration-300
-            ${showClose ? 'opacity-100 translate-y-0' : 'opacity-0 -translate-y-2 pointer-events-none'}
-          `}
-          title="Закрыть игру (Esc)"
-        >
-          <X className="w-5 h-5 text-white" />
-        </button>
       </div>
     </div>
   );
