@@ -386,9 +386,32 @@ router.get('/payment-methods', async (req, res) => {
 
 router.get('/providers', async (req, res) => {
   try {
+    // Get real providers from Fundist game catalog
+    const fundistService = require('../services/fundistApiService');
+    const catalog = await fundistService.getFullList();
+    
+    if (catalog?.games && Array.isArray(catalog.games)) {
+      // Count games per provider and sort by count (most games first)
+      const providerMap = {};
+      catalog.games.forEach(game => {
+        const name = game.provider || game.MerchantName || game.SubMerchantName || '';
+        if (name && name !== 'Unknown') {
+          providerMap[name] = (providerMap[name] || 0) + 1;
+        }
+      });
+      
+      const providerList = Object.entries(providerMap)
+        .sort((a, b) => b[1] - a[1])
+        .map(([name, count]) => ({ name, count }));
+      
+      return res.json({ success: true, data: providerList });
+    }
+    
+    // Fallback to config
     const config = await getConfig('gamesConfig', defaultGamesConfig);
     res.json({ success: true, data: config.providers });
   } catch (error) {
+    console.error('Get providers error:', error);
     res.status(500).json({ success: false, error: 'Failed to get providers' });
   }
 });

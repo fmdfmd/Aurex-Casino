@@ -60,24 +60,25 @@ export default function GamesPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [providers, setProviders] = useState<string[]>([]);
   
-  // Fetch providers from API
+  // Extract real providers from loaded games (most accurate)
   useEffect(() => {
-    const fetchProviders = async () => {
-      try {
-        const res = await fetch('/api/config/providers');
-        const data = await res.json();
-        if (data.success && Array.isArray(data.data)) {
-          const providerNames = data.data.map((p: any) => 
-            typeof p === 'string' ? p : p.name
-          );
-          setProviders(providerNames);
-        }
-      } catch (error) {
-        console.error('Failed to fetch providers:', error);
+    if (!allGames || allGames.length === 0) return;
+    
+    const providerMap: Record<string, number> = {};
+    allGames.forEach((game: any) => {
+      const name = game.provider;
+      if (name && name !== 'Unknown') {
+        providerMap[name] = (providerMap[name] || 0) + 1;
       }
-    };
-    fetchProviders();
-  }, []);
+    });
+    
+    // Sort by game count descending
+    const sorted = Object.entries(providerMap)
+      .sort((a, b) => b[1] - a[1])
+      .map(([name]) => name);
+    
+    setProviders(sorted);
+  }, [allGames]);
   
   // Game Modal state
   const [selectedGame, setSelectedGame] = useState<any>(null);
@@ -441,7 +442,7 @@ export default function GamesPage() {
                         </div>
                         <div className="md:col-span-3">
                           <h4 className="text-white font-bold mb-3 text-sm">Провайдеры</h4>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2 max-h-40 overflow-y-auto custom-scrollbar pr-2">
+                          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2 max-h-64 overflow-y-auto custom-scrollbar pr-2">
                             {providers.map(p => (
                               <button
                                 key={p}
