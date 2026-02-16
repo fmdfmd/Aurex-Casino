@@ -547,9 +547,6 @@ router.get('/game-frame/:token', (req, res) => {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
   
-  // Delete after first use (one-time token)
-  gameFrameStore.delete(req.params.token);
-  
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">

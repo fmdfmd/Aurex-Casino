@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
@@ -13,11 +13,11 @@ interface GameModalProps {
 }
 
 export default function GameModal({ isOpen, onClose, game, mode, onModeChange }: GameModalProps) {
-  const [gameHtml, setGameHtml] = useState('');
+  const [iframeSrc, setIframeSrc] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const { user } = useAuthStore();
-  const containerRef = useRef<HTMLDivElement | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   // Lock body scroll when game is open
   useEffect(() => {
@@ -39,16 +39,18 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Fetch game HTML from backend
+  // Fetch game HTML, store via game-frame endpoint, get iframe URL
   useEffect(() => {
     const run = async () => {
       if (!game || !isOpen) return;
       setIsLoading(true);
-      setGameHtml('');
+      setIframeSrc('');
       setLoadError('');
 
       try {
         const currency = (user as any)?.currency || 'RUB';
+
+        // Step 1: Get HTML fragment from Fundist via our backend
         const resp = await axios.post('/api/slots/start-game', {
           gameCode: game.id,
           systemId: (game as any).systemId,
@@ -59,7 +61,15 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 
         const html = resp.data?.data?.html;
         if (!html) throw new Error('Сервер не вернул HTML-фрагмент');
-        setGameHtml(html);
+
+        // Step 2: Store HTML on backend, get a token
+        const frameResp = await axios.post('/api/slots/game-frame', { html });
+        const token = frameResp.data?.token;
+        if (!token) throw new Error('Не удалось создать игровую сессию');
+
+        // Step 3: Set iframe src to our domain's game-frame URL
+        // This gives the game a proper document context + our origin
+        setIframeSrc(`/api/slots/game-frame/${token}`);
       } catch (e: any) {
         console.error('Failed to start game:', e);
         const msg = e?.response?.data?.error || e?.message || 'Не удалось запустить игру';
@@ -73,97 +83,13 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     run();
   }, [game, mode, isOpen, user]);
 
-  // Insert HTML fragment directly into the page (per Fundist docs)
-  // and execute any script tags it contains
+  // Clear iframe on close
   useEffect(() => {
-    if (!isOpen || !gameHtml || !containerRef.current) return;
-    const container = containerRef.current;
-
-    // Clear previous content
-    container.innerHTML = '';
-
-    // Inject a <style> tag that forces ALL iframes/objects/embeds (present AND future)
-    // to fill the container. This catches dynamically created elements from Fundist scripts.
-    const style = document.createElement('style');
-    style.textContent = `
-      .game-inject-container { position: absolute; inset: 0; }
-      .game-inject-container iframe,
-      .game-inject-container object,
-      .game-inject-container embed,
-      .game-inject-container video {
-        position: absolute !important;
-        top: 0 !important;
-        left: 0 !important;
-        width: 100% !important;
-        height: 100% !important;
-        border: 0 !important;
-      }
-      .game-inject-container > div {
-        width: 100% !important;
-        height: 100% !important;
-      }
-    `;
-    container.appendChild(style);
-
-    // Parse the HTML fragment
-    const temp = document.createElement('div');
-    temp.innerHTML = gameHtml;
-
-    // Move all nodes into container, handling scripts specially
-    const scripts: HTMLScriptElement[] = [];
-    
-    Array.from(temp.childNodes).forEach(node => {
-      if (node instanceof HTMLScriptElement) {
-        scripts.push(node);
-      } else {
-        container.appendChild(node.cloneNode(true));
-      }
-    });
-
-    // Helper: force-fill an iframe
-    const forceIframeFullscreen = (iframe: HTMLIFrameElement) => {
-      iframe.setAttribute('allow', 'autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write');
-      iframe.removeAttribute('width');
-      iframe.removeAttribute('height');
-      iframe.removeAttribute('sandbox');
-    };
-
-    // Style any iframes already in the fragment
-    container.querySelectorAll('iframe').forEach(forceIframeFullscreen);
-
-    // MutationObserver to catch iframes created dynamically by Fundist scripts
-    const observer = new MutationObserver((mutations) => {
-      for (const mutation of mutations) {
-        mutation.addedNodes.forEach(node => {
-          if (node instanceof HTMLIFrameElement) {
-            forceIframeFullscreen(node);
-          }
-          if (node instanceof HTMLElement) {
-            node.querySelectorAll?.('iframe')?.forEach(forceIframeFullscreen);
-          }
-        });
-      }
-    });
-    observer.observe(container, { childList: true, subtree: true });
-
-    // Execute scripts by creating new script elements
-    scripts.forEach(origScript => {
-      const newScript = document.createElement('script');
-      Array.from(origScript.attributes).forEach(attr => {
-        newScript.setAttribute(attr.name, attr.value);
-      });
-      if (origScript.textContent) {
-        newScript.textContent = origScript.textContent;
-      }
-      container.appendChild(newScript);
-    });
-
-    // Cleanup on unmount
-    return () => {
-      observer.disconnect();
-      container.innerHTML = '';
-    };
-  }, [isOpen, gameHtml]);
+    if (!isOpen) {
+      setIframeSrc('');
+      setLoadError('');
+    }
+  }, [isOpen]);
 
   if (!isOpen || !game) return null;
 
@@ -210,11 +136,13 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
               </button>
             </div>
           </div>
-        ) : gameHtml ? (
-          <div 
-            ref={containerRef}
-            className="game-inject-container overflow-hidden"
-            style={{ background: '#000' }}
+        ) : iframeSrc ? (
+          <iframe
+            ref={iframeRef}
+            src={iframeSrc}
+            className="absolute inset-0 w-full h-full border-0"
+            allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
+            allowFullScreen
           />
         ) : null}
       </div>
