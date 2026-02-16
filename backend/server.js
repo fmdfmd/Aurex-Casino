@@ -130,6 +130,40 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Diagnostic endpoint — check server config & outgoing IP
+app.get('/api/diag', async (req, res) => {
+  const config = require('./config/config');
+  const axios = require('axios');
+  let outgoingIp = 'unknown';
+  try {
+    const ipResp = await axios.get('https://api.ipify.org?format=json', { timeout: 5000 });
+    outgoingIp = ipResp.data?.ip || 'unknown';
+  } catch (e) {
+    outgoingIp = 'error: ' + e.message;
+  }
+
+  const mask = (s) => s ? s.slice(0, 6) + '***' + s.slice(-4) : 'NOT SET';
+
+  res.json({
+    outgoingIp,
+    fundist: {
+      baseUrl: config.slotsApi.baseUrl,
+      apiKeySet: !!process.env.SLOTS_API_KEY,
+      apiKeyPreview: mask(config.slotsApi.apiKey),
+      apiPasswordSet: !!process.env.SLOTS_API_PASSWORD,
+      hmacSecretSet: !!process.env.SLOTS_HMAC_SECRET,
+      callbackUrl: config.slotsApi.callbackUrl,
+    },
+    env: {
+      NODE_ENV: process.env.NODE_ENV || 'not set',
+      DATABASE_URL_set: !!process.env.DATABASE_URL,
+      JWT_SECRET_set: !!process.env.JWT_SECRET,
+      FRONTEND_URL: process.env.FRONTEND_URL || 'not set',
+      RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN || 'not set',
+    }
+  });
+});
+
 // Root route - API info
 app.get('/', (req, res) => {
   res.json({
