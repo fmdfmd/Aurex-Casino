@@ -73,7 +73,9 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     run();
   }, [game, mode, isOpen, user]);
 
-  // Write HTML into iframe via srcdoc
+  // Write HTML into iframe via document.write (NOT srcdoc!)
+  // srcdoc gives null origin which blocks WebSocket/WebRTC for live casino.
+  // document.write inherits parent origin (aurex.casino) so everything works.
   useEffect(() => {
     if (!isOpen || !gameHtml || !iframeRef.current) return;
     const iframe = iframeRef.current;
@@ -97,7 +99,20 @@ body>iframe,body>div,body>object,body>embed{
 </style>
 </head><body>${gameHtml}</body></html>`;
 
-    iframe.srcdoc = doc;
+    try {
+      const iframeDoc = iframe.contentDocument || iframe.contentWindow?.document;
+      if (iframeDoc) {
+        iframeDoc.open();
+        iframeDoc.write(doc);
+        iframeDoc.close();
+      } else {
+        // Fallback to srcdoc if document not accessible
+        iframe.srcdoc = doc;
+      }
+    } catch (e) {
+      // Cross-origin fallback
+      iframe.srcdoc = doc;
+    }
   }, [isOpen, gameHtml]);
 
   if (!isOpen || !game) return null;
