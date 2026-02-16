@@ -166,50 +166,78 @@ router.get('/games', async (req, res) => {
     // Provider tier system — slot providers first, then live
     const providerTier = {
       // Tier 1 — top slot providers
-      '960': 1, // PragmaticPlay
-      '850': 1, // HacksawGaming
-      '938': 1, // NoLimitCity
-      '911': 1, // PushGaming
-      '944': 1, // PlaynGo
-      '939': 1, // PGSoft
-      '421': 1, // NetEntOSS
-      '997': 1, // MG (Microgaming/GamesGlobal)
+      '960': 1, // Pragmatic Play
+      '850': 1, // Hacksaw Gaming
+      '938': 1, // Nolimit City
+      '911': 1, // Push Gaming
+      '944': 1, // Play'n GO
+      '939': 1, // PG Soft
+      '421': 1, // NetEnt
+      '892': 1, // EvoOSS (NetEnt/Red Tiger/BTG)
+      '997': 1, // Microgaming/GamesGlobal
       '953': 1, // Yggdrasil
-      '940': 1, // EvoPlay
-      '935': 1, // RelaxGaming
+      '940': 1, // Evoplay
+      '935': 1, // Relax Gaming
       '920': 1, // Thunderkick
-      '925': 1, // ELKStudios
+      '925': 1, // ELK Studios
       '973': 1, // Endorphina
+      '901': 1, // BGaming
       // Tier 2 — good slot providers
       '991': 2, // BetSoft
       '976': 2, // Habanero
+      '865': 2, // Habanero (alt)
       '969': 2, // Quickspin
-      '963': 2, // ISoftBet
-      '943': 2, // PlaysonDirect
+      '963': 2, // iSoftBet
+      '943': 2, // Playson
       '941': 2, // Wazdan
-      '924': 2, // Booongo
+      '924': 2, // 3 Oaks Gaming
       '949': 2, // Platipus
-      '901': 1, // BGaming
-      '899': 2, // MascotGaming
+      '845': 2, // Platipus (alt)
+      '899': 2, // Mascot Gaming
       '895': 2, // Spribe
+      '773': 2, // Spribe (alt)
       '955': 2, // GameArt
-      // Tier 2.5 — newly enabled quality providers
       '842': 2, // NucleusGaming
       '846': 2, // Slotmill
+      '956': 2, // Belatra
+      '927': 2, // Fugaso
+      '867': 2, // Netgame
+      '896': 2, // Onlyplay
+      '874': 2, // Kalamba
+      '959': 2, // Spinomenal
       // Tier 3 — decent
       '307': 3, // Novomatic
-      '987': 3, // TomHorn
+      '835': 3, // Kaga
+      '898': 3, // Kaga (alt)
+      '987': 3, // Tom Horn
       '979': 3, // WorldMatch
       '977': 3, // BoomingGames
-      '975': 3, // AmaticDirect
+      '975': 3, // Amatic
       '917': 3, // Stakelogic
-      '910': 3, // RedRakeGaming
+      '910': 3, // Red Rake
       '879': 3, // Gamzix
       '869': 3, // SmartSoft
+      '849': 3, // TurboGames
+      '923': 3, // CQ9
+      '834': 3, // JDB
+      '919': 3, // Spadegaming
+      '930': 3, // Genii
+      '929': 3, // Concept Gaming
+      '860': 3, // PLS Gaming
+      '810': 3, // RevDev
       // Tier 4 — live casino (after slots)
       '998': 4, // Evolution
       '913': 4, // VivoGaming
+      '945': 4, // VivoGaming (alt)
       '990': 4, // LuckyStreak
+      '980': 4, // LuckyStreak (alt)
+      '983': 4, // Ezugi
+      '904': 4, // HoGaming
+      '866': 4, // WM Casino
+      '814': 4, // Oriental Games
+      '934': 4, // LiveGames
+      '968': 4, // SA Gaming
+      '900': 4, // TVBet
     };
     
     if (apiData.games && Array.isArray(apiData.games)) {
