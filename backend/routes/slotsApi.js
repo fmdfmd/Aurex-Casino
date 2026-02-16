@@ -317,14 +317,16 @@ router.get('/games', async (req, res) => {
           (merchantId ? `Provider ${merchantId}` : 'Unknown');
 
         // Handle image: FullList has ImageFullPath, List has ImageURL (relative)
+        // Use direct URL to avoid 429 rate-limiting on our proxy
         let imageUrl = game.ImageFullPath;
         if (!imageUrl && game.ImageURL) {
           const rel = game.ImageURL.replace(/^\/gstatic/, '');
           imageUrl = `https://agstatic.com${rel}`;
         }
-        const imageProxyUrl = imageUrl
-          ? `/api/slots/img?u=${encodeURIComponent(String(imageUrl))}`
-          : undefined;
+        // Also build Image field (sometimes has better path)
+        if (!imageUrl && game.Image) {
+          imageUrl = `https://agstatic.com/games/${game.Image}`;
+        }
 
         // Handle name
         const nameObj = game.Name || game.Trans || {};
@@ -355,7 +357,7 @@ router.get('/games', async (req, res) => {
           systemId: merchantId,
           name: gameName,
           provider: merchantName,
-          image: imageProxyUrl,
+          image: imageUrl || undefined,
           category: determineCategory(game, categoriesMap),
           hasDemo: game.hasDemo === '1' || game.HasDemo === '1',
           isNew: false,

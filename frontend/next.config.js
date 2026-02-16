@@ -12,6 +12,10 @@ const nextConfig = {
       'img.cdn-fundist.com',
       'agstatic.com'
     ],
+    remotePatterns: [
+      { protocol: 'https', hostname: 'agstatic.com', pathname: '/**' },
+      { protocol: 'https', hostname: 'img.cdn-fundist.com', pathname: '/**' },
+    ],
     dangerouslyAllowSVG: true,
   },
   async rewrites() {
