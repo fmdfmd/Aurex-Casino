@@ -28,6 +28,7 @@ interface User {
 
 interface Game {
   id: string;
+  pageCode?: string;
   name: string;
   provider: string;
   merchantId: string;
