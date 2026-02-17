@@ -25,6 +25,17 @@ const numericTid = (tid) => {
   return Number.isFinite(n) ? n : 0;
 };
 
+// Helper: Build idempotent cached response with CURRENT balance and correct tid
+// Per OW spec: "balance field must contain current value" even for cached responses
+const buildCachedResponse = async (client, userId, tid, cachedResp) => {
+  const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+  const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
+  const resp = { ...cachedResp, tid: numericTid(tid), balance: formatAmount(curBal) };
+  delete resp.hmac;
+  resp.hmac = generateHmac(resp, HMAC_SECRET);
+  return resp;
+};
+
 // Helper: Send Success Response (HTTP 200 required by spec)
 const sendOk = (res, data = {}) => {
   const response = {
@@ -247,15 +258,12 @@ const handleDebit = async (req, res) => {
       if (existingByTid) {
         const prevReq = existingByTid.request_json;
         if (!sameEssentials(pick(prevReq, ESSENTIAL_TID_FIELDS), pick(req.body, ESSENTIAL_TID_FIELDS), ESSENTIAL_TID_FIELDS)) {
-          const balRes = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
-          const curBal = balRes.rows[0]?.balance ?? 0;
+          const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+          const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
-          delete cachedResp.hmac;
-          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
-          return { responseJson: cachedResp, done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -265,15 +273,12 @@ const handleDebit = async (req, res) => {
       if (existingByAction) {
         const prevReq = existingByAction.request_json;
         if (!sameEssentials(pick(prevReq, ESSENTIAL_ACTION_FIELDS), pick(req.body, ESSENTIAL_ACTION_FIELDS), ESSENTIAL_ACTION_FIELDS)) {
-          const balRes = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
-          const curBal = balRes.rows[0]?.balance ?? 0;
+          const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+          const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          const cachedResp = { ...existingByAction.response_json, tid: numericTid(tid) };
-          delete cachedResp.hmac;
-          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
-          return { responseJson: cachedResp, done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -483,15 +488,12 @@ const handleCredit = async (req, res) => {
       if (existingByTid) {
         const prevReq = existingByTid.request_json;
         if (!sameEssentials(pick(prevReq, ESSENTIAL_TID_FIELDS), pick(req.body, ESSENTIAL_TID_FIELDS), ESSENTIAL_TID_FIELDS)) {
-          const balRes = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
-          const curBal = balRes.rows[0]?.balance ?? 0;
+          const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+          const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
-          delete cachedResp.hmac;
-          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
-          return { responseJson: cachedResp, done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -501,15 +503,12 @@ const handleCredit = async (req, res) => {
       if (existingByAction) {
         const prevReq = existingByAction.request_json;
         if (!sameEssentials(pick(prevReq, ESSENTIAL_ACTION_FIELDS), pick(req.body, ESSENTIAL_ACTION_FIELDS), ESSENTIAL_ACTION_FIELDS)) {
-          const balRes = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
-          const curBal = balRes.rows[0]?.balance ?? 0;
+          const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+          const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          const cachedResp = { ...existingByAction.response_json, tid: numericTid(tid) };
-          delete cachedResp.hmac;
-          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
-          return { responseJson: cachedResp, done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -710,17 +709,12 @@ const handleRollback = async (req, res) => {
       if (existingByTid) {
         const prevReq = existingByTid.request_json;
         if (!sameEssentials(pick(prevReq, ESSENTIAL_TID_FIELDS), pick(req.body, ESSENTIAL_TID_FIELDS), ESSENTIAL_TID_FIELDS)) {
-          const balRes = await client.query('SELECT balance FROM users WHERE id = $1', [userId]);
-          const curBal = balRes.rows[0]?.balance ?? 0;
-          const mismatch = { error: 'Transaction parameter mismatch', balance: formatAmount(curBal) };
-          mismatch.hmac = generateHmac(mismatch, HMAC_SECRET);
-          return { responseJson: mismatch, done: true };
+          const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+          const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
+          return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
-          delete cachedResp.hmac;
-          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
-          return { responseJson: cachedResp, done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
