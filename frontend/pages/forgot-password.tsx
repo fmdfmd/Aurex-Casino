@@ -19,19 +19,20 @@ export default function ForgotPasswordPage() {
     setLoading(true);
 
     try {
-      const res = await fetch('/api/auth/forgot-password/request', {
+      // Use existing uCaller phone verification service
+      const res = await fetch('/api/otp/sms/send', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
+        body: JSON.stringify({ phone, purpose: 'forgot_password' })
       });
 
       const data = await res.json();
 
       if (data.success) {
-        toast.success('Код отправлен на ваш номер!');
+        toast.success('Сейчас вам позвонят! Введите последние 4 цифры номера.');
         setStep('code');
       } else {
-        toast.error(data.error || 'Ошибка отправки кода');
+        toast.error(data.error || 'Ошибка звонка');
       }
     } catch (error) {
       toast.error('Ошибка сети');
@@ -42,7 +43,35 @@ export default function ForgotPasswordPage() {
 
   const handleVerifyCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    setStep('password');
+    
+    if (code.length !== 4) {
+      toast.error('Код должен состоять из 4 цифр');
+      return;
+    }
+
+    setLoading(true);
+
+    try {
+      // Verify code using existing uCaller service
+      const res = await fetch('/api/otp/sms/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code, purpose: 'forgot_password' })
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        toast.success('Код подтвержден!');
+        setStep('password');
+      } else {
+        toast.error(data.error || 'Неверный код');
+      }
+    } catch (error) {
+      toast.error('Ошибка сети');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResetPassword = async (e: React.FormEvent) => {
@@ -109,8 +138,8 @@ export default function ForgotPasswordPage() {
                 Восстановление пароля
               </h1>
               <p className="text-aurex-platinum-400 mb-8">
-                {step === 'phone' && 'Введите номер телефона для получения кода'}
-                {step === 'code' && 'Введите код из СМС'}
+                {step === 'phone' && 'Введите номер телефона, мы вам позвоним'}
+                {step === 'code' && 'Введите последние 4 цифры входящего номера'}
                 {step === 'password' && 'Введите новый пароль'}
               </p>
 
@@ -139,7 +168,7 @@ export default function ForgotPasswordPage() {
                     disabled={loading}
                     className="w-full bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 hover:from-aurex-gold-400 hover:to-aurex-gold-500 text-aurex-obsidian-900 font-black py-3 rounded-xl transition-all shadow-lg shadow-aurex-gold-500/30 disabled:opacity-50"
                   >
-                    {loading ? 'Отправка...' : 'Получить код'}
+                    {loading ? 'Звоним...' : 'Позвонить мне'}
                   </button>
                 </form>
               )}
@@ -149,24 +178,29 @@ export default function ForgotPasswordPage() {
                 <form onSubmit={handleVerifyCode}>
                   <div className="mb-6">
                     <label className="block text-aurex-platinum-400 mb-2 text-sm font-medium">
-                      Код из СМС
+                      Последние 4 цифры
                     </label>
                     <input
                       type="text"
+                      inputMode="numeric"
                       value={code}
-                      onChange={(e) => setCode(e.target.value)}
-                      placeholder="123456"
-                      maxLength={6}
-                      className="w-full bg-aurex-obsidian-900 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-2xl tracking-widest focus:border-aurex-gold-500 focus:outline-none transition-colors"
+                      onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                      placeholder="1234"
+                      maxLength={4}
+                      className="w-full bg-aurex-obsidian-900 border border-white/10 rounded-xl px-4 py-3 text-white text-center text-3xl tracking-[0.5em] focus:border-aurex-gold-500 focus:outline-none transition-colors font-mono"
                       required
                     />
+                    <p className="text-xs text-aurex-platinum-500 mt-2 text-center">
+                      Введите последние 4 цифры входящего номера телефона
+                    </p>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 hover:from-aurex-gold-400 hover:to-aurex-gold-500 text-aurex-obsidian-900 font-black py-3 rounded-xl transition-all shadow-lg shadow-aurex-gold-500/30"
+                    disabled={loading}
+                    className="w-full bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 hover:from-aurex-gold-400 hover:to-aurex-gold-500 text-aurex-obsidian-900 font-black py-3 rounded-xl transition-all shadow-lg shadow-aurex-gold-500/30 disabled:opacity-50"
                   >
-                    Подтвердить код
+                    {loading ? 'Проверка...' : 'Подтвердить код'}
                   </button>
                 </form>
               )}
