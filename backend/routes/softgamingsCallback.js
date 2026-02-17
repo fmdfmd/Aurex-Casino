@@ -223,7 +223,7 @@ const handleDebit = async (req, res) => {
     }
 
     const result = await withTransaction(pool, async (client) => {
-      // 0) Idempotency by TID
+      // 0) Idempotency by TID (same tid retry)
       const existingByTid = await findExistingByTid(client, tid);
       if (existingByTid) {
         const prevReq = existingByTid.request_json;
@@ -233,12 +233,15 @@ const handleDebit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          return { responseJson: existingByTid.response_json, done: true };
+          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
+          delete cachedResp.hmac;
+          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
+          return { responseJson: cachedResp, done: true };
         }
         return { timeout: true, done: true };
       }
 
-      // 0b) Idempotency by (i_gameid + i_actionid)
+      // 0b) Idempotency by (i_gameid + i_actionid) — new tid, same action
       const existingByAction = await findExistingByAction(client, { userid, i_gameid, i_actionid });
       if (existingByAction) {
         const prevReq = existingByAction.request_json;
@@ -248,7 +251,10 @@ const handleDebit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          return { responseJson: existingByAction.response_json, done: true };
+          const cachedResp = { ...existingByAction.response_json, tid: numericTid(tid) };
+          delete cachedResp.hmac;
+          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
+          return { responseJson: cachedResp, done: true };
         }
         return { timeout: true, done: true };
       }
@@ -446,7 +452,7 @@ const handleCredit = async (req, res) => {
     const gamePageCode = gameDesc.includes(':') ? gameDesc.split(':')[1] : gameDesc;
 
     const result = await withTransaction(pool, async (client) => {
-      // 0) Idempotency by TID
+      // 0) Idempotency by TID (same tid retry)
       const existingByTid = await findExistingByTid(client, tid);
       if (existingByTid) {
         const prevReq = existingByTid.request_json;
@@ -456,12 +462,15 @@ const handleCredit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          return { responseJson: existingByTid.response_json, done: true };
+          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
+          delete cachedResp.hmac;
+          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
+          return { responseJson: cachedResp, done: true };
         }
         return { timeout: true, done: true };
       }
 
-      // 0b) Idempotency by (i_gameid + i_actionid)
+      // 0b) Idempotency by (i_gameid + i_actionid) — new tid, same action
       const existingByAction = await findExistingByAction(client, { userid, i_gameid, i_actionid });
       if (existingByAction) {
         const prevReq = existingByAction.request_json;
@@ -471,7 +480,10 @@ const handleCredit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          return { responseJson: existingByAction.response_json, done: true };
+          const cachedResp = { ...existingByAction.response_json, tid: numericTid(tid) };
+          delete cachedResp.hmac;
+          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
+          return { responseJson: cachedResp, done: true };
         }
         return { timeout: true, done: true };
       }
@@ -676,7 +688,12 @@ const handleRollback = async (req, res) => {
           mismatch.hmac = generateHmac(mismatch, HMAC_SECRET);
           return { responseJson: mismatch, done: true };
         }
-        if (existingByTid.response_json) return { responseJson: existingByTid.response_json, done: true };
+        if (existingByTid.response_json) {
+          const cachedResp = { ...existingByTid.response_json, tid: numericTid(tid) };
+          delete cachedResp.hmac;
+          cachedResp.hmac = generateHmac(cachedResp, HMAC_SECRET);
+          return { responseJson: cachedResp, done: true };
+        }
         return { timeout: true, done: true };
       }
 
