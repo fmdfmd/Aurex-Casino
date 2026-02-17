@@ -546,6 +546,98 @@ router.post('/logout', auth, (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
 
+// ===== FORGOT PASSWORD =====
+
+// Step 1: Request OTP code
+router.post('/forgot-password/request', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!normalizedPhone) {
+      return res.status(400).json({ success: false, error: 'Укажите номер телефона' });
+    }
+
+    // Check if user exists
+    const userResult = await pool.query('SELECT id FROM users WHERE phone = $1', [normalizedPhone]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Пользователь с таким номером не найден' });
+    }
+
+    // Generate 6-digit code
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save code to database (reuse otp_codes table or create new forgot_password_codes table)
+    await pool.query(
+      `INSERT INTO otp_codes (phone, code, expires_at, created_at) 
+       VALUES ($1, $2, $3, CURRENT_TIMESTAMP) 
+       ON CONFLICT (phone) DO UPDATE SET code = $2, expires_at = $3, created_at = CURRENT_TIMESTAMP`,
+      [normalizedPhone, code, expiresAt]
+    );
+
+    // TODO: Send SMS with code (integrate SMS provider)
+    console.log(`[Forgot Password] Code for ${normalizedPhone}: ${code}`);
+
+    res.json({
+      success: true,
+      message: 'Код отправлен на ваш номер',
+      // DEV ONLY: remove in production
+      ...(process.env.NODE_ENV === 'development' && { code })
+    });
+  } catch (error) {
+    console.error('Forgot password request error:', error);
+    res.status(500).json({ success: false, error: 'Ошибка отправки кода' });
+  }
+});
+
+// Step 2: Reset password with code
+router.post('/forgot-password/reset', async (req, res) => {
+  try {
+    const { phone, code, newPassword } = req.body;
+    const normalizedPhone = normalizePhone(phone);
+
+    if (!normalizedPhone || !code || !newPassword) {
+      return res.status(400).json({ success: false, error: 'Укажите все данные' });
+    }
+
+    if (newPassword.length < 6) {
+      return res.status(400).json({ success: false, error: 'Пароль должен быть не менее 6 символов' });
+    }
+
+    // Verify code
+    const codeResult = await pool.query(
+      'SELECT * FROM otp_codes WHERE phone = $1 AND code = $2 AND expires_at > CURRENT_TIMESTAMP',
+      [normalizedPhone, code]
+    );
+
+    if (codeResult.rows.length === 0) {
+      return res.status(400).json({ success: false, error: 'Неверный или истекший код' });
+    }
+
+    // Find user
+    const userResult = await pool.query('SELECT id FROM users WHERE phone = $1', [normalizedPhone]);
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Пользователь не найден' });
+    }
+
+    // Update password
+    const hashedPassword = await bcrypt.hash(newPassword, 12);
+    await pool.query(
+      'UPDATE users SET password = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2',
+      [hashedPassword, userResult.rows[0].id]
+    );
+
+    // Delete used code
+    await pool.query('DELETE FROM otp_codes WHERE phone = $1', [normalizedPhone]);
+
+    res.json({ success: true, message: 'Пароль успешно изменен' });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    res.status(500).json({ success: false, error: 'Ошибка сброса пароля' });
+  }
+});
+
 // ===== GOOGLE OAUTH 2.0 =====
 
 // Build Google callback URL — use GOOGLE_CALLBACK_URL or derive from frontend URL
