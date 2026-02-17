@@ -216,7 +216,7 @@ export default function AdminFreeroundsPage() {
         },
         body: JSON.stringify({
           userId: selectedUser.id,
-          gameCode: selectedGame.id,
+          gameCode: selectedGame.pageCode || selectedGame.id,
           operator: selectedOperatorInfo.name,
           count: countNum,
           betLevel: currentBetPreset.betLevel,
@@ -236,7 +236,7 @@ export default function AdminFreeroundsPage() {
           user: selectedUser.username,
           userId: selectedUser.id,
           game: selectedGame.name,
-          gameCode: selectedGame.id,
+          gameCode: selectedGame.pageCode || selectedGame.id,
           provider: selectedOperatorInfo.label,
           count: countNum,
           betPerSpin: currentBetPreset.approxRub,
@@ -463,7 +463,7 @@ export default function AdminFreeroundsPage() {
                             )}
                             <div className="flex-1 min-w-0">
                               <div className="text-white font-medium truncate">{game.name}</div>
-                              <div className="text-aurex-platinum-600 text-xs">{game.id}</div>
+                              <div className="text-aurex-platinum-600 text-xs">{game.pageCode || game.id}</div>
                             </div>
                           </button>
                         ))}
@@ -476,7 +476,7 @@ export default function AdminFreeroundsPage() {
                   <div className="mt-2 px-3 py-2 bg-green-500/10 border border-green-500/20 rounded-lg flex items-center space-x-2">
                     <CheckCircle className="w-4 h-4 text-green-400 flex-shrink-0" />
                     <span className="text-green-400 text-sm">
-                      {selectedGame.name} &bull; <span className="text-green-400/70">{selectedGame.id}</span>
+                      {selectedGame.name} &bull; <span className="text-green-400/70">{selectedGame.pageCode || selectedGame.id}</span>
                     </span>
                   </div>
                 )}

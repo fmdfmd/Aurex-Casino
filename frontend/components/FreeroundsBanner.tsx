@@ -65,7 +65,7 @@ export default function FreeroundsBanner({ onPlayGame, allGames }: FreeroundsBan
   if (dismissed || (!hasFreerounds && !hasWagers && !hasBonusBalance)) return null;
 
   const findGame = (gameCode: string) => {
-    return allGames.find(g => g.gameCode === gameCode || g.id === gameCode);
+    return allGames.find(g => g.gameCode === gameCode || g.pageCode === gameCode || g.id === gameCode);
   };
 
   const totalSpins = freerounds.reduce((sum, fr) => sum + parseInt(fr.FreespinsLeft || fr.Count || '0', 10), 0);

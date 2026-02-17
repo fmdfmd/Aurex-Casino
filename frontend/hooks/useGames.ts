@@ -92,10 +92,22 @@ export const useSearchGamesQuery = (searchTerm: string) => {
         return { data: { games: [] } };
       }
       
-      const filteredGames = gamesData.data.games.filter((game: any) =>
-        game.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        game.provider.toLowerCase().includes(searchTerm.toLowerCase())
-      );
+      const query = searchTerm.toLowerCase().trim();
+      const filteredGames = gamesData.data.games
+        .map((game: any) => {
+          const name = (game.name || '').toLowerCase();
+          const provider = (game.provider || '').toLowerCase();
+          const id = (game.pageCode || game.id || '').toLowerCase();
+          let score = 0;
+          if (name === query) score = 100;
+          else if (name.startsWith(query)) score = 80;
+          else if (name.includes(query)) score = 60;
+          else if (provider.includes(query)) score = 30;
+          else if (id.includes(query)) score = 20;
+          return { ...game, _score: score };
+        })
+        .filter((g: any) => g._score > 0)
+        .sort((a: any, b: any) => b._score - a._score);
       
       return {
         data: {

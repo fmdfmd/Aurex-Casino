@@ -116,21 +116,11 @@ export default function GamesPage() {
   const filteredGames = useMemo(() => {
     let filtered = [...allGames];
 
-    // Search filter
-    if (searchTerm) {
-      filtered = filtered.filter(game => 
-        game.name?.toLowerCase().includes(searchTerm.toLowerCase())
-      );
-    }
-
-    // Category filter
+    // Category filter (apply before search so search works within category)
     if (selectedCategory !== 'all') {
-      // Basic category filtering logic
       if (selectedCategory === 'new') filtered = filtered.filter(g => g.isNew);
-      else if (selectedCategory === 'popular') filtered = filtered.slice(0, 200); // Already sorted by popularity from backend
+      else if (selectedCategory === 'popular') filtered = filtered.slice(0, 200);
       else if (selectedCategory === 'jackpot') filtered = filtered.filter(g => g.jackpot);
-      // For 'slots', 'live', 'table' - we would need actual category data from API
-      // For now, assume 'slots' is default if not specified, 'live' has 'live' in provider or name
       else if (selectedCategory === 'slots') filtered = filtered.filter(g => g.category === 'slots');
       else if (selectedCategory === 'live') filtered = filtered.filter(g => g.category === 'live');
       else if (selectedCategory === 'table') filtered = filtered.filter(g => g.category === 'table');
@@ -145,20 +135,40 @@ export default function GamesPage() {
       );
     }
 
-    // Sort games
-    switch (sortBy) {
-      case 'name':
-        filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-        break;
-      case 'popularity':
-        // Already sorted by backend (provider tier + Fundist sort)
-        break;
-      case 'rating':
-        filtered.sort((a, b) => (b.rtp || 0) - (a.rtp || 0));
-        break;
-      case 'newest':
-        filtered.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0));
-        break;
+    // Search filter with relevance scoring
+    if (searchTerm) {
+      const query = searchTerm.toLowerCase().trim();
+      const scored = filtered
+        .map(game => {
+          const name = (game.name || '').toLowerCase();
+          const provider = (game.provider || '').toLowerCase();
+          const id = (game.pageCode || game.id || '').toLowerCase();
+          let score = 0;
+          if (name === query) score = 100;
+          else if (name.startsWith(query)) score = 80;
+          else if (name.includes(query)) score = 60;
+          else if (provider.includes(query)) score = 30;
+          else if (id.includes(query)) score = 20;
+          return { game, score };
+        })
+        .filter(item => item.score > 0)
+        .sort((a, b) => b.score - a.score || (a.game.sortScore || 0) - (b.game.sortScore || 0));
+      filtered = scored.map(item => item.game);
+    } else {
+      // Sort games (only when not searching - search has its own sort)
+      switch (sortBy) {
+        case 'name':
+          filtered.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+          break;
+        case 'popularity':
+          break;
+        case 'rating':
+          filtered.sort((a, b) => (b.rtp || 0) - (a.rtp || 0));
+          break;
+        case 'newest':
+          filtered.sort((a, b) => (b.isNew ? 1 : 0) - (a.isNew ? 1 : 0));
+          break;
+      }
     }
 
     return filtered;

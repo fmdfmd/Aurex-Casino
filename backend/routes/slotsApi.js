@@ -83,7 +83,7 @@ router.get('/games', async (req, res) => {
     }
 
     // Transform Fundist format to our frontend format
-    const processedGames = [];
+    let processedGames = [];
     
     // Log response structure for debugging
     console.log('Fundist response keys:', Object.keys(apiData));
@@ -351,8 +351,10 @@ router.get('/games', async (req, res) => {
           sortScore = 1000 + tier * 1000000 + Math.min(fundistSort, 999999);
         }
 
+        const uniqueId = `${merchantId}_${game.PageCode}`;
         processedGames.push({
-          id: game.PageCode,
+          id: uniqueId,
+          pageCode: game.PageCode,
           systemId: merchantId,
           name: gameName,
           provider: merchantName,
@@ -366,8 +368,14 @@ router.get('/games', async (req, res) => {
         });
       });
 
-      // Sort: best providers first, then by Fundist sort within each tier
+      // Deduplicate: keep the first occurrence (best sortScore after sorting)
       processedGames.sort((a, b) => a.sortScore - b.sortScore);
+      const seenIds = new Set();
+      processedGames = processedGames.filter(g => {
+        if (seenIds.has(g.id)) return false;
+        seenIds.add(g.id);
+        return true;
+      });
 
       // Log category distribution
       const catDist = {};

@@ -50,7 +50,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
       try {
         const currency = (user as any)?.currency || 'RUB';
         const resp = await axios.post('/api/slots/start-game', {
-          gameCode: game.id,
+          gameCode: game.pageCode || game.id,
           systemId: (game as any).systemId,
           currency,
           language: 'ru',
