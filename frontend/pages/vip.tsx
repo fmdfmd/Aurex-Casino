@@ -206,9 +206,23 @@ export default function VipPage() {
   const userPoints = user?.vipPoints || 0;
   const pointsToNextLevel = nextLevel ? nextLevel.pointsRequired - userPoints : 0;
   const progressDenom = nextLevel ? (nextLevel.pointsRequired - currentLevel.pointsRequired) : 1;
-  const progressPercent = nextLevel 
+  let progressPercent = nextLevel 
     ? progressDenom > 0 ? ((userPoints - currentLevel.pointsRequired) / progressDenom) * 100 : 100
     : 100;
+  
+  // Минимальная видимость: если есть хоть 1 очко, показываем минимум 3% шкалы
+  if (progressPercent > 0 && progressPercent < 3 && userPoints > 0) {
+    progressPercent = 3;
+  }
+
+  console.log('🎯 VIP Progress Debug:', {
+    userPoints,
+    currentLevel: currentLevel.name,
+    nextLevel: nextLevel?.name,
+    currentRequired: currentLevel.pointsRequired,
+    nextRequired: nextLevel?.pointsRequired,
+    progressPercent: progressPercent.toFixed(2) + '%'
+  });
 
   return (
     <AuthGuard>
