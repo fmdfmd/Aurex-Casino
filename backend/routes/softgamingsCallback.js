@@ -19,6 +19,12 @@ const formatAmount = (amount) => {
   return parseFloat(amount).toFixed(2);
 };
 
+// Helper: Ensure tid is a number (Fundist requires long integer, not string)
+const numericTid = (tid) => {
+  const n = Number(tid);
+  return Number.isFinite(n) ? n : 0;
+};
+
 // Helper: Send Success Response (HTTP 200 required by spec)
 const sendOk = (res, data = {}) => {
   const response = {
@@ -380,7 +386,7 @@ const handleDebit = async (req, res) => {
 
       const okResponse = {
         status: 'OK',
-        tid: String(tid),
+        tid: numericTid(tid),
         balance: formatAmount(finalTotal)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
@@ -394,7 +400,7 @@ const handleDebit = async (req, res) => {
     if (result?.timeout) return res.sendStatus(408);
     if (result?.responseJson) return res.status(200).json(result.responseJson);
     // Fallback (should not happen)
-    return sendOk(res, { tid: String(tid), balance: formatAmount(0) });
+    return sendOk(res, { tid: numericTid(tid), balance: formatAmount(0) });
 
   } catch (error) {
     console.error('Debit Error:', error);
@@ -574,7 +580,7 @@ const handleCredit = async (req, res) => {
 
         const okResponse = {
           status: 'OK',
-          tid: String(tid),
+          tid: numericTid(tid),
           balance: formatAmount(totalBalance)
         };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
@@ -624,7 +630,7 @@ const handleCredit = async (req, res) => {
 
       const okResponse = {
         status: 'OK',
-        tid: String(tid),
+        tid: numericTid(tid),
         balance: formatAmount(totalBalance)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
@@ -634,7 +640,7 @@ const handleCredit = async (req, res) => {
 
     if (result?.timeout) return res.sendStatus(408);
     if (result?.responseJson) return res.status(200).json(result.responseJson);
-    return sendOk(res, { tid: String(tid), balance: formatAmount(0) });
+    return sendOk(res, { tid: numericTid(tid), balance: formatAmount(0) });
 
   } catch (error) {
     console.error('Credit Error:', error);
@@ -696,7 +702,7 @@ const handleRollback = async (req, res) => {
 
       // Default: no-op if target not found
       if (!targetReq) {
-        const okResponse = { status: 'OK', tid: String(tid), balance: formatAmount(user.balance) };
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(user.balance) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
@@ -704,7 +710,7 @@ const handleRollback = async (req, res) => {
 
       const rollbackAmount = parseFloat(targetReq.amount ?? amount ?? 0);
       if (!Number.isFinite(rollbackAmount) || rollbackAmount <= 0) {
-        const okResponse = { status: 'OK', tid: String(tid), balance: formatAmount(user.balance) };
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(user.balance) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
@@ -760,7 +766,7 @@ const handleRollback = async (req, res) => {
         );
       }
 
-      const okResponse = { status: 'OK', tid: String(tid), balance: formatAmount(newBalance) };
+      const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(newBalance) };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
       return { responseJson: okResponse, done: true };
@@ -768,7 +774,7 @@ const handleRollback = async (req, res) => {
 
     if (result?.timeout) return res.sendStatus(408);
     if (result?.responseJson) return res.status(200).json(result.responseJson);
-    return sendOk(res, { tid: String(tid), balance: formatAmount(0) });
+    return sendOk(res, { tid: numericTid(tid), balance: formatAmount(0) });
 
   } catch (error) {
     console.error('Rollback Error:', error);
