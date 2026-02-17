@@ -213,6 +213,11 @@ const handleDebit = async (req, res) => {
   try {
     if (!HMAC_SECRET) return res.status(500).json({ error: 'HMAC secret not configured' });
 
+    // Reject negative amounts
+    if (debitAmount < 0) {
+      return sendOwError(res, 'Invalid amount', '0.00');
+    }
+
     // Cancellation request (subtype=cancel) must rollback the original event
     if (req.body.subtype === 'cancel') {
       return handleRollback(req, res);
@@ -427,6 +432,11 @@ const handleCredit = async (req, res) => {
 
   try {
     if (!HMAC_SECRET) return res.status(500).json({ error: 'HMAC secret not configured' });
+
+    // Reject negative amounts
+    if (creditAmount < 0) {
+      return sendOwError(res, 'Invalid amount', '0.00');
+    }
 
     // Handle Rollback (if i_rollback is present)
     if (i_rollback) {
