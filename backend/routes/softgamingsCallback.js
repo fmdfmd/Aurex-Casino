@@ -740,9 +740,17 @@ const handleRollback = async (req, res) => {
       }
 
       // If not found, try by (i_gameid + i_actionid) cancel semantics
-      if (!targetReq && req.body.subtype === 'cancel') {
-        const existing = await findExistingByAction(client, { userid, i_gameid, i_actionid: req.body.i_actionid });
-        targetReq = existing?.request_json || null;
+      // Search specifically for the original debit (not the cancel request itself)
+      if (!targetReq && req.body.subtype === 'cancel' && req.body.i_actionid) {
+        const r = await client.query(
+          `SELECT request_json, response_json
+           FROM onewallet_requests
+           WHERE userid = $1 AND i_actionid = $2 AND type = 'debit'
+           ORDER BY created_at DESC
+           LIMIT 1`,
+          [String(userid), String(req.body.i_actionid)]
+        );
+        targetReq = r.rows[0]?.request_json || null;
       }
 
       // Default: no-op if target not found
