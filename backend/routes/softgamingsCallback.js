@@ -189,7 +189,8 @@ const handleBalance = async (req, res) => {
     const user = result.rows[0];
     
     if (currency && user.currency && String(user.currency) !== String(currency)) {
-      console.warn(`⚠️ OneWallet balance: currency mismatch for user ${userid}: Fundist=${currency}, DB=${user.currency}. Returning balance anyway.`);
+      console.warn(`⚠️ OneWallet balance: currency mismatch for user ${userid}: Fundist=${currency}, DB=${user.currency}`);
+      return sendOwError(res, 'Currency mismatch', '0.00');
     }
 
     // Return main + bonus balance (Fundist sees total; wager is our internal logic)
@@ -272,7 +273,9 @@ const handleDebit = async (req, res) => {
       const totalAvailable = mainBal + bonusBal;
 
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
-        console.warn(`⚠️ OneWallet debit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
+        console.warn(`⚠️ OneWallet debit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}`);
+        const curBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        return { responseJson: buildOwErrorResponse('Currency mismatch', curBal), done: true };
       }
       
       if (totalAvailable < debitAmount) {
@@ -496,7 +499,9 @@ const handleCredit = async (req, res) => {
       const user = userResult.rows[0];
 
       if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
-        console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}. Processing anyway.`);
+        console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}`);
+        const curBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        return { responseJson: buildOwErrorResponse('Currency mismatch', curBal), done: true };
       }
 
       // Detect freeround win: Method 2 (fallback when game_extra is not available)
