@@ -736,13 +736,16 @@ const handleRollback = async (req, res) => {
       // If not found, try by (i_gameid + i_actionid) cancel semantics
       // Search specifically for the original debit (not the cancel request itself)
       if (!targetReq && req.body.subtype === 'cancel' && req.body.i_actionid) {
+        // Cancel with type=credit reverses a debit; cancel with type=debit reverses a credit
+        const cancelType = String(req.body.type || '').toLowerCase();
+        const targetType = cancelType === 'credit' ? 'debit' : 'credit';
         const r = await client.query(
           `SELECT request_json, response_json
            FROM onewallet_requests
-           WHERE userid = $1 AND i_actionid = $2 AND type = 'debit'
+           WHERE userid = $1 AND i_actionid = $2 AND type = $3
            ORDER BY created_at DESC
            LIMIT 1`,
-          [String(userid), String(req.body.i_actionid)]
+          [String(userid), String(req.body.i_actionid), targetType]
         );
         targetReq = r.rows[0]?.request_json || null;
       }
