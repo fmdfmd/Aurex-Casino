@@ -92,15 +92,28 @@ async function findExistingByTid(client, tid) {
 }
 
 async function findExistingByAction(client, { userid, i_gameid, i_actionid }) {
-  if (!userid || !i_gameid || !i_actionid) return null;
+  if (!userid || !i_actionid) return null;
   try {
+    // Try full match first (userid + i_gameid + i_actionid)
+    if (i_gameid) {
+      const r = await client.query(
+        `SELECT request_json, response_json
+         FROM onewallet_requests
+         WHERE userid = $1 AND i_gameid = $2 AND i_actionid = $3
+         ORDER BY created_at DESC
+         LIMIT 1`,
+        [String(userid), String(i_gameid), String(i_actionid)]
+      );
+      if (r.rows.length > 0) return r.rows[0];
+    }
+    // Fallback: search by userid + i_actionid only (for cancel/rollback where i_gameid may differ)
     const r = await client.query(
       `SELECT request_json, response_json
        FROM onewallet_requests
-       WHERE userid = $1 AND i_gameid = $2 AND i_actionid = $3
+       WHERE userid = $1 AND i_actionid = $2
        ORDER BY created_at DESC
        LIMIT 1`,
-      [String(userid), String(i_gameid), String(i_actionid)]
+      [String(userid), String(i_actionid)]
     );
     return r.rows[0] || null;
   } catch (e) {
@@ -734,7 +747,9 @@ const handleRollback = async (req, res) => {
 
       // Default: no-op if target not found
       if (!targetReq) {
-        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(user.balance) };
+        console.warn(`⚠️ Rollback/Cancel: target not found for user=${userid}, i_actionid=${req.body.i_actionid}, i_rollback=${i_rollback}, i_gameid=${i_gameid}`);
+        const totalBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(totalBal) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
@@ -742,7 +757,8 @@ const handleRollback = async (req, res) => {
 
       const rollbackAmount = parseFloat(targetReq.amount ?? amount ?? 0);
       if (!Number.isFinite(rollbackAmount) || rollbackAmount <= 0) {
-        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(user.balance) };
+        const totalBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(totalBal) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
@@ -798,9 +814,14 @@ const handleRollback = async (req, res) => {
         );
       }
 
-      const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(newBalance) };
+      // Re-fetch to get accurate total (main + bonus)
+      const finalBal = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+      const finalTotal = parseFloat(finalBal.rows[0].balance) + parseFloat(finalBal.rows[0].bonus_balance || 0);
+
+      const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(finalTotal) };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
+      console.log(`✅ Rollback/Cancel OK: user=${userid}, type=${originalType}, amount=${rollbackAmount}, newBalance=${finalTotal}`);
       return { responseJson: okResponse, done: true };
     });
 
