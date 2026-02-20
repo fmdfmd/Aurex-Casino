@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
+import { useState, useMemo, useEffect, useCallback } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
@@ -182,30 +182,20 @@ export default function GamesPage() {
     );
   };
 
-  // Infinite scroll: show games in batches of 40
   const GAMES_PER_PAGE = 40;
+  const MAX_DEFAULT_GAMES = 80;
   const [visibleCount, setVisibleCount] = useState(GAMES_PER_PAGE);
-  const loadMoreRef = useRef<HTMLDivElement | null>(null);
   
   // Reset visible count when filters change
   useEffect(() => {
     setVisibleCount(GAMES_PER_PAGE);
   }, [searchTerm, selectedCategory, selectedProviders, sortBy]);
 
-  // Infinite scroll observer
-  useEffect(() => {
-    if (!loadMoreRef.current) return;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (entries[0].isIntersecting && visibleCount < filteredGames.length) {
-          setVisibleCount(prev => Math.min(prev + GAMES_PER_PAGE, filteredGames.length));
-        }
-      },
-      { rootMargin: '400px' }
-    );
-    observer.observe(loadMoreRef.current);
-    return () => observer.disconnect();
-  }, [visibleCount, filteredGames.length]);
+  const isFilterActive = searchTerm || selectedCategory !== 'all' || selectedProviders.length > 0;
+
+  const handleLoadMore = () => {
+    setVisibleCount(prev => Math.min(prev + GAMES_PER_PAGE, filteredGames.length));
+  };
 
   const visibleGames = useMemo(() => filteredGames.slice(0, visibleCount), [filteredGames, visibleCount]);
 
@@ -467,9 +457,24 @@ export default function GamesPage() {
                     <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
                   ))}
                 </div>
-                {visibleCount < slotGames.length && (
-                  <div ref={loadMoreRef} className="flex justify-center py-8">
-                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aurex-gold-500"></div>
+                {visibleCount < slotGames.length && visibleCount < MAX_DEFAULT_GAMES && (
+                  <div className="flex justify-center py-8">
+                    <button
+                      onClick={handleLoadMore}
+                      className="px-8 py-3 bg-aurex-obsidian-800 border border-aurex-gold-500/30 text-aurex-gold-500 font-semibold rounded-xl hover:bg-aurex-gold-500/10 hover:border-aurex-gold-500/50 transition-all"
+                    >
+                      Показать ещё ({Math.min(slotGames.length - visibleCount, GAMES_PER_PAGE)} из {slotGames.length - visibleCount})
+                    </button>
+                  </div>
+                )}
+                {visibleCount >= MAX_DEFAULT_GAMES && visibleCount < slotGames.length && (
+                  <div className="flex justify-center py-8">
+                    <button
+                      onClick={() => { setSelectedCategory('slots'); setVisibleCount(GAMES_PER_PAGE); }}
+                      className="px-8 py-3 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all"
+                    >
+                      Все слоты ({slotGames.length}) →
+                    </button>
                   </div>
                 )}
               </div>
@@ -600,10 +605,14 @@ export default function GamesPage() {
                         <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
                       ))}
                     </div>
-                    {/* Infinite scroll sentinel */}
                     {visibleCount < filteredGames.length && (
-                      <div ref={loadMoreRef} className="flex justify-center py-8">
-                        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-aurex-gold-500"></div>
+                      <div className="flex justify-center py-8">
+                        <button
+                          onClick={handleLoadMore}
+                          className="px-8 py-3 bg-aurex-obsidian-800 border border-aurex-gold-500/30 text-aurex-gold-500 font-semibold rounded-xl hover:bg-aurex-gold-500/10 hover:border-aurex-gold-500/50 transition-all"
+                        >
+                          Показать ещё ({Math.min(filteredGames.length - visibleCount, GAMES_PER_PAGE)} из {filteredGames.length - visibleCount})
+                        </button>
                       </div>
                     )}
                     {visibleCount >= filteredGames.length && filteredGames.length > GAMES_PER_PAGE && (

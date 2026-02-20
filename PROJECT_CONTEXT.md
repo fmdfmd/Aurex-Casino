@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 11 января 2026**
+> **Последнее обновление: 20 февраля 2026**
 
 ---
 
@@ -19,20 +19,58 @@
 | Сервис | URL |
 |---|---|
 | Домен (основной) | https://aurex.casino |
+| Зеркала (резерв) | aurex1.casino — aurex10.casino (DNS не привязан, в резерве) |
 | Backend (Railway) | https://aurex-casino-production.up.railway.app |
-| Railway Public Domain | aurex-casino-production.up.railway.app |
+| Railway Internal | xtjxpx6j.up.railway.app (используется в nginx proxy_pass) |
 | Диагностика сервера | https://aurex.casino/api/diag |
 | VPS-прокси (Aeza) | 62.60.149.199 (nginx reverse proxy) |
+| Cloudflare | Активен, Free план, аккаунт Cazinovarush@gmail |
 | IP сервера Railway | 208.77.244.96 (проверять через /api/diag) |
 | Telegram канал | https://t.me/aurex_casino |
 | Telegram бот | @aurex_support_bot |
 
+### Архитектура трафика (через Cloudflare)
+```
+Пользователь → Cloudflare (скрывает IP) → VPS 62.60.149.199 (nginx) → Railway (бэкенд)
+```
+- **Cloudflare:** DNS-прокси, SSL (Edge + Origin), DDoS защита, скрытие IP VPS
+- **Cloudflare NS:** `aron.ns.cloudflare.com`, `bruce.ns.cloudflare.com`
+- **Cloudflare SSL:** Full (Strict) — шифрование end-to-end
+- **Cloudflare Zone ID:** `127e1fd2ca27bfcd4b466467d11ce9a9`
+- **Регистратор:** Namecheap (NS перенаправлены на Cloudflare)
+
 ### VPS-прокси (Aeza)
-- IP: 62.60.149.199
-- Назначение: nginx reverse proxy от aurex.casino к Railway
-- SSL: Let's Encrypt
+- IP: 62.60.149.199 (**скрыт за Cloudflare**, не виден пользователям)
+- Доступ: root / 8wmWUwb8dU01
+- Назначение: nginx reverse proxy → Railway
+- SSL Origin: Let's Encrypt (автообновление)
 - Защита: fail2ban (бан после 3 неудачных SSH)
+- Nginx: `real_ip_header CF-Connecting-IP` — восстанавливает реальный IP клиента из Cloudflare
 - ВАЖНО: если VPS упадёт — aurex.casino не работает, но Railway URL работает
+
+### Зеркала — стратегия при блокировке
+- **Резервные домены:** aurex1.casino — aurex10.casino (оплачены на Namecheap, DNS НЕ привязан)
+- **Не привязывать заранее!** Если все домены указывают на один IP — РКН забанит все сразу
+- **Зеркала держать "холодными"** — без A-записей, невидимы для РКН
+- **При блокировке домена:**
+  1. РКН банит `aurex.casino`
+  2. Добавить `aurex1.casino` в Cloudflare (тот же аккаунт)
+  3. Прописать A-запись на VPS `62.60.149.199` с оранжевым облаком (Proxied)
+  4. Обновить nginx `server_name` + certbot для нового домена
+  5. Готово за 10-15 минут
+- **При блокировке IP VPS:**
+  1. Купить новый VPS (новый IP!)
+  2. В Cloudflare поменять A-запись на новый IP
+  3. Скопировать nginx конфиг + certbot
+  4. Готово за 15-20 минут
+- **Railway (бэкенд) в безопасности всегда** — его IP скрыт за Cloudflare → VPS
+- **SoftGamings:** все 11 доменов уже согласованы для прода
+
+### Fundist IP вайтлист (nginx на VPS)
+- Callback `/api/callback/softgamings` доступен ТОЛЬКО с IP Fundist:
+  - Тест: `178.16.18.149`, `178.16.18.152`
+  - Прод: `78.28.223.29`, `78.28.223.18`, `89.111.53.78`, `89.111.53.79`, `178.16.18.131`, `178.16.18.132`, `217.28.62.117`, `217.28.62.118`
+- Все остальные IP получают 403 Forbidden
 
 ---
 
@@ -205,6 +243,21 @@ java -jar OWClientTest_v2.14.jar \
   - Endpoint: `GET /api/auth/telegram/callback`
 - Соцсети создают пользователя без пароля (password nullable)
 
+### uCaller (верификация телефона)
+- **Статус:** Звонки НЕ доходят (РКН заблокировал телефонию uCaller), API отвечает `status: true`, но вызов не приходит
+- **Новый аккаунт (20.02.2026):**
+  - Service ID: `783837`
+  - Secret Key: `XBXMp8mKIDO95bho3Fba7FFnRks1gi3N`
+  - Сервис: "Games"
+  - Баланс: 500₽
+  - Тестовый режим: выключен
+- **Старый аккаунт:** заблокирован/не работает
+- **Переменные Railway:**
+  - `UCALLER_SERVICE_ID` — обновить на `783837`
+  - `UCALLER_SECRET_KEY` — обновить на `XBXMp8mKIDO95bho3Fba7FFnRks1gi3N`
+- **Файл:** `backend/routes/otp.js`
+- **Если не заработает:** переходить на SMS (SMS.ru, SMSC.ru, Messaggio) — нужна замена API в `otp.js`
+
 ---
 
 ## Бонусная система
@@ -288,6 +341,7 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/loyalty/*` | VIP магазин |
 | `/api/referral/*` | Реферальная программа |
 | `/api/tickets/*` | Тикеты |
+| `/api/chat/message` | AI чат Стефани (POST) |
 | `/api/admin/*` | Админ-панель |
 | `/api/diag` | Диагностика (IP, конфиг) |
 | `/api/health` | Health check |
@@ -305,6 +359,8 @@ java -jar OWClientTest_v2.14.jar \
 | `backend/routes/slotsApi.js` | Каталог игр, сортировка, прокси, game-frame |
 | `backend/routes/softgamingsCallback.js` | OneWallet: balance, debit, credit, rollback |
 | `backend/routes/auth.js` | Авторизация (регистрация, логин, соцсети) |
+| `backend/routes/chat.js` | AI чат (OpenRouter → Claude 3.5 Sonnet) |
+| `backend/routes/otp.js` | Верификация телефона (uCaller) |
 | `backend/middleware/auth.js` | JWT middleware (req.user с balance, currency) |
 | `backend/constants/fundistMerchants.js` | Маппинг MerchantID → имя провайдера (60+) |
 
@@ -314,6 +370,8 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/pages/games/index.tsx` | Страница игр (категории, фильтры, провайдеры) |
 | `frontend/components/GameModal.tsx` | Модал запуска игры (iframe + document.write) |
 | `frontend/components/GameCard.tsx` | Карточка игры (картинка, RTP, провайдер) |
+| `frontend/components/LiveChatWidget.tsx` | Виджет AI чата (Стефани) |
+| `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/store/settingsStore.ts` | Настройки (язык, валюта отображения) |
 | `frontend/next.config.js` | Rewrites (/api → backend), headers |
@@ -322,17 +380,67 @@ java -jar OWClientTest_v2.14.jar \
 ---
 
 ## Telegram бот (@aurex_support_bot)
-- AI-ассистент Стефани (OpenRouter API)
+- AI-ассистент Стефани (OpenRouter API, Claude 3.5 Sonnet)
 - Тикет-система с менеджерами
 - Используется для Telegram Login Widget
 - Папка: `/telegram-bot/`
+- OpenRouter ключ: в `telegram-bot/.env` (OPENROUTER_API_KEY)
+
+---
+
+## AI поддержка на сайте (LiveChat)
+
+### Статус: РАБОТАЕТ (с 20.02.2026)
+- **Персонаж:** Стефани — AI-ассистент AUREX
+- **Модель:** Claude 3.5 Sonnet через OpenRouter API
+- **Backend:** `backend/routes/chat.js` → `POST /api/chat/message`
+- **Frontend:** `frontend/components/LiveChatWidget.tsx`
+- **Сессии:** in-memory (Map), автоочистка через 30 мин неактивности
+- **История:** последние 10 сообщений в контексте
+- **Fallback:** если API недоступен — предлагает создать тикет или написать в Telegram
+- **Переменная Railway:** `OPENROUTER_API_KEY` — ОБЯЗАТЕЛЬНО добавить!
+- **Ключ:** `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`
+
+---
+
+## AML/KYC политика
+
+### Статус: ОПУБЛИКОВАНА (с 20.02.2026)
+- **Страница:** `https://aurex.casino/aml`
+- **Файл:** `frontend/pages/aml.tsx`
+- **Содержание (10 разделов):**
+  1. Введение (FATF, AML/CFT)
+  2. KYC процедуры (3 уровня: базовая, расширенная, EDD)
+  3. Мониторинг транзакций
+  4. Подозрительные транзакции (STR)
+  5. Хранение данных (5 лет)
+  6. Запрещённые юрисдикции (США, UK, NL, FR, IL)
+  7. Крипто-политика
+  8. Compliance Officer (MLRO)
+  9. Обучение персонала
+  10. Санкции за нарушения
+- **Ссылка в футере:** исправлена на `/aml` (была `/terms`)
 
 ---
 
 ## Платёжные системы (в работе)
 
+### SoftGamings (Moneygrator) — через агрегатор
+- Setup: EUR 3,000
+- Комиссия: EUR 0.01/транзакция
+- Абонплата: €2,000/мес если оборот < €50K/мес (со 2-го месяца)
+- **Требует юрлицо** — Слотгратор предлагает открыть Белиз (€1,900/год, 4 недели)
+
+### SoftGamings (Касса — отдельный менеджер KP)
+- SBP/P2P ввод: ~12-13% комиссия (без лицензии/юрки может быть выше)
+- Вывод: ~4%
+- Setup: нет
+- Крипта: Deposit 0.8%, Swap 0.2%, Withdrawal 0.5%, Settlement to fiat 1%
+- Юрлицо и лицензия не обязательны для старта, но ставки выше без них
+
 ### Piastrix (переговоры)
 - Электронный кошелёк, популярен в РФ казино
+- Есть онлайн-чат, работают с казино
 - Ведётся переписка
 
 ### LavaTop
@@ -345,16 +453,30 @@ java -jar OWClientTest_v2.14.jar \
 ### SoftGamings — ВЫБРАН
 - Fundist API интеграция завершена (тестовая среда)
 - OneWallet протокол реализован
-- Каталог: 11,000+ игр, 80+ провайдеров
-- Контакт: поддержка через email
+- Каталог: 9,284 игр, 83 провайдера (slots: 8391, live: 486, table: 273, crash: 101, sport: 33)
+- Контакт: Даниела (агрегация), KP (платежи)
+- Setup fee: убрали (0)
+- Вход: €4,000 депозит + €5,000 кредиты (предоплата, пока нет лицензии)
+- GGR: от провайдера зависит (EvoPlay 9%, RedTiger 10%, Endorphina 11%)
+- При получении лицензии → переход на постоплату
+- Могут работать без юрлица и без лицензии
 
-### Slotgrator — отклонён
+### Slotgrator — переговоры продолжаются
 - Депозит $5,000, GGR 11-15%
-- Помощь с лицензией Белиз (€1,900/год)
+- Помощь с лицензией Белиз (€1,900/год, 4 недели)
+- Помощь с юрлицом
+- 200+ провайдеров с лицензией
+- Платежи через Moneygrator (отдельный продукт)
+- Nolimit City — обещали подключить
 
-### Nuxgame — отклонён
-- Депозит $5,000, GGR 7.5-15%
-- Нет платежей
+### Nuxgame — в рассмотрении
+- Депозит $5,000 (вычитается из GGR)
+- GGR 7.5-15%
+- 140+ провайдеров, 16,000+ игр
+- Нет платежей (только агрегация)
+- Поддержка русского языка
+- Могут без лицензии, нужно юрлицо
+- API доки: https://apidoc.fungamess.games/
 
 ---
 
@@ -389,14 +511,17 @@ java -jar OWClientTest_v2.14.jar \
 
 ### В процессе
 - [ ] Тестирование Live Casino (чёрные экраны на некоторых играх)
-- [ ] Переход на продакшн Fundist (получить прод credentials)
-- [ ] Подключение платежей (Piastrix / крипта)
+- [ ] Переход на продакшн Fundist (ждём прод credentials от SoftGamings)
+- [ ] Подключение платежей (SoftGamings касса / Piastrix / крипта)
+- [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
+- [ ] Добавить `OPENROUTER_API_KEY` в Railway env vars бэкенда
 
 ### Потом
-- [ ] Юрлицо (Белиз через Slotgrator)
-- [ ] Игровая лицензия
+- [ ] Юрлицо (Белиз через Slotgrator, €1,900/год, 4 недели)
+- [ ] Игровая лицензия (Anjouan: €17,828/год + корп. сервис €6,000 = ~€27,628 первый год)
 - [ ] Спортивные ставки (реальные, не виртуальные)
-- [ ] Найм саппортов
+- [ ] Найм саппортов, SMM, аффилиатов, стримеров
+- [ ] fail2ban на VPS (боты ломятся 24/7)
 
 ---
 
@@ -406,4 +531,29 @@ java -jar OWClientTest_v2.14.jar \
 
 ---
 
-*Последнее обновление: 11 января 2026*
+## Лицензирование
+
+### Anjouan iGaming License (в рассмотрении)
+- **Стоимость 1-й год:** €27,628 (лицензия €17,828 + корп. сервис €6,000 + Costa Rica компания €3,800)
+- **Со 2-го года:** €26,428
+- **Опционально:** помощь с документами €3,000, ускоренная обработка €11,000, номинальный директор/акционер €16,500 каждый, банковский счёт €3,000
+- **Нужные документы:** заверенная копия паспорта, подтверждение адреса, банковское рекомендательное письмо, профессиональное рекомендательное письмо, CV, remote ID verification, декларация источника средств, intake form
+
+### Белиз (через Slotgrator)
+- **Стоимость:** €1,900/год
+- **Срок:** ~4 недели
+- **Нужные документы:** заверенный паспорт, подтверждение адреса, банковское рекомендательное письмо, профессиональное рекомендательное письмо, CV, Police Clearance, Remote ID Verification
+
+---
+
+## Комплаенс-фидбек от провайдеров
+
+### Проблемы (выявлены провайдером, 20.02.2026):
+1. **Регистрация через телефон** — звонки uCaller не доходят (РКН блок) → решение: новый аккаунт uCaller или переход на SMS
+2. **Кнопка депозита** — технически работает, но нет подключённого платёжного шлюза → решение: подключить кассу через SoftGamings
+3. **Тех. поддержка на сайте** — была фейковая (захардкоженный ответ) → **РЕШЕНО:** подключена AI Стефани (Claude 3.5 Sonnet)
+4. **AML размытый** → **РЕШЕНО:** создана полная AML/KYC страница `/aml` с 10 разделами
+
+---
+
+*Последнее обновление: 20 февраля 2026*
