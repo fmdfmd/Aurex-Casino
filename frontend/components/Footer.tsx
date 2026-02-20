@@ -29,7 +29,7 @@ export default function Footer() {
     [t('footer.legal')]: [
       { label: t('footer.terms'), href: '/terms' },
       { label: t('footer.privacy'), href: '/privacy' },
-      { label: t('footer.aml'), href: '/terms' },
+      { label: t('footer.aml'), href: '/aml' },
     ],
   };
 
