@@ -29,6 +29,7 @@ const bonusRoutes = require('./routes/bonuses');
 const configRoutes = require('./routes/config');
 const vaultRoutes = require('./routes/vault');
 const loyaltyRoutes = require('./routes/loyalty');
+const chatRoutes = require('./routes/chat');
 
 const app = express();
 // Railway / Cloudflare / Nginx стоят перед Express → доверяем первый прокси
@@ -111,6 +112,7 @@ app.use('/api/bonuses', bonusRoutes);
 app.use('/api/config', configRoutes);
 app.use('/api/vault', vaultRoutes);
 app.use('/api/loyalty', loyaltyRoutes);
+app.use('/api/chat', chatRoutes);
 
 // Game callback routes (специфический путь для callback от провайдера)
 app.use('/api/callback/softgamings', softgamingsCallbackRoutes); // SoftGamings (более специфичный путь)
