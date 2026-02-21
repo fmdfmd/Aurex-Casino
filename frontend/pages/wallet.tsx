@@ -184,8 +184,9 @@ export default function WalletPage() {
     const method = [...paymentMethods.crypto, ...paymentMethods.fiat].find(m => m.id === selectedMethod);
     if (!method) return;
 
-    if (depositAmount < method.minDeposit) {
-      toast.error(`Минимальный депозит: ₽${method.minDeposit}`);
+    const minDep = method.minDeposit || 3000;
+    if (depositAmount < minDep) {
+      toast.error(`Минимальный депозит: ${minDep.toLocaleString('ru-RU')} ₽`);
       return;
     }
 
@@ -690,7 +691,7 @@ export default function WalletPage() {
                           className="w-full px-4 py-4 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white text-2xl font-bold focus:border-aurex-gold-500/50 focus:outline-none"
                         />
                         <div className="flex flex-wrap gap-2 mt-3">
-                          {[500, 1000, 2000, 5000, 10000, 20000].map((preset) => (
+                          {[3000, 5000, 10000, 15000, 20000, 50000].map((preset) => (
                             <button
                               key={preset}
                               onClick={() => setAmount(String(preset))}
