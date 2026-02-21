@@ -41,7 +41,7 @@ module.exports = {
 
   // AVE PAY Payment System
   avePay: {
-    apiUrl: process.env.AVEPAY_API_URL || 'https://engine-sandbox.avepay.com',
+    apiUrl: process.env.AVEPAY_API_URL || 'https://engine.avepay.com',
     apiKey: process.env.AVEPAY_API_KEY || 'XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd',
     webhookSecret: process.env.AVEPAY_WEBHOOK_SECRET || '',
     callbackUrl: process.env.AVEPAY_CALLBACK_URL || 'https://aurex.casino/api/payments/avepay/callback',
