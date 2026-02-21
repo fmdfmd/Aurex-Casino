@@ -4,6 +4,7 @@ const pool = require('../config/database');
 const avePayService = require('../services/avePayService');
 const { withTransaction } = require('../utils/dbTransaction');
 const { auth, adminAuth } = require('../middleware/auth');
+const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 // GET /api/payments/avepay/callback — health check for webhook URL
 router.get('/', (req, res) => {
@@ -181,14 +182,7 @@ async function handleDepositCompleted(txId, avePayId, payload) {
 
     if (selectedBonus && selectedBonus.startsWith('deposit_')) {
       const depositNumber = parseInt(selectedBonus.replace('deposit_', ''));
-      const depositBonuses = {
-        1: { percent: 200, maxBonus: 70000, wager: 35 },
-        2: { percent: 150, maxBonus: 50000, wager: 30 },
-        3: { percent: 100, maxBonus: 30000, wager: 25 },
-        4: { percent: 75, maxBonus: 20000, wager: 20 }
-      };
-
-      const bonusConfig = depositBonuses[depositNumber];
+      const bonusConfig = DEPOSIT_BONUSES[depositNumber];
       if (bonusConfig && depositNumber === newDepositCount) {
         const bonusAmount = Math.min(depositAmount * (bonusConfig.percent / 100), bonusConfig.maxBonus);
         const wagerRequired = (depositAmount + bonusAmount) * bonusConfig.wager;

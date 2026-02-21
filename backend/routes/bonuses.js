@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
+const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 // Получить активные бонусы пользователя
 router.get('/active', auth, async (req, res) => {
@@ -75,15 +76,7 @@ router.post('/activate-deposit', auth, async (req, res) => {
   try {
     const { depositNumber, amount } = req.body;
     
-    // Конфигурация бонусов на депозит
-    const depositBonuses = {
-      1: { percent: 200, maxBonus: 70000, wager: 35 },
-      2: { percent: 150, maxBonus: 50000, wager: 30 },
-      3: { percent: 100, maxBonus: 30000, wager: 25 },
-      4: { percent: 75, maxBonus: 20000, wager: 20 }
-    };
-    
-    const bonusConfig = depositBonuses[depositNumber];
+    const bonusConfig = DEPOSIT_BONUSES[depositNumber];
     if (!bonusConfig) {
       return res.status(400).json({ success: false, message: 'Неверный номер депозита' });
     }
@@ -172,15 +165,12 @@ router.get('/available', auth, async (req, res) => {
     
     const available = [];
     
-    // Приветственные бонусы (депозиты 1-4)
-    const depositBonuses = [
-      { depositNumber: 1, percent: 200, maxBonus: 70000, wager: 35, title: '1-й депозит' },
-      { depositNumber: 2, percent: 150, maxBonus: 50000, wager: 30, title: '2-й депозит' },
-      { depositNumber: 3, percent: 100, maxBonus: 30000, wager: 25, title: '3-й депозит' },
-      { depositNumber: 4, percent: 75, maxBonus: 20000, wager: 20, title: '4-й депозит' }
-    ];
+    const depositBonusList = Object.entries(DEPOSIT_BONUSES).map(([num, cfg]) => ({
+      depositNumber: parseInt(num),
+      ...cfg
+    }));
     
-    for (const bonus of depositBonuses) {
+    for (const bonus of depositBonusList) {
       if (depositCount < bonus.depositNumber) {
         available.push({
           type: `deposit_${bonus.depositNumber}`,

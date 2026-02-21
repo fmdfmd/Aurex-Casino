@@ -242,6 +242,11 @@ server.listen(PORT, () => {
       console.log('⚠️ Fundist catalog warmup error:', e.message);
     }
   }, 2000);
+
+  // Bonus expiration check — every hour
+  const { expireOldBonuses } = require('./config/bonusConfig');
+  setInterval(() => expireOldBonuses(pool), 60 * 60 * 1000);
+  setTimeout(() => expireOldBonuses(pool), 5000);
 });
 
 module.exports = app;

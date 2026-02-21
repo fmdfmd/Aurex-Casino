@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { updateVipLevel } = require('../config/vipLevels');
+const { trackDepositBonusWager } = require('../config/bonusConfig');
 
 // Middleware для логирования всех запросов от провайдера
 router.use((req, res, next) => {
@@ -160,19 +161,28 @@ router.post('/make-bet', async (req, res) => {
         throw { status: 404, message: 'User not found' };
       }
       const user = lockedUser.rows[0];
-      const currentBalance = parseFloat(user.balance);
+      const mainBal = parseFloat(user.balance);
+      const bonusBal = parseFloat(user.bonus_balance || 0);
+      const totalAvailable = mainBal + bonusBal;
       
-      if (currentBalance < amount) {
-        throw { status: 400, message: 'Insufficient balance', balance: currentBalance };
+      if (totalAvailable < amount) {
+        throw { status: 400, message: 'Insufficient balance', balance: totalAvailable };
       }
       
-      // Списываем ставку атомарно
+      // Deduct from main balance first, then bonus_balance
+      const fromMain = Math.min(amount, mainBal);
+      const fromBonus = amount - fromMain;
+
       const updatedUser = await client.query(
-        `UPDATE users SET balance = balance - $1, total_wagered = total_wagered + $1, games_played = games_played + 1 
-         WHERE id = $2 RETURNING balance`,
-        [amount, user.id]
+        `UPDATE users SET balance = balance - $1, bonus_balance = bonus_balance - $2,
+         total_wagered = total_wagered + $3, games_played = games_played + 1 
+         WHERE id = $4 RETURNING balance, bonus_balance`,
+        [fromMain, fromBonus, amount, user.id]
       );
-      const newBalance = parseFloat(updatedUser.rows[0].balance);
+      const newBalance = parseFloat(updatedUser.rows[0].balance) + parseFloat(updatedUser.rows[0].bonus_balance);
+
+      // Track deposit bonus wager progress
+      await trackDepositBonusWager(client, user.id, amount);
       
       // Обновляем сессию
       await client.query(

@@ -105,11 +105,11 @@ const defaultPromotionsConfig = {
       subtitle: 'Приветственный бонус',
       description: 'Получите 200% на первый депозит и начните своё путешествие в мир больших выигрышей!',
       bonus: '200%', 
-      maxBonus: 'до ₽50,000', 
+      maxBonus: 'до ₽70,000', 
       minDeposit: '₽1,000', 
-      wagering: 'x35',
+      wagering: 'x30',
       validDays: 30,
-      features: ['200% на депозит', 'До ₽50,000 бонуса', '30 дней на отыгрыш'],
+      features: ['200% на депозит', 'До ₽70,000 бонуса', '30 дней на отыгрыш'],
       isHot: true,
       isNew: true
     },
@@ -119,11 +119,11 @@ const defaultPromotionsConfig = {
       subtitle: 'Продолжение пакета',
       description: 'Второй шаг к богатству! Получите 150% бонуса на второй депозит.',
       bonus: '150%', 
-      maxBonus: 'до ₽40,000', 
+      maxBonus: 'до ₽50,000', 
       minDeposit: '₽1,000', 
-      wagering: 'x35',
+      wagering: 'x30',
       validDays: 30,
-      features: ['150% на депозит', 'До ₽40,000 бонуса', '30 дней на отыгрыш']
+      features: ['150% на депозит', 'До ₽50,000 бонуса', '30 дней на отыгрыш']
     },
     { 
       id: 'third-deposit', 
@@ -135,7 +135,7 @@ const defaultPromotionsConfig = {
       minDeposit: '₽1,000', 
       wagering: 'x30',
       validDays: 30,
-      features: ['100% на депозит', 'До ₽30,000 бонуса', 'Сниженный вейджер x30']
+      features: ['100% на депозит', 'До ₽30,000 бонуса', '30 дней на отыгрыш']
     },
     { 
       id: 'fourth-deposit', 
@@ -147,7 +147,7 @@ const defaultPromotionsConfig = {
       minDeposit: '₽1,000', 
       wagering: 'x30',
       validDays: 30,
-      features: ['75% на депозит', 'До ₽20,000 бонуса', 'Лояльный вейджер x30']
+      features: ['75% на депозит', 'До ₽20,000 бонуса', '30 дней на отыгрыш']
     }
   ],
   reloadBonuses: [],

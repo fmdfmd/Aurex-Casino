@@ -3,6 +3,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 const avePayService = require('../services/avePayService');
+const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 // Получить историю транзакций пользователя
 router.get('/history', auth, async (req, res) => {
@@ -184,14 +185,7 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
         const depositNumber = parseInt(selectedBonus.replace('deposit_', ''));
         
         // Конфигурация бонусов
-        const depositBonuses = {
-          1: { percent: 200, maxBonus: 70000, wager: 35 },
-          2: { percent: 150, maxBonus: 50000, wager: 30 },
-          3: { percent: 100, maxBonus: 30000, wager: 25 },
-          4: { percent: 75, maxBonus: 20000, wager: 20 }
-        };
-        
-        const bonusConfig = depositBonuses[depositNumber];
+        const bonusConfig = DEPOSIT_BONUSES[depositNumber];
         
         // Проверяем: бонус для правильного депозита и ещё не был использован
         if (bonusConfig && depositNumber === newDepositCount) {
@@ -272,6 +266,23 @@ router.post('/withdraw', auth, async (req, res) => {
     const { withTransaction } = require('../utils/dbTransaction');
     
     const transaction = await withTransaction(pool, async (client) => {
+      // Check active bonuses with incomplete wager
+      const activeBonuses = await client.query(
+        `SELECT bonus_type, wagering_requirement, wagering_completed 
+         FROM bonuses 
+         WHERE user_id = $1 AND status = 'active' AND wagering_completed < wagering_requirement`,
+        [req.user.id]
+      );
+
+      if (activeBonuses.rows.length > 0) {
+        const bonus = activeBonuses.rows[0];
+        const remaining = parseFloat(bonus.wagering_requirement) - parseFloat(bonus.wagering_completed);
+        throw { 
+          status: 400, 
+          message: `Активный вейджер: осталось отыграть ₽${Math.ceil(remaining).toLocaleString('ru-RU')}. Отмените бонус в кошельке для вывода без отыгрыша.`
+        };
+      }
+
       const userResult = await client.query(
         'SELECT balance FROM users WHERE id = $1 FOR UPDATE',
         [req.user.id]

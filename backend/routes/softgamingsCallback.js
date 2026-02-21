@@ -6,6 +6,7 @@ const { withTransaction } = require('../utils/dbTransaction');
 const { updateVipLevel } = require('../config/vipLevels');
 const config = require('../config/config');
 const { generateHmac, validateHmac } = require('../utils/oneWalletHmac');
+const { trackDepositBonusWager } = require('../config/bonusConfig');
 
 // HMAC Secret from SoftGamings / Fundist OneWallet
 // IMPORTANT: Per OneWallet spec, HMAC key = SHA256(secret) binary.
@@ -365,8 +366,11 @@ const handleDebit = async (req, res) => {
             }
           }
         } catch (wagerErr) {
-          console.error('[wager] Error tracking wager:', wagerErr.message);
+          console.error('[wager] Error tracking freerounds wager:', wagerErr.message);
         }
+
+        // Track deposit bonus wager progress
+        await trackDepositBonusWager(client, userId, debitAmount);
       }
 
       // Create/Update Game Session
