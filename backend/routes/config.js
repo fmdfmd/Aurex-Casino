@@ -86,10 +86,19 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   crypto: [
-    { id: 'CRYPTO', name: 'Криптовалюта', icon: '₿', minDeposit: 500, maxDeposit: 10000000, fee: 0 }
+    { id: 'CRYPTO', name: 'Криптовалюта', icon: '₿', minDeposit: 500, maxDeposit: 10000000, fee: 0 },
+    { id: 'BINANCE_PAY', name: 'Binance Pay', icon: '🔶', minDeposit: 500, maxDeposit: 10000000, fee: 0 },
+    { id: 'PERFECTMONEY', name: 'Perfect Money', icon: '💎', minDeposit: 500, maxDeposit: 5000000, fee: 0 }
   ],
   fiat: [
-    { id: 'BASIC_CARD', name: 'Visa / Mastercard', icon: '💳', minDeposit: 100, maxDeposit: 500000, fee: 0 }
+    { id: 'BASIC_CARD', name: 'Visa / Mastercard', icon: '💳', minDeposit: 100, maxDeposit: 500000, fee: 0 },
+    { id: 'P2P_CARD', name: 'P2P Карта', icon: '🔄', minDeposit: 500, maxDeposit: 150000, fee: 0 },
+    { id: 'P2P_SBP', name: 'P2P СБП', icon: '⚡', minDeposit: 300, maxDeposit: 150000, fee: 0 },
+    { id: 'SBP', name: 'СБП', icon: '🏦', minDeposit: 100, maxDeposit: 300000, fee: 0 },
+    { id: 'SBERPAY', name: 'SberPay', icon: '🟢', minDeposit: 100, maxDeposit: 300000, fee: 0 },
+    { id: 'MOBILE_COMMERCE', name: 'Мобильный платёж', icon: '📱', minDeposit: 100, maxDeposit: 15000, fee: 0 },
+    { id: 'PIASTRIX', name: 'Piastrix', icon: '🅿️', minDeposit: 300, maxDeposit: 500000, fee: 0 },
+    { id: 'MONETIX', name: 'Monetix', icon: '💰', minDeposit: 300, maxDeposit: 500000, fee: 0 }
   ]
 };
 
