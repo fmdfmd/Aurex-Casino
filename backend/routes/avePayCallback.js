@@ -101,7 +101,23 @@ router.post('/test', adminAuth, async (req, res) => {
 // Statuses: COMPLETED, DECLINED, CANCELLED
 router.post('/', async (req, res) => {
   try {
-    // Body is already parsed by express.json() in server.js
+    // Verify webhook signature (HMAC-SHA256)
+    const signature = req.headers['signature'];
+    if (signature) {
+      const config = require('../config/config');
+      const crypto = require('crypto');
+      const secret = config.avePay.webhookSecret;
+      if (secret) {
+        const rawBody = JSON.stringify(req.body);
+        const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
+        if (signature !== expected) {
+          console.warn('[AvePay Webhook] Invalid signature! Rejecting.');
+          return res.status(200).json({ received: true });
+        }
+        console.log('[AvePay Webhook] Signature verified OK');
+      }
+    }
+
     const payload = req.body?.result || req.body;
     console.log('[AvePay Webhook] Received:', JSON.stringify(req.body).slice(0, 800));
 
