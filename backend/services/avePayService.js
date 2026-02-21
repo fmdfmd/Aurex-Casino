@@ -40,7 +40,7 @@ class AvePayService {
    * @param {Object} [params.customer] - { email, firstName, lastName, phone }
    * @returns {Promise<Object>} AVE PAY payment response with redirectUrl
    */
-  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer, userId }) {
+  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer, userId, bankCode }) {
     const callbackBase = config.avePay.callbackUrl || `${config.server.frontendUrl}/api/payments/avepay/callback`;
     const returnBase = config.avePay.returnUrl || `${config.server.frontendUrl}/wallet`;
 
@@ -60,6 +60,7 @@ class AvePayService {
       }
     };
 
+    if (bankCode) payload.customer.bankCode = bankCode;
     if (customer?.email) payload.customer.email = customer.email;
     if (customer?.phone) payload.customer.phone = this.formatPhone(customer.phone);
     if (customer?.firstName) payload.customer.firstName = customer.firstName;

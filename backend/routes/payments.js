@@ -59,7 +59,7 @@ router.get('/history', auth, async (req, res) => {
 // Создать депозит через AVE PAY
 router.post('/deposit', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB' } = req.body;
+    const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB', bankCode } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
@@ -89,6 +89,7 @@ router.post('/deposit', auth, async (req, res) => {
       transactionId: transaction.id,
       paymentMethod,
       userId: req.user.id,
+      bankCode: bankCode || undefined,
       customer: Object.keys(customer).length > 0 ? customer : undefined
     });
 
