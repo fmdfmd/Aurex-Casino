@@ -65,9 +65,21 @@ router.post('/deposit', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
-    const minDeposit = 500;
+    const minDeposits = { 'P2P_CARD': 5000, 'P2P_SBP': 3000 };
+    const maxDeposits = { 'P2P_CARD': 300000, 'P2P_SBP': 300000 };
+    const minDeposit = minDeposits[paymentMethod] || 3000;
+    const maxDeposit = maxDeposits[paymentMethod] || 300000;
+
+    if (paymentMethod === 'CRYPTO' || paymentMethod?.startsWith('CRYPTO_')) {
+      return res.status(400).json({ success: false, message: 'Криптовалюта временно недоступна' });
+    }
+
     if (amount < minDeposit) {
       return res.status(400).json({ success: false, message: `Минимальная сумма депозита: ${minDeposit.toLocaleString('ru-RU')} ₽` });
+    }
+
+    if (amount > maxDeposit) {
+      return res.status(400).json({ success: false, message: `Максимальная сумма депозита: ${maxDeposit.toLocaleString('ru-RU')} ₽` });
     }
     
     const result = await pool.query(
