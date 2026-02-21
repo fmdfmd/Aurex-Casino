@@ -452,9 +452,9 @@ java -jar OWClientTest_v2.14.jar \
 
 ## Платёжные системы
 
-### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (интеграция в процессе)
+### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (интегрирована)
 
-**Статус:** Payment Page интеграция, креды получены 21.02.2026
+**Статус:** Интеграция завершена. Депозиты P2P_CARD/P2P_SBP/CRYPTO работают. Выплаты P2P_CARD/P2P_SBP работают (зависят от баланса мерчанта).
 
 **Дашборд:**
 ```
@@ -467,7 +467,7 @@ API Key:  XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd
 **API:**
 ```
 Sandbox:  https://engine-sandbox.avepay.com
-Prod:     https://engine.avepay.com (уточнить)
+Prod:     https://engine.avepay.com
 Auth:     Bearer {API_KEY}
 Docs:     https://avepay.readme.io/reference
 Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
@@ -477,28 +477,132 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
 | Метод | URL | Описание |
 |---|---|---|
 | `POST` | `/api/v1/payments` | Создать платеж (DEPOSIT / WITHDRAWAL / REFUND) |
-| `GET` | `/api/v1/payments` | Список платежей |
+| `GET` | `/api/v1/payments` | Список платежей (offset, limit, created.gte/lt, updated.gte/lt, referenceId.eq) |
 | `GET` | `/api/v1/payments/{id}` | Платеж по ID |
-| `GET` | `/api/v1/payments/{id}/operations` | Операции по платежу |
-| `POST` | `/api/v1/payments/{id}/capture` | Захват (preAuth) |
-| `POST` | `/api/v1/payments/{id}/void` | Отмена |
-| `GET` | `/api/v1/balances` | Балансы мерчанта |
+| `GET` | `/api/v1/payments/{id}/operations` | Операции по платежу (лог всех шагов) |
+| `POST` | `/api/v1/payments/{id}/capture` | Захват preAuth (amount опционально, если не указан — полная сумма) |
+| `POST` | `/api/v1/payments/{id}/void` | Отмена preAuth (только AUTHORIZED → CANCELLED) |
+| `GET` | `/api/v1/balances` | Балансы мерчанта по валютам |
 
-**Create Payment — ключевые параметры:**
-- `paymentType` — DEPOSIT / WITHDRAWAL / REFUND
-- `paymentMethod` — BASIC_CARD, CRYPTO + 186 вариантов
-- `amount`, `currency` — сумма и валюта
-- `returnUrl` — редирект после оплаты (поддерживает плейсхолдеры: `{id}`, `{referenceId}`, `{state}`, `{type}`)
-- `webhookUrl` — URL для нотификаций
-- `referenceId` — наш внутренний ID транзакции
-- `customer` — данные клиента (опционально)
-- `card` — НЕ отправлять (Payment Page, они сами собирают)
+**Create Payment — ВСЕ параметры:**
+| Параметр | Тип | Обязательный | Описание |
+|---|---|---|---|
+| `referenceId` | string ≤256 | нет | Наш внутренний ID (deposit_{txId}) |
+| `paymentType` | enum | **ДА** | DEPOSIT / WITHDRAWAL / REFUND |
+| `paymentMethod` | enum | нет | P2P_CARD, P2P_SBP, CRYPTO, BASIC_CARD и 186 др. |
+| `amount` | number | нет | 0.00001 — 1,000,000,000 |
+| `currency` | string | **ДА** | RUB, USD, EUR, UZS |
+| `parentPaymentId` | string ≤32 | нет | ID исходного депозита (для REFUND) |
+| `description` | string ≤512 | нет | Описание, видно клиенту |
+| `card` | object | нет | **НЕ ОТПРАВЛЯТЬ** (Payment Page, PCI DSS) |
+| `customer` | object | нет | Данные клиента (см. ниже) |
+| `billingAddress` | object | нет | Адрес клиента |
+| `returnUrl` | string | нет | Редирект: `{id}`, `{referenceId}`, `{state}`, `{type}` |
+| `webhookUrl` | string | нет | URL для нотификаций |
+| `startRecurring` | bool | нет | Начать рекуррентную цепочку |
+| `preAuth` | bool | нет | Двухфазный депозит (нужен capture) |
+| `recurringToken` | string | нет | Токен для продолжения рекуррента |
+| `subscription` | object | нет | Подписка (с startRecurring=true) |
+| `additionalParameters` | object | нет | Доп. параметры провайдера |
+
+**customer object — ВСЕ поля:**
+| Поле | Тип | Описание |
+|---|---|---|
+| `referenceId` | string | **ОБЯЗАТЕЛЬНО для P2P!** ID клиента в нашей системе |
+| `routingGroup` | string | **ОБЯЗАТЕЛЬНО!** `primary` / `secondary` — маршрутизация трафика |
+| `email` | string | Email |
+| `phone` | string | Телефон формат: `"7 9081111111"` (пробел между кодом страны и номером!) |
+| `firstName` | string | Имя |
+| `lastName` | string | Фамилия |
+| `locale` | string | Язык: `ru`, `en_US` |
+| `citizenshipCountryCode` | string | Страна (AU, RU) |
+| `dateOfBirth` | string | Дата рождения (2001-12-03) |
+| `accountNumber` | string | Номер счёта (для некоторых выводов) |
+| `accountName` | string | Имя счёта |
+| `bank` | string | Банк |
+| `bankBranch` | string | Отделение банка |
+| `bankCode` | string | Код банка: `nspk:100000000111` (Сбербанк), `nspk:100000000004` (Т-Банк), `nspk:100000000005` (ВТБ) |
+| `documentType` | enum | Тип документа (BR_CPF и 55 вариантов) |
+| `documentNumber` | string | Номер документа |
+| `kycStatus` | bool | Прошёл ли KYC |
+| `paymentInstrumentKycStatus` | bool | Прошёл ли KYC для карты |
+| `dateOfFirstDeposit` | string | Дата первого депозита |
+| `depositsAmount` | number | Сумма всех депозитов |
+| `withdrawalsAmount` | number | Сумма всех выводов |
+| `depositsCnt` | number | Кол-во депозитов |
+| `withdrawalsCnt` | number | Кол-во выводов |
+
+**Примеры запросов (из Postman коллекции):**
+
+Депозит P2P_CARD:
+```json
+{
+  "paymentType": "DEPOSIT",
+  "paymentMethod": "P2P_CARD",
+  "amount": 5000,
+  "currency": "RUB",
+  "referenceId": "deposit_123",
+  "webhookUrl": "https://aurex.casino/api/payments/avepay/callback",
+  "returnUrl": "https://aurex.casino/wallet?payment_id={id}&status={state}&type={type}",
+  "customer": {
+    "referenceId": "user_id_123",
+    "routingGroup": "primary"
+  }
+}
+```
+
+Вывод P2P_CARD (нужен cardNumber!):
+```json
+{
+  "paymentType": "WITHDRAWAL",
+  "paymentMethod": "P2P_CARD",
+  "amount": 5000,
+  "currency": "RUB",
+  "referenceId": "withdrawal_123",
+  "webhookUrl": "https://aurex.casino/api/payments/avepay/callback",
+  "customer": {
+    "referenceId": "user_id_123",
+    "routingGroup": "primary"
+  },
+  "additionalParameters": {
+    "cardNumber": "4111111111111111"
+  }
+}
+```
+
+Вывод P2P_SBP (нужен phone и bankCode!):
+```json
+{
+  "paymentType": "WITHDRAWAL",
+  "paymentMethod": "P2P_SBP",
+  "amount": 5000,
+  "currency": "RUB",
+  "referenceId": "withdrawal_123",
+  "webhookUrl": "https://aurex.casino/api/payments/avepay/callback",
+  "customer": {
+    "referenceId": "user_id_123",
+    "phone": "7 9081111111",
+    "bankCode": "nspk:100000000111",
+    "routingGroup": "primary"
+  }
+}
+```
+
+**Payment States (жизненный цикл):**
+```
+CHECKOUT → PENDING → COMPLETED (успех)
+CHECKOUT → PENDING → DECLINED (отказ)
+CHECKOUT → CANCELLED (отмена по таймауту / клиентом)
+CHECKOUT → PENDING → AUTHORIZED → COMPLETED (preAuth → capture)
+CHECKOUT → PENDING → AUTHORIZED → CANCELLED (preAuth → void)
+```
 
 **Webhooks:**
-- Финальные статусы: COMPLETED, DECLINED, CANCELLED
-- Подпись: HMAC-SHA256, заголовок `Signature`
-- Signing Key — генерируется в настройках шопа (дашборд)
-- Payload = формат `GET /api/v1/payments/{id}`
+- Отправляются при финальном статусе: **COMPLETED**, **DECLINED**, **CANCELLED**
+- Можно задать webhookUrl в настройках шопа ИЛИ в createPayment (запрос имеет приоритет)
+- Подпись: `Signature` header = HMAC-SHA256(raw JSON body, Signing Key)
+- **ВАЖНО:** для подписи использовать raw body строку, НЕ десериализовать+сериализовать обратно
+- Payload = формат ответа `GET /api/v1/payments/{id}` (поле `result`)
 
 **Test Cards (Sandbox):**
 | Карта | Результат |
@@ -507,21 +611,73 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
 | 4242 4242 4242 4242 | 3DS, отказ |
 | 4000 0000 0000 0408 | Без 3DS, успех |
 | 4000 0000 0000 0416 | Без 3DS, отказ |
+- Sandbox лимит депозитов: < 10,000,000
+- Sandbox лимит выводов/рефандов: 10,000
 
-**Error Codes:**
-- 1.xx — системные (timeout, not found, invalid amount/currency)
-- 2.xx — отмена клиентом
-- 3.xx — отказ эквайера (anti-fraud, card scheme, limits)
+**Error Codes (полный список):**
+| Код | Описание |
+|---|---|
+| 1.00 | Illegal Workflow State |
+| 1.01 | Not Found |
+| 1.02 | Communication Problem |
+| 1.03 | Internal Server Error |
+| 1.04 | Cancelled by Timeout |
+| 1.05 | Terminal not Found |
+| 1.06 | Recurring Token not Found |
+| 1.07 | Payer Unaccepted |
+| 1.08 | Invalid Amount |
+| 1.09 | Invalid Currency |
+| 1.10 | Insufficient Balance (мерчант баланс пуст) |
+| 2.00 | Cancelled by Customer |
+| 3.00 | Declined by Acquirer |
+| 3.01 | Declined by Acquirer: Anti-fraud |
+| 3.02 | Declined by Acquirer: Request Validation |
+| 3.03 | Acquirer Malfunction |
+| 3.04 | Acquirer Timeout |
+| 3.05 | Acquirer Limits Reached |
+| 3.06 | Declined by Acquirer: Card Scheme |
+| 3.07 | Declined by Acquirer: Card Data |
+| 3.08 | Declined by Acquirer: Business Rules |
+| 3.09 | Not Fully 3DS |
+| 4.00 | Declined by Issuer |
+| 4.01 | Insufficient Funds |
+| 4.02 | Do Not Honor |
+| 4.03 | Declined by Issuer: Invalid Card Number |
+| 4.04 | Declined by Issuer: Expired Card |
+| 4.05 | Issuer Limits Reached |
+| 4.06 | Card Lost or Stolen |
+| 4.07 | Invalid Security Code |
+| 4.08 | Declined by Issuer: Business Rules |
+| 5.00 | Declined by 3DS |
+| 5.01 | 3DS Timeout |
+| 6.00-6.32 | Internal Anti-fraud / Limits |
+| 7.00 | Declined by External Anti-fraud |
+| 7.01 | External Anti-fraud Communication Problem |
 
-**Переменные Railway (нужно добавить):**
+**Переменные Railway:**
 - `AVEPAY_API_KEY` — `XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd`
-- `AVEPAY_API_URL` — `https://engine-sandbox.avepay.com` (sandbox) / `https://engine.avepay.com` (prod)
+- `AVEPAY_API_URL` — `https://engine.avepay.com` (прод)
 - `AVEPAY_WEBHOOK_SECRET` — Signing Key из дашборда (нужно сгенерировать)
+- `AVEPAY_CALLBACK_URL` — `https://aurex.casino/api/payments/avepay/callback`
+- `AVEPAY_RETURN_URL` — `https://aurex.casino/wallet`
+
+**Доступные методы оплаты (наши):**
+| Метод | Депозит | Вывод | Мин. сумма |
+|---|---|---|---|
+| P2P_CARD (Банковская карта) | Работает | Работает (нужен cardNumber) | 500 ₽ |
+| P2P_SBP (СБП) | Работает | Работает (нужен phone + bankCode) | 500 ₽ |
+| CRYPTO (Криптовалюта) | Работает | Не тестировался | 500 ₽ |
+
+**ВАЖНО (P2P специфика):**
+- P2P терминалы работают по пулу карт/номеров — если пул занят, будет `1.05 Terminal not Found`
+- Повторный запрос через 30-60 сек обычно проходит
+- Для выплат нужен ненулевой баланс мерчанта (пополняется от депозитов)
 
 **Файлы интеграции:**
-- `backend/services/avePayService.js` — сервис API
-- `backend/routes/avePayCallback.js` — вебхук
-- `backend/routes/payments.js` — обновлён для AVE PAY
+- `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, getPayment, etc.)
+- `backend/routes/avePayCallback.js` — вебхук обработчик
+- `backend/routes/payments.js` — роуты /deposit и /withdraw
+- `backend/routes/config.js` — конфигурация методов оплаты для фронтенда
 
 ### SoftGamings (Moneygrator) — резерв
 - Setup: EUR 3,000

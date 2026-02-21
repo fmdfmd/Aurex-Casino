@@ -55,12 +55,13 @@ class AvePayService {
       returnUrl: `${returnBase}?payment_id={id}&status={state}&type={type}`,
       customer: {
         referenceId: String(userId || transactionId),
-        routingGroup: 'primary'
+        routingGroup: 'primary',
+        locale: 'ru'
       }
     };
 
     if (customer?.email) payload.customer.email = customer.email;
-    if (customer?.phone) payload.customer.phone = customer.phone;
+    if (customer?.phone) payload.customer.phone = this.formatPhone(customer.phone);
     if (customer?.firstName) payload.customer.firstName = customer.firstName;
     if (customer?.lastName) payload.customer.lastName = customer.lastName;
 
@@ -91,7 +92,8 @@ class AvePayService {
       webhookUrl: callbackBase,
       customer: {
         referenceId: String(userId || transactionId),
-        routingGroup: 'primary'
+        routingGroup: 'primary',
+        locale: 'ru'
       }
     };
 
