@@ -3,6 +3,98 @@ const router = express.Router();
 const pool = require('../config/database');
 const avePayService = require('../services/avePayService');
 const { withTransaction } = require('../utils/dbTransaction');
+const { auth, adminAuth } = require('../middleware/auth');
+
+// GET /api/payments/avepay/callback — health check for webhook URL
+router.get('/', (req, res) => {
+  res.json({ status: 'ok', message: 'AVE PAY webhook endpoint is reachable', timestamp: new Date().toISOString() });
+});
+
+// GET /api/payments/avepay/callback/debug — check recent webhook activity (admin only)
+router.get('/debug', adminAuth, async (req, res) => {
+  try {
+    const recentTx = await pool.query(
+      `SELECT id, type, amount, status, payment_method, wallet_address, description, created_at, updated_at
+       FROM transactions 
+       WHERE wallet_address IS NOT NULL 
+       ORDER BY updated_at DESC LIMIT 10`
+    );
+
+    const pendingDeposits = await pool.query(
+      `SELECT id, user_id, amount, status, payment_method, wallet_address, created_at 
+       FROM transactions 
+       WHERE type = 'deposit' AND status = 'pending' 
+       ORDER BY created_at DESC LIMIT 10`
+    );
+
+    const config = require('../config/config');
+
+    res.json({
+      success: true,
+      data: {
+        webhookUrl: config.avePay.callbackUrl || `${config.server.frontendUrl}/api/payments/avepay/callback`,
+        returnUrl: config.avePay.returnUrl,
+        webhookSecretSet: !!config.avePay.webhookSecret,
+        recentAvePayTransactions: recentTx.rows,
+        pendingDeposits: pendingDeposits.rows
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/payments/avepay/callback/test — simulate a webhook for a pending deposit (admin only)
+router.post('/test', adminAuth, async (req, res) => {
+  try {
+    const { transactionId, action = 'complete' } = req.body;
+
+    if (!transactionId) {
+      return res.status(400).json({ success: false, message: 'transactionId required' });
+    }
+
+    const txResult = await pool.query(
+      "SELECT * FROM transactions WHERE id = $1 AND status = 'pending'",
+      [transactionId]
+    );
+
+    if (txResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Pending transaction not found' });
+    }
+
+    const tx = txResult.rows[0];
+    const fakeAvePayId = `test_${Date.now()}`;
+
+    if (action === 'complete') {
+      if (tx.type === 'deposit') {
+        await handleDepositCompleted(tx.id, fakeAvePayId, {});
+      } else if (tx.type === 'withdrawal') {
+        await handleWithdrawalCompleted(tx.id, fakeAvePayId);
+      }
+    } else if (action === 'decline') {
+      if (tx.type === 'deposit') {
+        await handleDepositFailed(tx.id, fakeAvePayId, 'DECLINED');
+      } else if (tx.type === 'withdrawal') {
+        await handleWithdrawalFailed(tx.id, fakeAvePayId, 'DECLINED');
+      }
+    }
+
+    const updated = await pool.query('SELECT * FROM transactions WHERE id = $1', [transactionId]);
+    const user = await pool.query('SELECT id, username, balance, bonus_balance FROM users WHERE id = $1', [tx.user_id]);
+
+    res.json({
+      success: true,
+      message: `Transaction ${transactionId} ${action}d via test webhook`,
+      data: {
+        transaction: updated.rows[0],
+        userBalance: user.rows[0]
+      }
+    });
+  } catch (error) {
+    console.error('[AvePay Test Webhook] Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
 
 // AVE PAY webhook — receives payment status updates
 // Statuses: COMPLETED, DECLINED, CANCELLED
