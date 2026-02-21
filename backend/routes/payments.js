@@ -242,8 +242,12 @@ router.post('/withdraw', auth, async (req, res) => {
     }
 
     if (amount < 1000) {
-      return res.status(400).json({ success: false, message: 'Минимальная сумма вывода: 1000 ₽' });
+      return res.status(400).json({ success: false, message: 'Минимальная сумма вывода: 1 000 ₽' });
     }
+
+    const feePercent = (paymentMethod === 'P2P_CARD' || paymentMethod === 'P2P_SBP') ? 5 : 2;
+    const feeAmount = Math.round(amount * feePercent) / 100;
+    const totalDeducted = amount + feeAmount;
 
     if (paymentMethod === 'P2P_CARD' && !cardNumber) {
       return res.status(400).json({ success: false, message: 'Укажите номер карты' });
@@ -265,20 +269,20 @@ router.post('/withdraw', auth, async (req, res) => {
       }
       const balance = parseFloat(userResult.rows[0].balance);
       
-      if (amount > balance) {
-        throw { status: 400, message: 'Недостаточно средств' };
+      if (totalDeducted > balance) {
+        throw { status: 400, message: `Недостаточно средств. Сумма с комиссией ${feePercent}%: ${totalDeducted.toLocaleString('ru-RU')} ₽` };
       }
       
       await client.query(
         'UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2',
-        [amount, req.user.id]
+        [totalDeducted, req.user.id]
       );
       
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
-         VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, 'Вывод средств')
+         VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, $6)
          RETURNING *`,
-        [req.user.id, -amount, currency, paymentMethod, cardNumber || phone || walletAddress]
+        [req.user.id, -totalDeducted, currency, paymentMethod, cardNumber || phone || walletAddress, `Вывод ${amount} ₽ (комиссия ${feePercent}%: ${feeAmount} ₽)`]
       );
       
       return txResult.rows[0];
@@ -288,7 +292,7 @@ router.post('/withdraw', auth, async (req, res) => {
     if (req.user.email) customer.email = req.user.email;
 
     const avePayResponse = await avePayService.createWithdrawal({
-      amount: parseFloat(Math.abs(amount)),
+      amount: parseFloat(amount),
       currency,
       transactionId: transaction.id,
       paymentMethod,
@@ -317,7 +321,10 @@ router.post('/withdraw', auth, async (req, res) => {
           status: transaction.status,
           createdAt: transaction.created_at
         },
-        avePayId: paymentResult?.id || null
+        avePayId: paymentResult?.id || null,
+        fee: { percent: feePercent, amount: feeAmount },
+        netAmount: amount,
+        totalDeducted
       }
     });
   } catch (error) {
