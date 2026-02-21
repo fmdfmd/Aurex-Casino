@@ -766,7 +766,7 @@ export default function WalletPage() {
                           className="w-full px-4 py-4 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white text-2xl font-bold focus:border-aurex-gold-500/50 focus:outline-none"
                         />
                         <div className="flex flex-wrap gap-2 mt-3">
-                          {[3000, 5000, 10000, 15000, 20000, 50000].map((preset) => (
+                          {[500, 1000, 3000, 5000, 10000, 50000].map((preset) => (
                             <button
                               key={preset}
                               onClick={() => setAmount(String(preset))}

@@ -65,7 +65,7 @@ router.post('/deposit', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
-    const minDeposit = (paymentMethod === 'P2P_CARD' || paymentMethod === 'P2P_SBP') ? 3000 : 500;
+    const minDeposit = 500;
     if (amount < minDeposit) {
       return res.status(400).json({ success: false, message: `Минимальная сумма депозита: ${minDeposit.toLocaleString('ru-RU')} ₽` });
     }

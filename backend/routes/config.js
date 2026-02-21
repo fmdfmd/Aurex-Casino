@@ -86,8 +86,8 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   fiat: [
-    { id: 'P2P_CARD', name: 'Банковская карта', iconUrl: '/images/payments/card.svg', minDeposit: 3000, maxDeposit: 150000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 },
-    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 150000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 }
+    { id: 'P2P_CARD', name: 'Банковская карта', iconUrl: '/images/payments/card.svg', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 },
+    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 }
   ],
   crypto: [
     { id: 'CRYPTO', name: 'USDT', subtitle: 'Tether • TRC-20', iconUrl: '/images/payments/usdt.svg', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, depositFee: 0, withdrawFee: 2, paymentMethod: 'CRYPTO' },
