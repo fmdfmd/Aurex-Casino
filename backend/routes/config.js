@@ -88,6 +88,9 @@ const defaultPaymentMethodsConfig = {
   fiat: [
     { id: 'P2P_CARD', name: 'Банковская карта', icon: '💳', minDeposit: 500, maxDeposit: 150000, fee: 0 },
     { id: 'P2P_SBP', name: 'СБП', icon: '⚡', minDeposit: 500, maxDeposit: 150000, fee: 0 }
+  ],
+  crypto: [
+    { id: 'CRYPTO', name: 'Криптовалюта', icon: '₿', minDeposit: 500, maxDeposit: 10000000, fee: 0 }
   ]
 };
 
