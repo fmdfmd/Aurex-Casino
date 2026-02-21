@@ -59,21 +59,21 @@ router.get('/history', auth, async (req, res) => {
 // Создать депозит через AVE PAY
 router.post('/deposit', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod, currency = 'RUB' } = req.body;
+    const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB' } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
-    if (amount < 100) {
-      return res.status(400).json({ success: false, message: 'Минимальная сумма депозита: 100 ₽' });
+    if (amount < 500) {
+      return res.status(400).json({ success: false, message: 'Минимальная сумма депозита: 500 ₽' });
     }
     
     const result = await pool.query(
       `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, description)
        VALUES ($1, 'deposit', $2, $3, 'pending', $4, 'Пополнение баланса')
        RETURNING *`,
-      [req.user.id, amount, currency, paymentMethod || 'auto']
+      [req.user.id, amount, currency, paymentMethod]
     );
     
     const transaction = result.rows[0];
@@ -87,7 +87,7 @@ router.post('/deposit', auth, async (req, res) => {
       amount: parseFloat(amount),
       currency,
       transactionId: transaction.id,
-      paymentMethod: paymentMethod || undefined,
+      paymentMethod,
       customer: Object.keys(customer).length > 0 ? customer : undefined
     });
 
