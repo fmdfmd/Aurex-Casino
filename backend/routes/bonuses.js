@@ -14,19 +14,32 @@ router.get('/active', auth, async (req, res) => {
       [req.user.id]
     );
     
-    const bonuses = result.rows.map(b => ({
-      id: b.id,
-      type: b.bonus_type,
-      amount: parseFloat(b.amount),
-      wageringRequired: parseFloat(b.wagering_requirement),
-      wageringCompleted: parseFloat(b.wagering_completed),
-      progress: b.wagering_requirement > 0 
-        ? Math.min(100, (parseFloat(b.wagering_completed) / parseFloat(b.wagering_requirement)) * 100)
-        : 100,
-      status: b.status,
-      expiresAt: b.expires_at,
-      activatedAt: b.activated_at
-    }));
+    const bonuses = result.rows.map(b => {
+      // Extract deposit number from bonus_type (e.g. "deposit_1" → 1)
+      const depositNum = b.bonus_type?.startsWith('deposit_') ? parseInt(b.bonus_type.replace('deposit_', '')) : null;
+      const config = depositNum ? DEPOSIT_BONUSES[depositNum] : null;
+
+      return {
+        id: b.id,
+        bonusId: b.bonus_type,
+        type: b.bonus_type,
+        bonusName: config?.title || b.bonus_type,
+        percent: config?.percent || 0,
+        maxBonus: config?.maxBonus || 0,
+        minDeposit: 1000,
+        wagering: config?.wager || 30,
+        freespins: 0,
+        amount: parseFloat(b.amount),
+        wageringRequired: parseFloat(b.wagering_requirement),
+        wageringCompleted: parseFloat(b.wagering_completed),
+        progress: b.wagering_requirement > 0 
+          ? Math.min(100, (parseFloat(b.wagering_completed) / parseFloat(b.wagering_requirement)) * 100)
+          : 100,
+        status: b.status,
+        expiresAt: b.expires_at,
+        activatedAt: b.activated_at
+      };
+    });
     
     res.json({ success: true, data: bonuses });
   } catch (error) {
@@ -197,9 +210,37 @@ router.get('/available', auth, async (req, res) => {
 // Активировать бонус (пометить как выбранный для следующего депозита)
 router.post('/:id/activate', auth, async (req, res) => {
   try {
-    const bonusId = req.params.id;
+    const bonusId = req.params.id; // e.g. "deposit_1"
     
-    // Сохраняем выбранный бонус в used_bonuses пользователя
+    // Validate bonus type format
+    if (!bonusId.startsWith('deposit_')) {
+      return res.status(400).json({ success: false, message: 'Неверный тип бонуса' });
+    }
+
+    const depositNumber = parseInt(bonusId.replace('deposit_', ''));
+    if (!DEPOSIT_BONUSES[depositNumber]) {
+      return res.status(400).json({ success: false, message: 'Бонус не существует' });
+    }
+
+    // Check if this bonus was already used
+    const existing = await pool.query(
+      `SELECT id FROM bonuses WHERE user_id = $1 AND bonus_type = $2`,
+      [req.user.id, bonusId]
+    );
+    if (existing.rows.length > 0) {
+      return res.status(400).json({ success: false, message: 'Этот бонус уже был использован' });
+    }
+
+    // Check deposit count — bonus is only available for the matching deposit number
+    const userRes = await pool.query('SELECT deposit_count FROM users WHERE id = $1', [req.user.id]);
+    const depositCount = userRes.rows[0]?.deposit_count || 0;
+    if (depositCount + 1 !== depositNumber) {
+      return res.status(400).json({ 
+        success: false, 
+        message: `Этот бонус доступен только для ${depositNumber}-го депозита (текущий: ${depositCount + 1}-й)` 
+      });
+    }
+
     await pool.query(
       `UPDATE users SET used_bonuses = used_bonuses || $1 WHERE id = $2`,
       [JSON.stringify({ selectedBonus: bonusId }), req.user.id]

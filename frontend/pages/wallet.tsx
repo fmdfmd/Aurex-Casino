@@ -75,6 +75,7 @@ export default function WalletPage() {
   const [promoCode, setPromoCode] = useState('');
   const [isActivatingPromo, setIsActivatingPromo] = useState(false);
   const [activeBonus, setActiveBonus] = useState<ActiveBonus | null>(null);
+  const [availableBonus, setAvailableBonus] = useState<any>(null);
   const [cardNumber, setCardNumber] = useState('');
   const [phone, setPhone] = useState('');
   const [bankCode, setBankCode] = useState('');
@@ -108,10 +109,11 @@ export default function WalletPage() {
     }
   };
 
-  // Fetch active bonus from API
+  // Fetch active + available bonuses from API
   useEffect(() => {
     if (token) {
       fetchActiveBonus();
+      fetchAvailableBonus();
       fetchTransactions();
     }
   }, [token]);
@@ -123,12 +125,29 @@ export default function WalletPage() {
       });
       const data = await res.json();
       if (data.success && data.data.length > 0) {
-        setActiveBonus(data.data[0]); // First active bonus
+        setActiveBonus(data.data[0]);
       } else {
         setActiveBonus(null);
       }
     } catch (error) {
       console.error('Failed to fetch active bonus:', error);
+    }
+  };
+
+  const fetchAvailableBonus = async () => {
+    try {
+      const res = await fetch('/api/bonuses/available', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.data.length > 0) {
+        const next = data.data.find((b: any) => b.available && !b.locked);
+        setAvailableBonus(next || null);
+      } else {
+        setAvailableBonus(null);
+      }
+    } catch (error) {
+      console.error('Failed to fetch available bonus:', error);
     }
   };
 
@@ -156,17 +175,17 @@ export default function WalletPage() {
     }
   };
 
-  // Get current available bonus from API
+  // Get next available deposit bonus (for showing in deposit form)
   const getCurrentBonus = () => {
-    if (activeBonus) {
+    if (availableBonus) {
       return {
-        percent: activeBonus.percent,
-        maxBonus: activeBonus.maxBonus,
-        wager: activeBonus.wagering,
-        name: activeBonus.bonusName,
-        key: activeBonus.bonusId,
-        freespins: activeBonus.freespins,
-        minDeposit: activeBonus.minDeposit
+        percent: availableBonus.percent,
+        maxBonus: availableBonus.maxBonus,
+        wager: availableBonus.wager,
+        name: availableBonus.title,
+        key: availableBonus.type,
+        freespins: 0,
+        minDeposit: 1000
       };
     }
     return null;
@@ -201,29 +220,18 @@ export default function WalletPage() {
     setIsProcessing(true);
 
     try {
-      let finalBonusAmount = 0;
-      let finalWagerRequired = 0;
-      let bonusMessage = '';
-
-      // If accepting bonus, apply it via API
-      if (acceptBonus && activeBonus) {
-        const bonusRes = await fetch('/api/bonuses/activate-deposit', {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            depositAmount,
-            paymentMethod: selectedMethod
-          })
-        });
-        const bonusData = await bonusRes.json();
-        
-        if (bonusData.success && bonusData.data.hasBonus) {
-          finalBonusAmount = bonusData.data.bonusAmount;
-          finalWagerRequired = bonusData.data.wagerRequired;
-          bonusMessage = bonusData.data.message;
+      // If accepting bonus, activate it (sets selectedBonus for webhook to apply on deposit confirmation)
+      if (acceptBonus && availableBonus) {
+        try {
+          await fetch(`/api/bonuses/${availableBonus.type}/activate`, {
+            method: 'POST',
+            headers: {
+              Authorization: `Bearer ${token}`,
+              'Content-Type': 'application/json'
+            }
+          });
+        } catch (e) {
+          console.error('Failed to activate bonus:', e);
         }
       }
 
@@ -251,8 +259,8 @@ export default function WalletPage() {
       // AVE PAY returns redirectUrl — send user to payment page
       const redirectUrl = depositData.data?.redirectUrl;
       if (redirectUrl) {
-        if (finalBonusAmount > 0) {
-          toast.success(`Бонус +₽${finalBonusAmount.toLocaleString('ru-RU')} будет применён после оплаты!`, { icon: '🎁', duration: 3000 });
+        if (acceptBonus && currentBonus && bonusAmount > 0) {
+          toast.success(`Бонус ${currentBonus.percent}% (+₽${bonusAmount.toLocaleString('ru-RU')}) будет применён после оплаты!`, { icon: '🎁', duration: 3000 });
         }
         toast.loading('Перенаправляем на страницу оплаты...', { duration: 2000 });
         setTimeout(() => {
@@ -267,8 +275,9 @@ export default function WalletPage() {
 
       setAmount('');
       setSelectedMethod(null);
-      setActiveBonus(null);
+      setAvailableBonus(null);
       fetchActiveBonus();
+      fetchAvailableBonus();
 
     } catch (error) {
       toast.error('Ошибка при обработке депозита');
@@ -599,7 +608,7 @@ export default function WalletPage() {
                               <div>
                                 <div className="text-white font-bold">Бонус {currentBonus.percent}% на {currentBonus.name}</div>
                                 <div className="text-sm text-aurex-platinum-400">
-                                  До ₽{currentBonus.maxBonus} • Вейджер x{currentBonus.wager}
+                                  До ₽{(currentBonus.maxBonus || 0).toLocaleString('ru-RU')} • Вейджер x{currentBonus.wager}
                                 </div>
                               </div>
                             </div>

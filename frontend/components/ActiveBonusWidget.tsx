@@ -25,7 +25,7 @@ interface ActiveBonus {
 }
 
 export default function ActiveBonusWidget() {
-  const { token } = useAuthStore();
+  const { token, refreshUser } = useAuthStore();
   const [bonuses, setBonuses] = useState<ActiveBonus[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
   const [isLoading, setIsLoading] = useState(true);
@@ -65,6 +65,7 @@ export default function ActiveBonusWidget() {
       const data = await res.json();
       if (data.success) {
         fetchBonuses();
+        refreshUser?.();
       }
     } catch (error) {
       console.error('Failed to cancel bonus:', error);
