@@ -83,7 +83,7 @@ export default function WalletPage() {
   const [depositBankCode, setDepositBankCode] = useState('');
   const [showDepositBankDropdown, setShowDepositBankDropdown] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{
-    crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number; paymentMethod?: string }[];
+    crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number; paymentMethod?: string }[];
     fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number }[];
     banks: { code: string; name: string; iconUrl?: string; icon?: string }[];
   }>({ crypto: [], fiat: [], banks: [] });
