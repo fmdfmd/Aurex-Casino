@@ -245,30 +245,22 @@ export default function WalletPage() {
         throw new Error(depositData.message || 'Ошибка создания депозита');
       }
 
-      // Refresh user data from server to get updated balance
+      // AVE PAY returns redirectUrl — send user to payment page
+      const redirectUrl = depositData.data?.redirectUrl;
+      if (redirectUrl) {
+        if (finalBonusAmount > 0) {
+          toast.success(`Бонус +₽${finalBonusAmount.toLocaleString('ru-RU')} будет применён после оплаты!`, { icon: '🎁', duration: 3000 });
+        }
+        toast.loading('Перенаправляем на страницу оплаты...', { duration: 2000 });
+        setTimeout(() => {
+          window.location.href = redirectUrl;
+        }, 1000);
+        return;
+      }
+
+      // Fallback if no redirect (shouldn't happen with AVE PAY)
       await refreshUser();
-
-      // Add transaction to local list
-      const newTransaction: Transaction = {
-        id: depositData.data?.transaction?.id?.toString() || Date.now().toString(),
-        type: 'deposit',
-        amount: depositAmount,
-        status: depositData.data?.transaction?.status || 'pending',
-        method: method.name,
-        createdAt: depositData.data?.transaction?.createdAt || new Date().toISOString()
-      };
-      setTransactions(prev => [newTransaction, ...prev]);
-
-      // Show payment info if crypto
-      if (depositData.data?.paymentData?.walletAddress) {
-        toast.success(`Переведите ${depositAmount} RUB на адрес: ${depositData.data.paymentData.walletAddress}`, { duration: 10000 });
-      } else {
-        toast.success(`Заявка на депозит ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
-      }
-
-      if (finalBonusAmount > 0) {
-        toast.success(`Бонус +₽${finalBonusAmount.toLocaleString('ru-RU')} будет применён!`, { icon: '🎁' });
-      }
+      toast.success(`Заявка на депозит ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
 
       setAmount('');
       setSelectedMethod(null);

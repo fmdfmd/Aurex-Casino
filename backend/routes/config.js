@@ -86,13 +86,10 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   crypto: [
-    { id: 'btc', name: 'Bitcoin', icon: '₿', minDeposit: 500, maxDeposit: 10000000, fee: 0 },
-    { id: 'eth', name: 'Ethereum', icon: 'Ξ', minDeposit: 500, maxDeposit: 10000000, fee: 0 },
-    { id: 'usdt', name: 'USDT TRC20', icon: '₮', minDeposit: 500, maxDeposit: 10000000, fee: 0 }
+    { id: 'CRYPTO', name: 'Криптовалюта', icon: '₿', minDeposit: 500, maxDeposit: 10000000, fee: 0 }
   ],
   fiat: [
-    { id: 'card', name: 'Visa/Mastercard', icon: '💳', minDeposit: 1000, maxDeposit: 500000, fee: 2 },
-    { id: 'sbp', name: 'СБП', icon: '⚡', minDeposit: 500, maxDeposit: 300000, fee: 0 }
+    { id: 'BASIC_CARD', name: 'Visa / Mastercard', icon: '💳', minDeposit: 100, maxDeposit: 500000, fee: 0 }
   ]
 };
 
