@@ -518,7 +518,7 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
 | Поле | Тип | Описание |
 |---|---|---|
 | `referenceId` | string | **ОБЯЗАТЕЛЬНО для P2P!** ID клиента в нашей системе |
-| `routingGroup` | string | **ОБЯЗАТЕЛЬНО!** `primary` / `secondary` — маршрутизация трафика |
+| `routingGroup` | string | **ОБЯЗАТЕЛЬНО!** `primary` / `secondary` — маршрутизация трафика. **Используем `secondary`** (как в Postman примерах) |
 | `email` | string | Email |
 | `phone` | string | Телефон формат: `"7 9081111111"` (пробел между кодом страны и номером!) |
 | `firstName` | string | Имя |
@@ -555,7 +555,7 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
   "returnUrl": "https://aurex.casino/wallet?payment_id={id}&status={state}&type={type}",
   "customer": {
     "referenceId": "user_id_123",
-    "routingGroup": "primary"
+    "routingGroup": "secondary"
   }
 }
 ```
@@ -571,7 +571,7 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
   "webhookUrl": "https://aurex.casino/api/payments/avepay/callback",
   "customer": {
     "referenceId": "user_id_123",
-    "routingGroup": "primary"
+    "routingGroup": "secondary"
   },
   "additionalParameters": {
     "cardNumber": "4111111111111111"
@@ -592,7 +592,7 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
     "referenceId": "user_id_123",
     "phone": "7 9081111111",
     "bankCode": "nspk:100000000111",
-    "routingGroup": "primary"
+    "routingGroup": "secondary"
   }
 }
 ```
@@ -841,6 +841,7 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [x] AVE PAY — полная интеграция (Payment Page + Webhooks + Выплаты)
 - [x] AVE PAY — вебхуки работают, баланс зачисляется автоматически (проверено 21.02.2026)
 - [x] AVE PAY — выбор банка для СБП (Сбербанк, Т-Банк, ВТБ)
+- [x] AVE PAY — Postman коллекция полностью изучена, код приведён в соответствие (routingGroup: secondary)
 - [x] Кошелёк (wallet) — новый UI: выбор метода, ввод карты, телефон+банк для СБП
 - [x] Тестовый webhook endpoint для ручного зачисления (admin)
 - [x] AI чат Стефани (Claude 3.5 Sonnet через OpenRouter)
@@ -896,4 +897,4 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ---
 
-*Последнее обновление: 21 февраля 2026 — AVE PAY интеграция завершена, вебхуки проверены, кошелёк переделан*
+*Последнее обновление: 21 февраля 2026 — AVE PAY Postman коллекция изучена, routingGroup исправлен на secondary, код полностью соответствует документации*

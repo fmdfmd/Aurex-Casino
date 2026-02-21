@@ -55,7 +55,7 @@ class AvePayService {
       returnUrl: `${returnBase}?payment_id={id}&status={state}&type={type}`,
       customer: {
         referenceId: String(userId || transactionId),
-        routingGroup: 'primary',
+        routingGroup: 'secondary',
         locale: 'ru'
       }
     };
@@ -93,7 +93,7 @@ class AvePayService {
       webhookUrl: callbackBase,
       customer: {
         referenceId: String(userId || transactionId),
-        routingGroup: 'primary',
+        routingGroup: 'secondary',
         locale: 'ru'
       }
     };
