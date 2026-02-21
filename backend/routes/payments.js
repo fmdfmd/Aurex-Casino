@@ -93,11 +93,14 @@ router.post('/deposit', auth, async (req, res) => {
       customer: Object.keys(customer).length > 0 ? customer : undefined
     });
 
+    // AVE PAY wraps data in { status, result: { id, redirectUrl, ... } }
+    const paymentResult = avePayResponse?.result || avePayResponse;
+
     // Сохраняем AVE PAY payment ID
-    if (avePayResponse?.id) {
+    if (paymentResult?.id) {
       await pool.query(
         "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
-        [avePayResponse.id, transaction.id]
+        [paymentResult.id, transaction.id]
       );
     }
     
@@ -111,8 +114,8 @@ router.post('/deposit', auth, async (req, res) => {
           status: transaction.status,
           createdAt: transaction.created_at
         },
-        redirectUrl: avePayResponse?.redirectUrl || avePayResponse?.redirect_url || null,
-        avePayId: avePayResponse?.id || null
+        redirectUrl: paymentResult?.redirectUrl || null,
+        avePayId: paymentResult?.id || null
       }
     });
   } catch (error) {
