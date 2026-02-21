@@ -60,11 +60,16 @@ class AvePayService {
       }
     };
 
-    if (bankCode) payload.customer.bankCode = bankCode;
+    // bankCode не нужен для депозитов (подтверждено ТП AVE PAY)
     if (customer?.email) payload.customer.email = customer.email;
     if (customer?.phone) payload.customer.phone = this.formatPhone(customer.phone);
     if (customer?.firstName) payload.customer.firstName = customer.firstName;
     if (customer?.lastName) payload.customer.lastName = customer.lastName;
+
+    // P2P_SBP deposits require phone per AVE PAY docs
+    if (paymentMethod === 'P2P_SBP' && !payload.customer.phone && customer?.phone) {
+      payload.customer.phone = this.formatPhone(customer.phone);
+    }
 
     const response = await apiClient.post('/api/v1/payments', payload);
     return response.data;

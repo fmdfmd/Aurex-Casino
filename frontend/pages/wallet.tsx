@@ -251,8 +251,7 @@ export default function WalletPage() {
         body: JSON.stringify({
           amount: depositAmount,
           paymentMethod: actualPaymentMethod,
-          currency: 'RUB',
-          ...(depositBankCode && { bankCode: depositBankCode })
+          currency: 'RUB'
         })
       });
       const depositData = await depositRes.json();
@@ -700,75 +699,7 @@ export default function WalletPage() {
                         </div>
                       )}
 
-                      {/* Bank Selection for Deposits (fiat only) */}
-                      {selectedMethod && (selectedMethod === 'P2P_CARD' || selectedMethod === 'P2P_SBP') && paymentMethods.banks.length > 0 && (
-                        <div className="mb-6">
-                          <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
-                            <Building2 className="w-4 h-4" />
-                            <span>Банк для оплаты</span>
-                            <span className="text-aurex-platinum-600 text-xs">(необязательно)</span>
-                          </label>
-                          <div className="relative">
-                            <button
-                              onClick={() => setShowDepositBankDropdown(!showDepositBankDropdown)}
-                              className="w-full px-4 py-3.5 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-left flex items-center justify-between focus:border-aurex-gold-500/50 focus:outline-none focus:ring-1 focus:ring-aurex-gold-500/20 transition-all"
-                            >
-                              <span className={`flex items-center space-x-2 ${depositBankCode ? 'text-white' : 'text-aurex-platinum-600'}`}>
-                                {depositBankCode ? (
-                                  <>
-                                    {paymentMethods.banks.find(b => b.code === depositBankCode)?.iconUrl && (
-                                      <img src={paymentMethods.banks.find(b => b.code === depositBankCode)?.iconUrl} alt="" className="w-5 h-5 rounded" />
-                                    )}
-                                    <span>{paymentMethods.banks.find(b => b.code === depositBankCode)?.name}</span>
-                                  </>
-                                ) : (
-                                  <span>Любой банк (автоматически)</span>
-                                )}
-                              </span>
-                              <ChevronDown className={`w-5 h-5 text-aurex-platinum-500 transition-transform ${showDepositBankDropdown ? 'rotate-180' : ''}`} />
-                            </button>
-                            <AnimatePresence>
-                              {showDepositBankDropdown && (
-                                <motion.div
-                                  initial={{ opacity: 0, y: -8, scale: 0.96 }}
-                                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                                  exit={{ opacity: 0, y: -8, scale: 0.96 }}
-                                  transition={{ duration: 0.15 }}
-                                  className="absolute z-50 top-full left-0 right-0 mt-2 bg-aurex-obsidian-900 border border-aurex-gold-500/30 rounded-xl overflow-hidden shadow-2xl shadow-black/50"
-                                >
-                                  <button
-                                    onClick={() => { setDepositBankCode(''); setShowDepositBankDropdown(false); }}
-                                    className={`w-full px-4 py-3.5 text-left flex items-center space-x-3 transition-all ${
-                                      !depositBankCode ? 'bg-aurex-gold-500/10 text-aurex-gold-400' : 'text-white hover:bg-aurex-obsidian-700'
-                                    }`}
-                                  >
-                                    <RefreshCw className="w-5 h-5" />
-                                    <span className="font-medium">Любой банк</span>
-                                    {!depositBankCode && <CheckCircle className="w-4 h-4 text-aurex-gold-500 ml-auto" />}
-                                  </button>
-                                  {paymentMethods.banks.map((bank) => (
-                                    <button
-                                      key={bank.code}
-                                      onClick={() => { setDepositBankCode(bank.code); setShowDepositBankDropdown(false); }}
-                                      className={`w-full px-4 py-3.5 text-left flex items-center space-x-3 transition-all ${
-                                        depositBankCode === bank.code ? 'bg-aurex-gold-500/10 text-aurex-gold-400' : 'text-white hover:bg-aurex-obsidian-700'
-                                      }`}
-                                    >
-                                      {bank.iconUrl ? (
-                                        <img src={bank.iconUrl} alt={bank.name} className="w-6 h-6 rounded" />
-                                      ) : (
-                                        <span className="text-xl">{bank.icon}</span>
-                                      )}
-                                      <span className="font-medium">{bank.name}</span>
-                                      {depositBankCode === bank.code && <CheckCircle className="w-4 h-4 text-aurex-gold-500 ml-auto" />}
-                                    </button>
-                                  ))}
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      )}
+                      {/* Bank selection not needed for deposits (confirmed by AVE PAY support) */}
 
                       {/* Amount Input */}
                       <div className="mb-6">
