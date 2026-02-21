@@ -80,9 +80,9 @@ export default function WalletPage() {
   const [bankCode, setBankCode] = useState('');
   const [showBankDropdown, setShowBankDropdown] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{
-    crypto: { id: string; name: string; icon: string; color?: string; minDeposit?: number; minWithdraw?: number; fee?: number }[];
-    fiat: { id: string; name: string; icon: string; color?: string; minDeposit?: number; minWithdraw?: number; fee?: number }[];
-    banks: { code: string; name: string; icon: string }[];
+    crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; minWithdraw?: number; fee?: number; paymentMethod?: string }[];
+    fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; minWithdraw?: number; fee?: number }[];
+    banks: { code: string; name: string; iconUrl?: string; icon?: string }[];
   }>({ crypto: [], fiat: [], banks: [] });
 
   // Fetch payment methods from API
@@ -96,20 +96,8 @@ export default function WalletPage() {
       const data = await res.json();
       if (data.success) {
         setPaymentMethods({
-          crypto: (data.data.crypto || []).map((m: any) => ({
-            ...m,
-            color: m.id === 'CRYPTO' ? 'from-amber-500 to-orange-600' :
-                   m.id === 'btc' ? 'from-orange-500 to-orange-600' :
-                   m.id === 'eth' ? 'from-blue-500 to-indigo-600' :
-                   m.id === 'usdt' ? 'from-green-500 to-emerald-600' :
-                   'from-purple-500 to-pink-500'
-          })),
-          fiat: (data.data.fiat || []).map((m: any) => ({
-            ...m,
-            color: m.id === 'P2P_CARD' ? 'from-blue-500 to-indigo-600' :
-                   m.id === 'P2P_SBP' ? 'from-green-500 to-emerald-600' :
-                   'from-gray-600 to-gray-700'
-          })),
+          crypto: (data.data.crypto || []).map((m: any) => ({ ...m })),
+          fiat: (data.data.fiat || []).map((m: any) => ({ ...m })),
           banks: data.data.banks || []
         });
       }
@@ -236,7 +224,8 @@ export default function WalletPage() {
         }
       }
 
-      // Create deposit via real API
+      const actualPaymentMethod = getActualPaymentMethod(method);
+
       const depositRes = await fetch('/api/payments/deposit', {
         method: 'POST',
         headers: {
@@ -245,7 +234,7 @@ export default function WalletPage() {
         },
         body: JSON.stringify({
           amount: depositAmount,
-          paymentMethod: method.id || method.name,
+          paymentMethod: actualPaymentMethod,
           currency: 'RUB'
         })
       });
@@ -305,7 +294,7 @@ export default function WalletPage() {
       return;
     }
 
-    if (selectedMethod === 'CRYPTO' && !withdrawAddress) {
+    if ((selectedMethod === 'CRYPTO' || selectedMethod.startsWith('CRYPTO_')) && !withdrawAddress) {
       toast.error('Введите адрес кошелька');
       return;
     }
@@ -328,9 +317,13 @@ export default function WalletPage() {
     setIsProcessing(true);
 
     try {
+      const actualMethod = getActualPaymentMethod(
+        allMethods.find(m => m.id === selectedMethod) || { id: selectedMethod }
+      );
+
       const body: any = {
         amount: depositAmount,
-        paymentMethod: selectedMethod,
+        paymentMethod: actualMethod,
         currency: 'RUB'
       };
 
@@ -339,7 +332,7 @@ export default function WalletPage() {
       } else if (selectedMethod === 'P2P_SBP') {
         body.phone = phone;
         body.bankCode = bankCode;
-      } else if (selectedMethod === 'CRYPTO') {
+      } else if (selectedMethod === 'CRYPTO' || selectedMethod.startsWith('CRYPTO_')) {
         body.walletAddress = withdrawAddress;
       }
 
@@ -415,6 +408,10 @@ export default function WalletPage() {
       default: return <Wallet className="w-5 h-5 text-gray-500" />;
     }
   };
+
+  const getActualPaymentMethod = (method: any) => method.paymentMethod || method.id;
+
+  const allMethods = [...paymentMethods.fiat, ...paymentMethods.crypto];
 
   const wagerProgress = user?.wager?.active && user.wager.required > 0 ? ((user.wager.completed || 0) / user.wager.required) * 100 : 0;
 
@@ -613,11 +610,11 @@ export default function WalletPage() {
                         </div>
                       )}
 
-                      {/* Payment Methods */}
-                      <div className="mb-6">
-                        <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Способ оплаты</h3>
-                        <div className="grid grid-cols-3 gap-3">
-                          {[...paymentMethods.fiat, ...paymentMethods.crypto].map((method) => (
+                      {/* Fiat Methods */}
+                      <div className="mb-4">
+                        <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Банковские</h3>
+                        <div className="grid grid-cols-2 gap-3">
+                          {paymentMethods.fiat.map((method) => (
                             <button
                               key={method.id}
                               onClick={() => setSelectedMethod(method.id)}
@@ -628,20 +625,53 @@ export default function WalletPage() {
                               }`}
                             >
                               {selectedMethod === method.id && (
-                                <motion.div
-                                  layoutId="depositMethodIndicator"
-                                  className="absolute -top-1 -right-1 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center"
-                                >
+                                <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
                                   <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
-                                </motion.div>
+                                </div>
                               )}
-                              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${method.color} flex items-center justify-center text-2xl mb-3 mx-auto group-hover:scale-110 transition-transform`}>
-                                {method.icon}
+                              <div className="flex items-center space-x-3">
+                                {method.iconUrl ? (
+                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg group-hover:scale-110 transition-transform" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
+                                )}
+                                <div className="text-left">
+                                  <div className="text-white font-medium text-sm">{method.name}</div>
+                                  <div className="text-xs text-aurex-platinum-500">от {(method.minDeposit || 500).toLocaleString('ru-RU')} ₽ • 0%</div>
+                                </div>
                               </div>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+
+                      {/* Crypto Methods */}
+                      <div className="mb-6">
+                        <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Криптовалюта</h3>
+                        <div className="grid grid-cols-3 gap-3">
+                          {paymentMethods.crypto.map((method) => (
+                            <button
+                              key={method.id}
+                              onClick={() => setSelectedMethod(method.id)}
+                              className={`relative p-4 rounded-xl border-2 transition-all group ${
+                                selectedMethod === method.id
+                                  ? 'border-aurex-gold-500 bg-aurex-gold-500/10 shadow-lg shadow-aurex-gold-500/5'
+                                  : 'border-aurex-gold-500/20 hover:border-aurex-gold-500/40 hover:bg-aurex-obsidian-700/50'
+                              }`}
+                            >
+                              {selectedMethod === method.id && (
+                                <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
+                                  <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
+                                </div>
+                              )}
+                              {method.iconUrl ? (
+                                <img src={method.iconUrl} alt={method.name} className="w-11 h-11 rounded-full mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                              ) : (
+                                <div className="w-11 h-11 rounded-full bg-aurex-obsidian-700 flex items-center justify-center text-xl mx-auto mb-2">{method.icon}</div>
+                              )}
                               <div className="text-white font-medium text-sm text-center">{method.name}</div>
-                              <div className="text-xs text-aurex-platinum-500 text-center mt-1">от {(method.minDeposit || 500).toLocaleString('ru-RU')} ₽</div>
-                              {method.fee === 0 && (
-                                <span className="absolute top-2 left-2 px-1.5 py-0.5 bg-green-500/20 text-green-400 text-[10px] font-medium rounded">0%</span>
+                              {method.subtitle && (
+                                <div className="text-[11px] text-aurex-platinum-500 text-center mt-0.5">{method.subtitle}</div>
                               )}
                             </button>
                           ))}
@@ -757,11 +787,13 @@ export default function WalletPage() {
                         <div className="text-3xl font-black text-white">{formatCurrency(user?.balance || 0)}</div>
                       </div>
 
-                      {/* All withdrawal methods */}
+                      {/* Withdrawal methods */}
                       <div className="mb-6">
                         <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Способ вывода</h3>
-                        <div className="grid grid-cols-3 gap-3">
-                          {[...paymentMethods.fiat, ...paymentMethods.crypto].map((method) => (
+
+                        {/* Fiat */}
+                        <div className="grid grid-cols-2 gap-3 mb-3">
+                          {paymentMethods.fiat.map((method) => (
                             <button
                               key={method.id}
                               onClick={() => {
@@ -778,18 +810,57 @@ export default function WalletPage() {
                               }`}
                             >
                               {selectedMethod === method.id && (
-                                <motion.div
-                                  layoutId="withdrawMethodIndicator"
-                                  className="absolute -top-1 -right-1 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center"
-                                >
+                                <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
                                   <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
-                                </motion.div>
+                                </div>
                               )}
-                              <div className={`w-12 h-12 rounded-xl bg-gradient-to-br ${method.color} flex items-center justify-center text-2xl mb-3 mx-auto group-hover:scale-110 transition-transform`}>
-                                {method.icon}
+                              <div className="flex items-center space-x-3">
+                                {method.iconUrl ? (
+                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg group-hover:scale-110 transition-transform" />
+                                ) : (
+                                  <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
+                                )}
+                                <div className="text-left">
+                                  <div className="text-white font-medium text-sm">{method.name}</div>
+                                  <div className="text-xs text-aurex-platinum-500">от 1 000 ₽ • 0%</div>
+                                </div>
                               </div>
-                              <div className="text-white font-medium text-sm text-center">{method.name}</div>
-                              <div className="text-xs text-aurex-platinum-500 text-center mt-1">от 1 000 ₽</div>
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Crypto */}
+                        <div className="grid grid-cols-3 gap-3">
+                          {paymentMethods.crypto.map((method) => (
+                            <button
+                              key={method.id}
+                              onClick={() => {
+                                setSelectedMethod(method.id);
+                                setCardNumber('');
+                                setPhone('');
+                                setBankCode('');
+                                setWithdrawAddress('');
+                              }}
+                              className={`relative p-3 rounded-xl border-2 transition-all group ${
+                                selectedMethod === method.id
+                                  ? 'border-aurex-gold-500 bg-aurex-gold-500/10 shadow-lg shadow-aurex-gold-500/5'
+                                  : 'border-aurex-gold-500/20 hover:border-aurex-gold-500/40 hover:bg-aurex-obsidian-700/50'
+                              }`}
+                            >
+                              {selectedMethod === method.id && (
+                                <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
+                                  <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
+                                </div>
+                              )}
+                              {method.iconUrl ? (
+                                <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-full mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-full bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
+                              )}
+                              <div className="text-white font-medium text-xs text-center">{method.name}</div>
+                              {method.subtitle && (
+                                <div className="text-[10px] text-aurex-platinum-500 text-center">{method.subtitle}</div>
+                              )}
                             </button>
                           ))}
                         </div>
@@ -862,11 +933,17 @@ export default function WalletPage() {
                                   onClick={() => setShowBankDropdown(!showBankDropdown)}
                                   className="w-full px-4 py-3.5 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-left flex items-center justify-between focus:border-aurex-gold-500/50 focus:outline-none focus:ring-1 focus:ring-aurex-gold-500/20 transition-all"
                                 >
-                                  <span className={bankCode ? 'text-white' : 'text-aurex-platinum-600'}>
-                                    {bankCode
-                                      ? `${paymentMethods.banks.find(b => b.code === bankCode)?.icon} ${paymentMethods.banks.find(b => b.code === bankCode)?.name}`
-                                      : 'Выберите банк'
-                                    }
+                                  <span className={`flex items-center space-x-2 ${bankCode ? 'text-white' : 'text-aurex-platinum-600'}`}>
+                                    {bankCode && paymentMethods.banks.find(b => b.code === bankCode)?.iconUrl ? (
+                                      <>
+                                        <img src={paymentMethods.banks.find(b => b.code === bankCode)?.iconUrl} alt="" className="w-5 h-5 rounded" />
+                                        <span>{paymentMethods.banks.find(b => b.code === bankCode)?.name}</span>
+                                      </>
+                                    ) : bankCode ? (
+                                      <span>{paymentMethods.banks.find(b => b.code === bankCode)?.icon} {paymentMethods.banks.find(b => b.code === bankCode)?.name}</span>
+                                    ) : (
+                                      <span>Выберите банк</span>
+                                    )}
                                   </span>
                                   <ChevronDown className={`w-5 h-5 text-aurex-platinum-500 transition-transform ${showBankDropdown ? 'rotate-180' : ''}`} />
                                 </button>
@@ -892,7 +969,11 @@ export default function WalletPage() {
                                               : 'text-white hover:bg-aurex-obsidian-700'
                                           }`}
                                         >
-                                          <span className="text-xl">{bank.icon}</span>
+                                          {bank.iconUrl ? (
+                                            <img src={bank.iconUrl} alt={bank.name} className="w-6 h-6 rounded" />
+                                          ) : (
+                                            <span className="text-xl">{bank.icon}</span>
+                                          )}
                                           <span className="font-medium">{bank.name}</span>
                                           {bankCode === bank.code && (
                                             <CheckCircle className="w-4 h-4 text-aurex-gold-500 ml-auto" />
@@ -907,7 +988,7 @@ export default function WalletPage() {
                           </motion.div>
                         )}
 
-                        {selectedMethod === 'CRYPTO' && (
+                        {selectedMethod && (selectedMethod === 'CRYPTO' || selectedMethod.startsWith('CRYPTO_')) && (
                           <motion.div
                             key="crypto-input"
                             initial={{ opacity: 0, height: 0 }}
@@ -1003,7 +1084,7 @@ export default function WalletPage() {
                           isProcessing ||
                           (selectedMethod === 'P2P_CARD' && cardNumber.replace(/\s/g, '').length !== 16) ||
                           (selectedMethod === 'P2P_SBP' && (phone.length !== 10 || !bankCode)) ||
-                          (selectedMethod === 'CRYPTO' && !withdrawAddress) ||
+                          ((selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) && !withdrawAddress) ||
                           (user?.wager?.active && (user.wager?.completed || 0) < (user.wager?.required || 0))
                         }
                         className="w-full py-4 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center justify-center space-x-2"

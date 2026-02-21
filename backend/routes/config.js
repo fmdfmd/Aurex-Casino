@@ -86,16 +86,18 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   fiat: [
-    { id: 'P2P_CARD', name: 'Банковская карта', icon: '💳', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, fee: 0 },
-    { id: 'P2P_SBP', name: 'СБП', icon: '⚡', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, fee: 0 }
+    { id: 'P2P_CARD', name: 'Банковская карта', iconUrl: '/images/payments/card.svg', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, fee: 0 },
+    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 500, maxDeposit: 150000, minWithdraw: 1000, fee: 0 }
   ],
   crypto: [
-    { id: 'CRYPTO', name: 'Криптовалюта', icon: '₿', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, fee: 0 }
+    { id: 'CRYPTO', name: 'USDT', subtitle: 'Tether • TRC-20', iconUrl: '/images/payments/usdt.svg', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, fee: 0 },
+    { id: 'CRYPTO_BTC', name: 'Bitcoin', subtitle: 'BTC', iconUrl: '/images/payments/btc.svg', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, fee: 0, paymentMethod: 'CRYPTO' },
+    { id: 'CRYPTO_ETH', name: 'Ethereum', subtitle: 'ETH', iconUrl: '/images/payments/eth.svg', minDeposit: 500, maxDeposit: 10000000, minWithdraw: 1000, fee: 0, paymentMethod: 'CRYPTO' }
   ],
   banks: [
-    { code: 'nspk:100000000111', name: 'Сбербанк', icon: '🟢' },
-    { code: 'nspk:100000000004', name: 'Т-Банк', icon: '🟡' },
-    { code: 'nspk:100000000005', name: 'ВТБ', icon: '🔵' }
+    { code: 'nspk:100000000111', name: 'Сбербанк', iconUrl: '/images/payments/sber.svg' },
+    { code: 'nspk:100000000004', name: 'Т-Банк', iconUrl: '/images/payments/tbank.svg' },
+    { code: 'nspk:100000000005', name: 'ВТБ', iconUrl: '/images/payments/vtb.svg' }
   ]
 };
 
