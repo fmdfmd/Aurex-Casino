@@ -150,7 +150,27 @@ class AvePayService {
   }
 
   /**
-   * Void (cancel) a payment
+   * H2H: Confirm payment and get external refs (card/account details)
+   * Used instead of redirect — sends customer IP, returns payment details in externalRefs
+   */
+  async confirmPaymentH2H(paymentId, customerIp) {
+    const response = await apiClient.patch(`/api/v1/payments/${paymentId}`, { customerIp });
+    return response.data;
+  }
+
+  /**
+   * Capture a pre-authorized payment (full or partial)
+   * Only works for payments in AUTHORIZED state
+   */
+  async capturePayment(paymentId, amount) {
+    const payload = amount ? { amount } : {};
+    const response = await apiClient.post(`/api/v1/payments/${paymentId}/capture`, payload);
+    return response.data;
+  }
+
+  /**
+   * Void (cancel) a pre-authorized payment
+   * Only works for payments in AUTHORIZED state → CANCELLED
    */
   async voidPayment(paymentId) {
     const response = await apiClient.post(`/api/v1/payments/${paymentId}/void`);
@@ -158,10 +178,35 @@ class AvePayService {
   }
 
   /**
-   * Get merchant balances
+   * List payments with optional filters
+   * @param {Object} [filters] - { offset, limit, 'created.gte', 'created.lt', 'updated.gte', 'updated.lt', 'referenceId.eq' }
+   */
+  async listPayments(filters = {}) {
+    const response = await apiClient.get('/api/v1/payments', { params: filters });
+    return response.data;
+  }
+
+  /**
+   * Get merchant balances by currency
    */
   async getBalances() {
     const response = await apiClient.get('/api/v1/balances');
+    return response.data;
+  }
+
+  /**
+   * Get subscription by ID
+   */
+  async getSubscription(subscriptionId) {
+    const response = await apiClient.get(`/api/v1/subscriptions/${subscriptionId}`);
+    return response.data;
+  }
+
+  /**
+   * Cancel a subscription
+   */
+  async cancelSubscription(subscriptionId) {
+    const response = await apiClient.patch(`/api/v1/subscriptions/${subscriptionId}`, { state: 'CANCELLED' });
     return response.data;
   }
 

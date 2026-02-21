@@ -668,13 +668,40 @@ CHECKOUT → PENDING → AUTHORIZED → CANCELLED (preAuth → void)
 | P2P_SBP (СБП) | Работает | Работает (нужен phone + bankCode) | 500 ₽ |
 | CRYPTO (Криптовалюта) | Работает | Не тестировался | 500 ₽ |
 
+**H2H интеграция (без редиректа):**
+Для получения реквизитов напрямую без редиректа на страницу AVE PAY:
+1. Создаём платёж как обычно (POST /api/v1/payments)
+2. Берём `result.id`, игнорируем `redirectUrl`
+3. Отправляем `PATCH /api/v1/payments/{id}` с телом `{"customerIp": "IP_клиента"}`
+4. В ответе приходят реквизиты в `externalRefs` (номер карты, банк, сумма)
+
+**Депозит с указанием банка:**
+Можно передать `customer.bankCode` для маршрутизации на конкретный банк:
+- Сбербанк: `nspk:100000000111`
+- Т-Банк: `nspk:100000000004`
+- ВТБ: `nspk:100000000005`
+
+**Все P2P методы AVE PAY:**
+P2P_CARD, P2P_SBP, P2P_IBAN, P2P_MOBILE, P2P_M10, P2P_EMANAT, P2P_KAPITAL, P2P_ACCESS, P2P_CROSS_BORDER
+
+**Другие доступные методы (при необходимости):**
+SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, APPLEPAY, GOOGLEPAY, PIASTRIX, PERFECTMONEY, MONETIX + 170 других
+
+**BANKTRANSFER (Турция, TRY):**
+- Депозит: нужны firstName, lastName, documentNumber
+- Вывод: нужен accountNumber (IBAN)
+
+**Subscriptions (рекурренты):**
+- `GET /api/v1/subscriptions/{id}` — статус подписки
+- `PATCH /api/v1/subscriptions/{id}` — отмена (`{"state": "CANCELLED"}`)
+
 **ВАЖНО (P2P специфика):**
 - P2P терминалы работают по пулу карт/номеров — если пул занят, будет `1.05 Terminal not Found`
 - Повторный запрос через 30-60 сек обычно проходит
 - Для выплат нужен ненулевой баланс мерчанта (пополняется от депозитов)
 
 **Файлы интеграции:**
-- `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, getPayment, etc.)
+- `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, confirmPaymentH2H, capturePayment, voidPayment, listPayments, getBalances, getSubscription, cancelSubscription)
 - `backend/routes/avePayCallback.js` — вебхук обработчик
 - `backend/routes/payments.js` — роуты /deposit и /withdraw
 - `backend/routes/config.js` — конфигурация методов оплаты для фронтенда
