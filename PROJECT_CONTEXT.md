@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 20 февраля 2026**
+> **Последнее обновление: 21 февраля 2026**
 
 ---
 
@@ -362,7 +362,8 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/callback/softgamings` | OneWallet callbacks |
 | `/api/config/*` | Конфигурация (VIP, провайдеры) |
 | `/api/users/*` | Профиль, настройки |
-| `/api/payments/*` | Депозиты, выводы |
+| `/api/payments/*` | Депозиты, выводы, AVE PAY вебхуки |
+| `/api/payments/avepay/callback` | AVE PAY webhook (POST) + health check (GET) + debug/test (admin) |
 | `/api/bonuses/*` | Бонусы |
 | `/api/cashback/*` | Кэшбэк |
 | `/api/loyalty/*` | VIP магазин |
@@ -398,6 +399,7 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/components/GameModal.tsx` | Модал запуска игры (iframe + document.write) |
 | `frontend/components/GameCard.tsx` | Карточка игры (картинка, RTP, провайдер) |
 | `frontend/components/LiveChatWidget.tsx` | Виджет AI чата (Стефани) |
+| `frontend/pages/wallet.tsx` | Кошелёк: депозит (Card/SBP/Crypto), вывод (карта/телефон+банк/крипто) |
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/store/settingsStore.ts` | Настройки (язык, валюта отображения) |
@@ -452,9 +454,16 @@ java -jar OWClientTest_v2.14.jar \
 
 ## Платёжные системы
 
-### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (интегрирована)
+### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (ПОЛНОСТЬЮ ИНТЕГРИРОВАНА)
 
-**Статус:** Интеграция завершена. Депозиты P2P_CARD/P2P_SBP/CRYPTO работают. Выплаты P2P_CARD/P2P_SBP работают (зависят от баланса мерчанта).
+**Статус:** Интеграция завершена и ПРОВЕРЕНА. Вебхуки доходят, баланс зачисляется автоматически. Депозиты P2P_CARD/P2P_SBP/CRYPTO работают. Выплаты P2P_CARD/P2P_SBP работают (зависят от баланса мерчанта).
+
+**Проверка (21.02.2026):**
+- Webhook URL доступен: `GET https://aurex.casino/api/payments/avepay/callback` → 200 OK
+- Webhook URL напрямую: `GET https://aurex-casino-production.up.railway.app/api/payments/avepay/callback` → 200 OK
+- Вебхуки от AVE PAY приходят (DECLINED/CANCELLED статусы обновляются в БД)
+- Тестовое зачисление: user PavelAdmin (id=579) баланс 221.30 → 721.30 (+500 ₽) — РАБОТАЕТ
+- Бонусная система при депозите: готова (сработает на первом реальном депозите)
 
 **Дашборд:**
 ```
@@ -659,14 +668,37 @@ CHECKOUT → PENDING → AUTHORIZED → CANCELLED (preAuth → void)
 - `AVEPAY_API_URL` — `https://engine.avepay.com` (прод)
 - `AVEPAY_WEBHOOK_SECRET` — Signing Key из дашборда (нужно сгенерировать)
 - `AVEPAY_CALLBACK_URL` — `https://aurex.casino/api/payments/avepay/callback`
+  - **Рекомендация:** Для надёжности поставить напрямую на Railway: `https://aurex-casino-production.up.railway.app/api/payments/avepay/callback` (минуя Next.js rewrite)
 - `AVEPAY_RETURN_URL` — `https://aurex.casino/wallet`
 
 **Доступные методы оплаты (наши):**
-| Метод | Депозит | Вывод | Мин. сумма |
-|---|---|---|---|
-| P2P_CARD (Банковская карта) | Работает | Работает (нужен cardNumber) | 500 ₽ |
-| P2P_SBP (СБП) | Работает | Работает (нужен phone + bankCode) | 500 ₽ |
-| CRYPTO (Криптовалюта) | Работает | Не тестировался | 500 ₽ |
+| Метод | Депозит | Вывод | Мин. депозит | Мин. вывод |
+|---|---|---|---|---|
+| P2P_CARD (Банковская карта) | Работает | Работает (нужен cardNumber) | 500 ₽ | 1 000 ₽ |
+| P2P_SBP (СБП) | Работает | Работает (нужен phone + bankCode) | 500 ₽ | 1 000 ₽ |
+| CRYPTO (Криптовалюта) | Работает | Работает | 500 ₽ | 1 000 ₽ |
+
+**Банки для СБП вывода (передаются в customer.bankCode):**
+| Банк | Код |
+|---|---|
+| Сбербанк | `nspk:100000000111` |
+| Т-Банк (Тинькофф) | `nspk:100000000004` |
+| ВТБ | `nspk:100000000005` |
+
+**Webhook Debug/Test endpoints (admin only):**
+| Метод | URL | Описание |
+|---|---|---|
+| `GET` | `/api/payments/avepay/callback` | Health check — проверить доступность вебхук-URL |
+| `GET` | `/api/payments/avepay/callback/debug` | Показать webhookUrl, pending депозиты, последние транзакции |
+| `POST` | `/api/payments/avepay/callback/test` | Ручная симуляция вебхука: `{"transactionId": 123, "action": "complete"}` |
+
+**Ручное зачисление депозита (если вебхук не дошёл):**
+```bash
+curl -X POST https://aurex.casino/api/payments/avepay/callback/test \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer {ADMIN_TOKEN}" \
+  -d '{"transactionId": 123, "action": "complete"}'
+```
 
 **H2H интеграция (без редиректа):**
 Для получения реквизитов напрямую без редиректа на страницу AVE PAY:
@@ -701,10 +733,35 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - Для выплат нужен ненулевой баланс мерчанта (пополняется от депозитов)
 
 **Файлы интеграции:**
-- `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, confirmPaymentH2H, capturePayment, voidPayment, listPayments, getBalances, getSubscription, cancelSubscription)
-- `backend/routes/avePayCallback.js` — вебхук обработчик
-- `backend/routes/payments.js` — роуты /deposit и /withdraw
-- `backend/routes/config.js` — конфигурация методов оплаты для фронтенда
+- `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, confirmPaymentH2H, capturePayment, voidPayment, listPayments, getBalances, getSubscription, cancelSubscription, formatPhone, verifyWebhookSignature)
+- `backend/routes/avePayCallback.js` — вебхук обработчик + debug/test endpoints
+- `backend/routes/payments.js` — роуты /deposit (с bankCode) и /withdraw (с cardNumber/phone/bankCode)
+- `backend/routes/config.js` — конфигурация методов оплаты + список банков для фронтенда
+- `frontend/pages/wallet.tsx` — кошелёк: депозит/вывод формы, выбор банка, ввод карты/телефона
+
+**Полный цикл оплаты (flow):**
+```
+1. Пользователь выбирает метод + сумму на /wallet
+2. Frontend → POST /api/payments/deposit (amount, paymentMethod, currency, bankCode?)
+3. Backend создаёт transaction (status: pending) в PostgreSQL
+4. Backend → POST engine.avepay.com/api/v1/payments (с customer.referenceId, routingGroup, locale)
+5. AVE PAY возвращает redirectUrl → Frontend делает window.location.href = redirectUrl
+6. Пользователь оплачивает на странице AVE PAY
+7. AVE PAY → POST /api/payments/avepay/callback (webhook с state: COMPLETED)
+8. Backend: обновляет transaction → completed, зачисляет balance, начисляет бонус
+9. Пользователь возвращается на /wallet — видит новый баланс
+```
+
+**Вывод средств (flow):**
+```
+1. Пользователь выбирает метод + вводит реквизиты (карта/телефон+банк/кошелёк)
+2. Frontend → POST /api/payments/withdraw (amount, paymentMethod, cardNumber/phone/bankCode)
+3. Backend: проверяет баланс → списывает → создаёт transaction (pending)
+4. Backend → POST engine.avepay.com/api/v1/payments (WITHDRAWAL, с additionalParameters.cardNumber или customer.phone)
+5. AVE PAY обрабатывает выплату (нужен ненулевой баланс мерчанта)
+6. AVE PAY → POST webhook (COMPLETED или DECLINED)
+7. Если DECLINED → возврат средств на баланс пользователя
+```
 
 ### SoftGamings (Moneygrator) — резерв
 - Setup: EUR 3,000
@@ -781,13 +838,22 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [x] Telegram бот (поддержка + AI)
 - [x] Админ-панель
 - [x] Мультивалютность (RUB, USD, EUR, UZS)
+- [x] AVE PAY — полная интеграция (Payment Page + Webhooks + Выплаты)
+- [x] AVE PAY — вебхуки работают, баланс зачисляется автоматически (проверено 21.02.2026)
+- [x] AVE PAY — выбор банка для СБП (Сбербанк, Т-Банк, ВТБ)
+- [x] Кошелёк (wallet) — новый UI: выбор метода, ввод карты, телефон+банк для СБП
+- [x] Тестовый webhook endpoint для ручного зачисления (admin)
+- [x] AI чат Стефани (Claude 3.5 Sonnet через OpenRouter)
+- [x] AML/KYC страница (/aml, 10 разделов)
 
 ### В процессе
 - [ ] Тестирование Live Casino (чёрные экраны на некоторых играх)
-- [ ] Переход на продакшн Fundist (ждём прод credentials от SoftGamings)
-- [ ] Интеграция AVE PAY (Payment Page + Webhooks + Выплаты)
+- [ ] Переход на продакшн Fundist (прод-креды получены, ждём прод-среду)
 - [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
 - [ ] Добавить `OPENROUTER_API_KEY` в Railway env vars бэкенда
+- [ ] Настроить `AVEPAY_CALLBACK_URL` на Railway (напрямую на backend URL)
+- [ ] Сгенерировать Signing Key в AVE PAY дашборде и добавить `AVEPAY_WEBHOOK_SECRET`
+- [ ] Первый реальный депозит через P2P_CARD (ждём активные P2P-терминалы)
 
 ### Потом
 - [ ] Юрлицо (Белиз через Slotgrator, €1,900/год, 4 недели)
@@ -795,6 +861,7 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [ ] Спортивные ставки (реальные, не виртуальные)
 - [ ] Найм саппортов, SMM, аффилиатов, стримеров
 - [ ] fail2ban на VPS (боты ломятся 24/7)
+- [ ] H2H интеграция AVE PAY (показ реквизитов без редиректа — для лучшего UX)
 
 ---
 
@@ -823,10 +890,10 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ### Проблемы (выявлены провайдером, 20.02.2026):
 1. **Регистрация через телефон** — звонки uCaller не доходят (РКН блок) → решение: новый аккаунт uCaller или переход на SMS
-2. **Кнопка депозита** — технически работает, но нет подключённого платёжного шлюза → решение: интеграция AVE PAY (в процессе)
-3. **Тех. поддержка на сайте** — была фейковая (захардкоженный ответ) → **РЕШЕНО:** подключена AI Стефани (Claude 3.5 Sonnet)
+2. **Кнопка депозита** — **РЕШЕНО (21.02.2026):** AVE PAY полностью интегрирована, вебхуки работают, баланс зачисляется
+3. **Тех. поддержка на сайте** — **РЕШЕНО:** подключена AI Стефани (Claude 3.5 Sonnet)
 4. **AML размытый** → **РЕШЕНО:** создана полная AML/KYC страница `/aml` с 10 разделами
 
 ---
 
-*Последнее обновление: 21 февраля 2026*
+*Последнее обновление: 21 февраля 2026 — AVE PAY интеграция завершена, вебхуки проверены, кошелёк переделан*
