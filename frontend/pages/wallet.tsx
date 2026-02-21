@@ -84,7 +84,7 @@ export default function WalletPage() {
   const [showDepositBankDropdown, setShowDepositBankDropdown] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<{
     crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number; paymentMethod?: string }[];
-    fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number }[];
+    fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number }[];
     banks: { code: string; name: string; iconUrl?: string; icon?: string }[];
   }>({ crypto: [], fiat: [], banks: [] });
 
@@ -206,8 +206,13 @@ export default function WalletPage() {
     if (!method) return;
 
     const minDep = method.minDeposit || 5000;
+    const maxDep = method.maxDeposit || 300000;
     if (depositAmount < minDep) {
       toast.error(`Минимальный депозит: ${minDep.toLocaleString('ru-RU')} ₽`);
+      return;
+    }
+    if (depositAmount > maxDep) {
+      toast.error(`Максимальный депозит: ${maxDep.toLocaleString('ru-RU')} ₽`);
       return;
     }
 

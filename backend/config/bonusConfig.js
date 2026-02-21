@@ -55,7 +55,7 @@ async function trackDepositBonusWager(client, userId, betAmount) {
       
       if (transferAmount > 0) {
         await client.query(
-          'UPDATE users SET balance = balance + $1, bonus_balance = bonus_balance - $1 WHERE id = $2',
+          'UPDATE users SET balance = balance + $1, bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
           [transferAmount, userId]
         );
         console.log(`✅ Wager completed for ${bonus.bonus_type}! Transferred ₽${transferAmount} from bonus to main balance for user ${userId}`);
@@ -72,26 +72,45 @@ async function trackDepositBonusWager(client, userId, betAmount) {
  */
 async function expireOldBonuses(pool) {
   try {
-    const expired = await pool.query(
-      `UPDATE bonuses 
-       SET status = 'expired', updated_at = CURRENT_TIMESTAMP
-       WHERE status = 'active' AND expires_at < NOW()
-       RETURNING id, user_id, amount, bonus_type`
+    const { withTransaction } = require('../utils/dbTransaction');
+    
+    // Find expired bonuses first
+    const toExpire = await pool.query(
+      `SELECT id, user_id, amount, bonus_type FROM bonuses 
+       WHERE status = 'active' AND expires_at < NOW()`
     );
 
-    for (const bonus of expired.rows) {
-      const bonusAmount = parseFloat(bonus.amount);
-      if (bonusAmount > 0) {
-        await pool.query(
-          'UPDATE users SET bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
-          [bonusAmount, bonus.user_id]
-        );
-        console.log(`⏰ Bonus ${bonus.bonus_type} expired for user ${bonus.user_id}, removed ₽${bonusAmount} from bonus_balance`);
+    for (const bonus of toExpire.rows) {
+      try {
+        await withTransaction(pool, async (client) => {
+          // Lock user row to prevent concurrent balance modifications
+          await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [bonus.user_id]);
+          
+          // Lock and update bonus
+          const updated = await client.query(
+            `UPDATE bonuses SET status = 'expired', updated_at = CURRENT_TIMESTAMP
+             WHERE id = $1 AND status = 'active' RETURNING amount`,
+            [bonus.id]
+          );
+          
+          if (updated.rows.length > 0) {
+            const bonusAmount = parseFloat(updated.rows[0].amount);
+            if (bonusAmount > 0) {
+              await client.query(
+                'UPDATE users SET bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
+                [bonusAmount, bonus.user_id]
+              );
+            }
+            console.log(`⏰ Bonus ${bonus.bonus_type} expired for user ${bonus.user_id}, removed ₽${bonusAmount} from bonus_balance`);
+          }
+        });
+      } catch (txErr) {
+        console.error(`[bonusConfig] Error expiring bonus ${bonus.id}:`, txErr.message);
       }
     }
 
-    if (expired.rows.length > 0) {
-      console.log(`⏰ Expired ${expired.rows.length} bonus(es)`);
+    if (toExpire.rows.length > 0) {
+      console.log(`⏰ Expired ${toExpire.rows.length} bonus(es)`);
     }
   } catch (err) {
     console.error('[bonusConfig] Error expiring bonuses:', err.message);

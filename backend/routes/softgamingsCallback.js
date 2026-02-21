@@ -313,11 +313,11 @@ const handleDebit = async (req, res) => {
       let fromBonus = debitAmount - fromMain;
 
       const updateRes = await client.query(
-        `UPDATE users 
-         SET balance = balance - $1, 
-             bonus_balance = bonus_balance - $2, 
-             total_wagered = total_wagered + $3 
-         WHERE id = $4 
+        `UPDATE users
+         SET balance = balance - $1,
+             bonus_balance = GREATEST(0, bonus_balance - $2),
+             total_wagered = total_wagered + $3
+         WHERE id = $4
          RETURNING balance, bonus_balance`,
         [fromMain, fromBonus, debitAmount, userId]
       );
@@ -354,7 +354,7 @@ const handleDebit = async (req, res) => {
               const transferAmount = Math.min(bonusWin, newBonusBal);
               if (transferAmount > 0) {
                 await client.query(
-                  `UPDATE users SET balance = balance + $1, bonus_balance = bonus_balance - $1 WHERE id = $2`,
+                  `UPDATE users SET balance = balance + $1, bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2`,
                   [transferAmount, userId]
                 );
                 console.log(`✅ Wager completed! Transferred ${transferAmount} from bonus to main for user ${userId}`);

@@ -60,14 +60,15 @@ router.post('/do-auth-user-ingame', async (req, res) => {
       [user.id, game_id, game_id, sessionId, currency || 'RUB']
     );
 
-    console.log(`✅ Пользователь ${user.username} авторизован. Баланс: ${user.balance}₽`);
+    const totalBalance = parseFloat(user.balance) + parseFloat(user.bonus_balance || 0);
+    console.log(`✅ Пользователь ${user.username} авторизован. Баланс: ${totalBalance}₽`);
 
     res.json({
       success: true,
       user: {
         id: user.odid || user.id.toString(),
         username: user.username,
-        balance: parseFloat(user.balance),
+        balance: totalBalance,
         currency: currency || 'RUB'
       },
       session: {
@@ -110,11 +111,12 @@ router.post('/get-balance', async (req, res) => {
     
     const user = userResult.rows[0];
     
-    console.log(`💰 Баланс пользователя ${user.username}: ${user.balance}₽`);
+    const totalBalance = parseFloat(user.balance) + parseFloat(user.bonus_balance || 0);
+    console.log(`💰 Баланс пользователя ${user.username}: ${totalBalance}₽`);
     
     res.json({
       success: true,
-      balance: parseFloat(user.balance),
+      balance: totalBalance,
       currency: session.currency || 'RUB'
     });
 
@@ -174,7 +176,7 @@ router.post('/make-bet', async (req, res) => {
       const fromBonus = amount - fromMain;
 
       const updatedUser = await client.query(
-        `UPDATE users SET balance = balance - $1, bonus_balance = bonus_balance - $2,
+        `UPDATE users SET balance = balance - $1, bonus_balance = GREATEST(0, bonus_balance - $2),
          total_wagered = total_wagered + $3, games_played = games_played + 1 
          WHERE id = $4 RETURNING balance, bonus_balance`,
         [fromMain, fromBonus, amount, user.id]
