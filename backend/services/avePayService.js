@@ -40,7 +40,7 @@ class AvePayService {
    * @param {Object} [params.customer] - { email, firstName, lastName, phone }
    * @returns {Promise<Object>} AVE PAY payment response with redirectUrl
    */
-  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer }) {
+  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer, userId }) {
     const callbackBase = config.avePay.callbackUrl || `${config.server.frontendUrl}/api/payments/avepay/callback`;
     const returnBase = config.avePay.returnUrl || `${config.server.frontendUrl}/wallet`;
 
@@ -52,16 +52,17 @@ class AvePayService {
       referenceId: `deposit_${transactionId}`,
       description: description || `AUREX Casino Deposit #${transactionId}`,
       webhookUrl: callbackBase,
-      returnUrl: `${returnBase}?payment_id={id}&status={state}&type={type}`
+      returnUrl: `${returnBase}?payment_id={id}&status={state}&type={type}`,
+      customer: {
+        referenceId: String(userId || transactionId),
+        routingGroup: 'primary'
+      }
     };
 
-    if (customer) {
-      payload.customer = {};
-      if (customer.email) payload.customer.email = customer.email;
-      if (customer.firstName) payload.customer.firstName = customer.firstName;
-      if (customer.lastName) payload.customer.lastName = customer.lastName;
-      if (customer.phone) payload.customer.phone = customer.phone;
-    }
+    if (customer?.email) payload.customer.email = customer.email;
+    if (customer?.phone) payload.customer.phone = customer.phone;
+    if (customer?.firstName) payload.customer.firstName = customer.firstName;
+    if (customer?.lastName) payload.customer.lastName = customer.lastName;
 
     const response = await apiClient.post('/api/v1/payments', payload);
     return response.data;
@@ -77,7 +78,7 @@ class AvePayService {
    * @param {Object} [params.customer]
    * @returns {Promise<Object>}
    */
-  async createWithdrawal({ amount, currency, transactionId, paymentMethod = 'BASIC_CARD', customer }) {
+  async createWithdrawal({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', customer, userId, bankCode, cardNumber, phone }) {
     const callbackBase = config.avePay.callbackUrl || `${config.server.frontendUrl}/api/payments/avepay/callback`;
 
     const payload = {
@@ -87,19 +88,47 @@ class AvePayService {
       currency,
       referenceId: `withdrawal_${transactionId}`,
       description: `AUREX Casino Withdrawal #${transactionId}`,
-      webhookUrl: callbackBase
+      webhookUrl: callbackBase,
+      customer: {
+        referenceId: String(userId || transactionId),
+        routingGroup: 'primary'
+      }
     };
 
-    if (customer) {
-      payload.customer = {};
-      if (customer.email) payload.customer.email = customer.email;
-      if (customer.firstName) payload.customer.firstName = customer.firstName;
-      if (customer.lastName) payload.customer.lastName = customer.lastName;
-      if (customer.phone) payload.customer.phone = customer.phone;
+    if (bankCode) payload.customer.bankCode = bankCode;
+    if (customer?.email) payload.customer.email = customer.email;
+    if (customer?.firstName) payload.customer.firstName = customer.firstName;
+    if (customer?.lastName) payload.customer.lastName = customer.lastName;
+
+    if (paymentMethod === 'P2P_CARD' && cardNumber) {
+      payload.additionalParameters = { cardNumber };
+    }
+
+    if (paymentMethod === 'P2P_SBP' && phone) {
+      payload.customer.phone = this.formatPhone(phone);
+    } else if (customer?.phone) {
+      payload.customer.phone = this.formatPhone(customer.phone);
     }
 
     const response = await apiClient.post('/api/v1/payments', payload);
     return response.data;
+  }
+
+  /**
+   * Format phone to AVE PAY format: "7 9081111111" (country_code space number)
+   */
+  formatPhone(phone) {
+    const digits = phone.replace(/\D/g, '');
+    if (digits.startsWith('8') && digits.length === 11) {
+      return `7 ${digits.slice(1)}`;
+    }
+    if (digits.startsWith('7') && digits.length === 11) {
+      return `7 ${digits.slice(1)}`;
+    }
+    if (digits.length === 10) {
+      return `7 ${digits}`;
+    }
+    return phone.includes(' ') ? phone : `${digits.slice(0, 1)} ${digits.slice(1)}`;
   }
 
   /**

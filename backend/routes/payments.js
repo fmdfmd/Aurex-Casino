@@ -88,6 +88,7 @@ router.post('/deposit', auth, async (req, res) => {
       currency,
       transactionId: transaction.id,
       paymentMethod,
+      userId: req.user.id,
       customer: Object.keys(customer).length > 0 ? customer : undefined
     });
 
@@ -232,29 +233,27 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
 // Создать заявку на вывод
 router.post('/withdraw', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod, walletAddress, currency = 'RUB' } = req.body;
+    const { amount, paymentMethod = 'P2P_CARD', walletAddress, currency = 'RUB', cardNumber, phone, bankCode } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
-    
-    // Минимальные суммы вывода
-    const minWithdraw = {
-      btc: 1000, eth: 1000, usdt: 1000, ltc: 1000,
-      card: 2000, sbp: 1000, qiwi: 1000, yoomoney: 1000
-    };
-    
-    if (amount < (minWithdraw[paymentMethod] || 1000)) {
-      return res.status(400).json({ 
-        success: false, 
-        message: `Минимальная сумма вывода: ₽${minWithdraw[paymentMethod] || 1000}` 
-      });
+
+    if (amount < 1000) {
+      return res.status(400).json({ success: false, message: 'Минимальная сумма вывода: 1000 ₽' });
+    }
+
+    if (paymentMethod === 'P2P_CARD' && !cardNumber) {
+      return res.status(400).json({ success: false, message: 'Укажите номер карты' });
+    }
+
+    if (paymentMethod === 'P2P_SBP' && !phone) {
+      return res.status(400).json({ success: false, message: 'Укажите номер телефона' });
     }
     
     const { withTransaction } = require('../utils/dbTransaction');
     
-    const result = await withTransaction(pool, async (client) => {
-      // Блокируем строку пользователя для предотвращения race condition
+    const transaction = await withTransaction(pool, async (client) => {
       const userResult = await client.query(
         'SELECT balance FROM users WHERE id = $1 FOR UPDATE',
         [req.user.id]
@@ -268,34 +267,64 @@ router.post('/withdraw', auth, async (req, res) => {
         throw { status: 400, message: 'Недостаточно средств' };
       }
       
-      // Блокируем средства (списываем с баланса)
       await client.query(
         'UPDATE users SET balance = balance - $1, total_withdrawn = total_withdrawn + $1 WHERE id = $2',
         [amount, req.user.id]
       );
       
-      // Создаём транзакцию
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
          VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, 'Вывод средств')
          RETURNING *`,
-        [req.user.id, -amount, currency, paymentMethod, walletAddress]
+        [req.user.id, -amount, currency, paymentMethod, cardNumber || phone || walletAddress]
       );
       
       return txResult.rows[0];
     });
+
+    const customer = {};
+    if (req.user.email) customer.email = req.user.email;
+
+    const avePayResponse = await avePayService.createWithdrawal({
+      amount: parseFloat(Math.abs(amount)),
+      currency,
+      transactionId: transaction.id,
+      paymentMethod,
+      userId: req.user.id,
+      bankCode: bankCode || undefined,
+      cardNumber: paymentMethod === 'P2P_CARD' ? cardNumber : undefined,
+      phone: paymentMethod === 'P2P_SBP' ? phone : undefined,
+      customer: Object.keys(customer).length > 0 ? customer : undefined
+    });
+
+    const paymentResult = avePayResponse?.result || avePayResponse;
+    if (paymentResult?.id) {
+      await pool.query(
+        "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+        [paymentResult.id, transaction.id]
+      );
+    }
     
     res.json({
       success: true,
       message: 'Заявка на вывод создана',
-      data: { transaction: result, estimatedTime: '1-24 часа' }
+      data: {
+        transaction: {
+          id: transaction.id,
+          amount: parseFloat(transaction.amount),
+          status: transaction.status,
+          createdAt: transaction.created_at
+        },
+        avePayId: paymentResult?.id || null
+      }
     });
   } catch (error) {
     if (error.status) {
       return res.status(error.status).json({ success: false, message: error.message });
     }
     console.error('Create withdrawal error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    const avePayError = error.response?.data?.message || error.message;
+    res.status(500).json({ success: false, message: `Ошибка вывода: ${avePayError}` });
   }
 });
 
