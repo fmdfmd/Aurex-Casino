@@ -39,11 +39,13 @@ module.exports = {
     callbackUrl: process.env.CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/callback/softgamings'
   },
 
-  // Lava Top Payment System
-  lavaTop: {
-    apiUrl: process.env.LAVA_TOP_API_URL || 'https://dev.lava.ru/',
-    shopId: process.env.LAVA_TOP_SHOP_ID || 'your-shop-id',
-    apiKey: process.env.LAVA_TOP_API_KEY || 'your-api-key'
+  // AVE PAY Payment System
+  avePay: {
+    apiUrl: process.env.AVEPAY_API_URL || 'https://engine-sandbox.avepay.com',
+    apiKey: process.env.AVEPAY_API_KEY || 'XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd',
+    webhookSecret: process.env.AVEPAY_WEBHOOK_SECRET || '',
+    callbackUrl: process.env.AVEPAY_CALLBACK_URL || 'https://aurex.casino/api/payments/avepay/callback',
+    returnUrl: process.env.AVEPAY_RETURN_URL || 'https://aurex.casino/wallet'
   },
 
   // Google OAuth

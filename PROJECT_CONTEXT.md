@@ -76,9 +76,24 @@
 
 ## SoftGamings / Fundist — Интеграция игр
 
-### Статус: ТЕСТОВАЯ СРЕДА (apitest)
+### Статус: ПРОД-КРЕДЫ ПОЛУЧЕНЫ, ждём платёжку для выхода в лайв
 
-### API Credentials (ТЕСТ)
+### API Credentials (ПРОД)
+```
+Endpoint:     https://apiprod5.fundist.org/
+API Key:      ca95ade0b4581ab72f9d300bb691b6d2
+API Password: 9845491425948026
+HMAC Secret:  7c6fl7fo1p5cei36ijuddlg44aeeprlmgs66ay88rcperlhvy7w0v008sbt2j9y2
+```
+
+### Бэк-офис (ПРОД)
+```
+URL:      https://www5.fundist.org/en/
+Login:    aurex_network_prod
+Password: r8Rtrr6O.~
+```
+
+### API Credentials (ТЕСТ) — оставляем для разработки
 ```
 Endpoint:     https://apitest.fundist.org/
 API Key:      437e6b584169d07e82f9a1c13339baf8
@@ -92,6 +107,18 @@ URL:      https://test.fundist.org/en/
 Login:    aurex_network
 Password: 2x(=2oQyDp
 ```
+
+### Прод-баланс
+```
+100 EUR — только для финальных тестов, транзакции идут в инвойс!
+```
+
+### Правила выхода в лайв (от SoftGamings)
+- Сообщить минимум за **24 часа** до запуска
+- Запуски **НЕ по пятницам** (только пн-чт)
+- До лайва — закрыть доступ для всех кроме команды
+- Новые домены — согласовать заранее, иначе провайдеры могут отключить игры
+- Тикет: SG#847161
 
 ### Callback URL (OneWallet)
 ```
@@ -423,28 +450,91 @@ java -jar OWClientTest_v2.14.jar \
 
 ---
 
-## Платёжные системы (в работе)
+## Платёжные системы
 
-### SoftGamings (Moneygrator) — через агрегатор
+### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (интеграция в процессе)
+
+**Статус:** Payment Page интеграция, креды получены 21.02.2026
+
+**Дашборд:**
+```
+URL:      https://dashboard.avepay.com
+Login:    loanline@mail.ru
+Password: ICNKuzQ4Vuvf
+API Key:  XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd
+```
+
+**API:**
+```
+Sandbox:  https://engine-sandbox.avepay.com
+Prod:     https://engine.avepay.com (уточнить)
+Auth:     Bearer {API_KEY}
+Docs:     https://avepay.readme.io/reference
+Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
+```
+
+**Endpoints:**
+| Метод | URL | Описание |
+|---|---|---|
+| `POST` | `/api/v1/payments` | Создать платеж (DEPOSIT / WITHDRAWAL / REFUND) |
+| `GET` | `/api/v1/payments` | Список платежей |
+| `GET` | `/api/v1/payments/{id}` | Платеж по ID |
+| `GET` | `/api/v1/payments/{id}/operations` | Операции по платежу |
+| `POST` | `/api/v1/payments/{id}/capture` | Захват (preAuth) |
+| `POST` | `/api/v1/payments/{id}/void` | Отмена |
+| `GET` | `/api/v1/balances` | Балансы мерчанта |
+
+**Create Payment — ключевые параметры:**
+- `paymentType` — DEPOSIT / WITHDRAWAL / REFUND
+- `paymentMethod` — BASIC_CARD, CRYPTO + 186 вариантов
+- `amount`, `currency` — сумма и валюта
+- `returnUrl` — редирект после оплаты (поддерживает плейсхолдеры: `{id}`, `{referenceId}`, `{state}`, `{type}`)
+- `webhookUrl` — URL для нотификаций
+- `referenceId` — наш внутренний ID транзакции
+- `customer` — данные клиента (опционально)
+- `card` — НЕ отправлять (Payment Page, они сами собирают)
+
+**Webhooks:**
+- Финальные статусы: COMPLETED, DECLINED, CANCELLED
+- Подпись: HMAC-SHA256, заголовок `Signature`
+- Signing Key — генерируется в настройках шопа (дашборд)
+- Payload = формат `GET /api/v1/payments/{id}`
+
+**Test Cards (Sandbox):**
+| Карта | Результат |
+|---|---|
+| 4000 0000 0000 0002 | 3DS, успех |
+| 4242 4242 4242 4242 | 3DS, отказ |
+| 4000 0000 0000 0408 | Без 3DS, успех |
+| 4000 0000 0000 0416 | Без 3DS, отказ |
+
+**Error Codes:**
+- 1.xx — системные (timeout, not found, invalid amount/currency)
+- 2.xx — отмена клиентом
+- 3.xx — отказ эквайера (anti-fraud, card scheme, limits)
+
+**Переменные Railway (нужно добавить):**
+- `AVEPAY_API_KEY` — `XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd`
+- `AVEPAY_API_URL` — `https://engine-sandbox.avepay.com` (sandbox) / `https://engine.avepay.com` (prod)
+- `AVEPAY_WEBHOOK_SECRET` — Signing Key из дашборда (нужно сгенерировать)
+
+**Файлы интеграции:**
+- `backend/services/avePayService.js` — сервис API
+- `backend/routes/avePayCallback.js` — вебхук
+- `backend/routes/payments.js` — обновлён для AVE PAY
+
+### SoftGamings (Moneygrator) — резерв
 - Setup: EUR 3,000
 - Комиссия: EUR 0.01/транзакция
 - Абонплата: €2,000/мес если оборот < €50K/мес (со 2-го месяца)
-- **Требует юрлицо** — Слотгратор предлагает открыть Белиз (€1,900/год, 4 недели)
+- **Требует юрлицо**
 
-### SoftGamings (Касса — отдельный менеджер KP)
-- SBP/P2P ввод: ~12-13% комиссия (без лицензии/юрки может быть выше)
-- Вывод: ~4%
-- Setup: нет
+### SoftGamings (Касса — отдельный менеджер KP) — резерв
+- SBP/P2P ввод: ~12-13%, вывод ~4%
 - Крипта: Deposit 0.8%, Swap 0.2%, Withdrawal 0.5%, Settlement to fiat 1%
-- Юрлицо и лицензия не обязательны для старта, но ставки выше без них
 
-### Piastrix (переговоры)
-- Электронный кошелёк, популярен в РФ казино
-- Есть онлайн-чат, работают с казино
-- Ведётся переписка
-
-### LavaTop
-- Конфиг в `config.js`: apiUrl, shopId, apiKey (пока заглушки)
+### Piastrix — резерв
+- Электронный кошелёк, переговоры велись
 
 ---
 
@@ -512,7 +602,7 @@ java -jar OWClientTest_v2.14.jar \
 ### В процессе
 - [ ] Тестирование Live Casino (чёрные экраны на некоторых играх)
 - [ ] Переход на продакшн Fundist (ждём прод credentials от SoftGamings)
-- [ ] Подключение платежей (SoftGamings касса / Piastrix / крипта)
+- [ ] Интеграция AVE PAY (Payment Page + Webhooks + Выплаты)
 - [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
 - [ ] Добавить `OPENROUTER_API_KEY` в Railway env vars бэкенда
 
@@ -550,10 +640,10 @@ java -jar OWClientTest_v2.14.jar \
 
 ### Проблемы (выявлены провайдером, 20.02.2026):
 1. **Регистрация через телефон** — звонки uCaller не доходят (РКН блок) → решение: новый аккаунт uCaller или переход на SMS
-2. **Кнопка депозита** — технически работает, но нет подключённого платёжного шлюза → решение: подключить кассу через SoftGamings
+2. **Кнопка депозита** — технически работает, но нет подключённого платёжного шлюза → решение: интеграция AVE PAY (в процессе)
 3. **Тех. поддержка на сайте** — была фейковая (захардкоженный ответ) → **РЕШЕНО:** подключена AI Стефани (Claude 3.5 Sonnet)
 4. **AML размытый** → **РЕШЕНО:** создана полная AML/KYC страница `/aml` с 10 разделами
 
 ---
 
-*Последнее обновление: 20 февраля 2026*
+*Последнее обновление: 21 февраля 2026*

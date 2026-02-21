@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
+const avePayService = require('../services/avePayService');
 
 // Получить историю транзакций пользователя
 router.get('/history', auth, async (req, res) => {
@@ -55,16 +56,20 @@ router.get('/history', auth, async (req, res) => {
   }
 });
 
-// Создать депозит
+// Создать депозит через AVE PAY
 router.post('/deposit', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod, currency = 'RUB' } = req.body;
+    const { amount, paymentMethod = 'BASIC_CARD', currency = 'RUB' } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
+
+    if (amount < 100) {
+      return res.status(400).json({ success: false, message: 'Минимальная сумма депозита: 100 ₽' });
+    }
     
-    // Создаём транзакцию
+    // Создаём транзакцию в БД
     const result = await pool.query(
       `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, description)
        VALUES ($1, 'deposit', $2, $3, 'pending', $4, 'Пополнение баланса')
@@ -73,25 +78,32 @@ router.post('/deposit', auth, async (req, res) => {
     );
     
     const transaction = result.rows[0];
+
+    // Собираем данные клиента для AVE PAY
+    const customer = {};
+    if (req.user.email) customer.email = req.user.email;
+    if (req.user.phone) customer.phone = req.user.phone;
     
-    // Генерируем платёжные данные (заглушка для реального платёжного шлюза)
-    const paymentData = {
-      transactionId: transaction.id,
+    // Создаём платеж в AVE PAY
+    const avePayResponse = await avePayService.createDeposit({
       amount: parseFloat(amount),
       currency,
+      transactionId: transaction.id,
       paymentMethod,
-      // Для криптовалют — адреса из переменных окружения
-      walletAddress: paymentMethod === 'btc' ? (process.env.CRYPTO_BTC_ADDRESS || null) :
-                     paymentMethod === 'eth' ? (process.env.CRYPTO_ETH_ADDRESS || null) :
-                     paymentMethod === 'usdt' ? (process.env.CRYPTO_USDT_ADDRESS || null) : null,
-      // Для СБП
-      sbpLink: paymentMethod === 'sbp' ? `https://qr.nspk.ru/pay?amount=${amount}&purpose=AUREX` : null,
-      expiresAt: new Date(Date.now() + 30 * 60 * 1000) // 30 минут
-    };
+      customer: Object.keys(customer).length > 0 ? customer : undefined
+    });
+
+    // Сохраняем AVE PAY payment ID
+    if (avePayResponse?.id) {
+      await pool.query(
+        "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+        [avePayResponse.id, transaction.id]
+      );
+    }
     
     res.json({
       success: true,
-      message: 'Заявка на депозит создана',
+      message: 'Перенаправляем на оплату',
       data: {
         transaction: {
           id: transaction.id,
@@ -99,12 +111,14 @@ router.post('/deposit', auth, async (req, res) => {
           status: transaction.status,
           createdAt: transaction.created_at
         },
-        paymentData
+        redirectUrl: avePayResponse?.redirectUrl || avePayResponse?.redirect_url || null,
+        avePayId: avePayResponse?.id || null
       }
     });
   } catch (error) {
     console.error('Create deposit error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    const avePayError = error.response?.data?.message || error.message;
+    res.status(500).json({ success: false, message: `Ошибка создания платежа: ${avePayError}` });
   }
 });
 
