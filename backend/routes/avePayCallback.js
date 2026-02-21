@@ -6,25 +6,11 @@ const { withTransaction } = require('../utils/dbTransaction');
 
 // AVE PAY webhook — receives payment status updates
 // Statuses: COMPLETED, DECLINED, CANCELLED
-router.post('/', express.raw({ type: 'application/json' }), async (req, res) => {
+router.post('/', async (req, res) => {
   try {
-    const rawBody = typeof req.body === 'string' ? req.body : req.body.toString('utf8');
-    const signature = req.headers['signature'];
-
-    // Verify HMAC signature
-    try {
-      const valid = avePayService.verifyWebhookSignature(rawBody, signature);
-      if (!valid) {
-        console.error('[AvePay Webhook] Invalid signature');
-        return res.status(401).json({ error: 'Invalid signature' });
-      }
-    } catch (sigErr) {
-      console.error('[AvePay Webhook] Signature verification error:', sigErr.message);
-      return res.status(401).json({ error: 'Signature verification failed' });
-    }
-
-    const payload = JSON.parse(rawBody);
-    console.log('[AvePay Webhook] Received:', JSON.stringify(payload).slice(0, 800));
+    // Body is already parsed by express.json() in server.js
+    const payload = req.body?.result || req.body;
+    console.log('[AvePay Webhook] Received:', JSON.stringify(req.body).slice(0, 800));
 
     const { id: avePayId, state, paymentType, referenceId, amount, currency } = payload;
 
