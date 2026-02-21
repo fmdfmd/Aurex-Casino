@@ -127,7 +127,7 @@ async function handleDepositCompleted(txId, avePayId, payload) {
 
 async function handleDepositFailed(txId, avePayId, state) {
   await pool.query(
-    "UPDATE transactions SET status = 'failed', wallet_address = $2, description = CONCAT(description, ' [', $3, ']'), updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'",
+    "UPDATE transactions SET status = 'failed', wallet_address = $2, description = CONCAT(description, ' [', $3::text, ']'), updated_at = CURRENT_TIMESTAMP WHERE id = $1 AND status = 'pending'",
     [txId, avePayId, state]
   );
   console.log(`[AvePay] Deposit ${txId} ${state}`);
@@ -152,7 +152,7 @@ async function handleWithdrawalFailed(txId, avePayId, state) {
     const tx = txResult.rows[0];
 
     await client.query(
-      "UPDATE transactions SET status = 'failed', wallet_address = $2, description = CONCAT(description, ' [', $3, ']'), updated_at = CURRENT_TIMESTAMP WHERE id = $1",
+      "UPDATE transactions SET status = 'failed', wallet_address = $2, description = CONCAT(description, ' [', $3::text, ']'), updated_at = CURRENT_TIMESTAMP WHERE id = $1",
       [txId, avePayId, state]
     );
 
