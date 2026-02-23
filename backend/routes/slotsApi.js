@@ -806,7 +806,7 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
-      // Inject XHR + fetch interceptor — catches absolute, root-relative, AND path-relative URLs
+      // Inject comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver, new Image()
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const inj = `<script>(function(){` +
         `var P='/api/slots/ext-proxy?u=',H=location.host,O='${origin}',B='${escapedBaseDir}';` +
@@ -816,9 +816,34 @@ router.all('/ext-proxy', async (req, res) => {
         `if(u.indexOf('://')<0&&u.charAt(0)!=='/'&&u.indexOf('data:')!==0&&u.indexOf('blob:')!==0)` +
         `{try{return P+encodeURIComponent(new URL(u,B).href);}catch(e){}}` +
         `return u;}` +
+        // XHR
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
+        // fetch
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
+        // Override iframe.src setter to proxy external URLs
+        `var ifrDesc=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
+        `if(ifrDesc&&ifrDesc.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
+        `set:function(v){return ifrDesc.set.call(this,px(v));},` +
+        `get:ifrDesc.get,configurable:true});}` +
+        // Override script.src setter
+        `var scrDesc=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');` +
+        `if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{` +
+        `set:function(v){return scrDesc.set.call(this,px(v));},` +
+        `get:scrDesc.get,configurable:true});}` +
+        // Override setAttribute to catch src/href set via setAttribute
+        `var origSA=Element.prototype.setAttribute;` +
+        `Element.prototype.setAttribute=function(n,v){` +
+        `if((n==='src'||n==='href')&&typeof v==='string')v=px(v);` +
+        `return origSA.call(this,n,v);};` +
+        // MutationObserver for dynamically added elements
+        `if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){` +
+        `m.addedNodes.forEach(function(n){if(n.nodeType===1){` +
+        `if(n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0)` +
+        `{ifrDesc.set.call(n,px(n.src));}` +
+        `if(n.tagName==='SCRIPT'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0)` +
+        `{n.src=px(n.src);}` +
+        `}});});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -874,15 +899,25 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Comprehensive interceptor: XHR, fetch, MutationObserver for dynamic iframes
+  // Comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver
   const interceptor = `<script>(function(){
 var P='/api/slots/ext-proxy?u=',H=location.host;
 function px(u){if(typeof u!='string'||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
 var xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
 if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
+var ifrDesc=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
+if(ifrDesc&&ifrDesc.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{
+set:function(v){return ifrDesc.set.call(this,px(v));},get:ifrDesc.get,configurable:true});}
+var scrDesc=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');
+if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{
+set:function(v){return scrDesc.set.call(this,px(v));},get:scrDesc.get,configurable:true});}
+var origSA=Element.prototype.setAttribute;
+Element.prototype.setAttribute=function(n,v){
+if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
+return origSA.call(this,n,v);};
 if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-if(n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0){n.src=P+encodeURIComponent(n.src);}
+if(n.nodeType===1&&n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0){ifrDesc.set.call(n,px(n.src));}
 });});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}
 })()</script>`;
 
@@ -1084,7 +1119,7 @@ router.get('/*', async (req, res, next) => {
       headers: {
         'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
         'Accept': req.headers['accept'] || '*/*',
-        'Referer': gameOrigin + '/',
+        'Referer': new URL(gameBaseDir).origin + '/',
       },
       validateStatus: () => true,
     });
