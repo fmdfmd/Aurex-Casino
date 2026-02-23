@@ -599,12 +599,15 @@ class FundistApiService {
 
     const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
 
+    console.log(`[demo] Launching: Page=${pageCode}, System=${systemId}, IP=${userIp}`);
+
     let response;
     try {
       response = await axios.get(url, { timeout: 30000, family: 4 });
     } catch (axiosErr) {
       const status = axiosErr?.response?.status;
       const body = String(axiosErr?.response?.data || '').slice(0, 300);
+      console.log(`[demo] HTTP error ${status}: ${body}`);
       if (body.includes('Wrong authorization IP') || body.startsWith('12,')) {
         throw new Error('IP сервера не в вайтлисте Fundist. Обратитесь в поддержку SoftGamings.');
       }
@@ -612,15 +615,17 @@ class FundistApiService {
     }
 
     const data = String(response.data || '');
+    console.log(`[demo] Fundist response (${data.length} chars): ${data.slice(0, 200)}`);
 
     if (data.startsWith('12,')) throw new Error('IP сервера не в вайтлисте Fundist.');
     if (data.includes('Demo not supported')) throw new Error('Демо-режим недоступен для этой игры');
     if (data.includes('Restricted country')) throw new Error('Игра недоступна в вашей стране');
     if (data.startsWith('24,')) throw new Error(`Игра не может быть запущена: ${data.slice(3, 200)}`);
     if (data.startsWith('15,')) throw new Error('Ошибка авторизации (неверный хеш).');
-    if (data.startsWith('18,')) throw new Error('Этот провайдер временно недоступен.');
+    if (data.startsWith('18,')) throw new Error(`Провайдер недоступен: ${data.slice(3, 200)}`);
 
     if (data.startsWith('1,')) {
+      console.log(`[demo] OK: html size=${data.length - 2}`);
       return { success: true, html: data.substring(2), tid };
     }
 

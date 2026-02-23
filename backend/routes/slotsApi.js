@@ -394,7 +394,7 @@ router.get('/games', async (req, res) => {
           provider: merchantName,
           image: imageProxyUrl,
           category: determineCategory(game, categoriesMap),
-          hasDemo: game.hasDemo === '1' || game.HasDemo === '1',
+          hasDemo: String(game.hasDemo) === '1' || String(game.HasDemo) === '1',
           isNew: false,
           rtp,
           maxMultiplier,
