@@ -251,7 +251,7 @@
       "benefit4": "Bonos por niveles",
       "benefit5": "Estadísticas detalladas",
       "friendBonus": "Bono para el Amigo",
-      "friendBonusDesc": "¡Tu amigo también recibirá un bono de <span class=\"text-aurex-gold-500 font-bold\">+50 giros gratis</span> al registrarse con tu enlace!"
+      "friendBonusDesc": "¡Tu amigo recibirá un <span class=\"text-aurex-gold-500 font-bold\">bono de bienvenida hasta 200%</span> en su primer depósito al registrarse con tu enlace!"
     },
     "vipProgram": "Programa VIP",
     "logout": "Cerrar sesión"

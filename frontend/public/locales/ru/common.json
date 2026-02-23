@@ -251,7 +251,7 @@
       "benefit4": "Бонусы за уровни",
       "benefit5": "Детальная статистика",
       "friendBonus": "Бонус для друга",
-      "friendBonusDesc": "Ваш друг тоже получит бонус <span class=\"text-aurex-gold-500 font-bold\">+50 фриспинов</span> при регистрации по вашей ссылке!"
+      "friendBonusDesc": "Ваш друг получит <span class=\"text-aurex-gold-500 font-bold\">приветственный бонус до 200%</span> на первый депозит при регистрации по вашей ссылке!"
     }
   },
   "settings": {
