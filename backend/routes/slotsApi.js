@@ -684,55 +684,26 @@ router.post('/game-frame', auth, async (req, res) => {
   }
 });
 
-function fundistFingerprint(str) {
-  let hash = 0;
-  for (const char of str) {
-    hash = (hash << 3) - hash + char.charCodeAt(0);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-
-async function resolveCheckUrl(html) {
-  const baseMatch = html.match(/var\s+checkurl\s*=\s*'(https:\/\/[^']+)'/);
-  const fpMatch = html.match(/getFingerpint\('([^']+)'\)/);
-  if (!baseMatch || !fpMatch) return null;
-
-  const fullUrl = baseMatch[1] + '&fingerprint=' + fundistFingerprint(fpMatch[1]) + '&ref=' + encodeURI('https://aurex.casino');
-  try {
-    const resp = await axios.get(fullUrl, { timeout: 8000 });
-    const directUrl = resp.data?.data;
-    if (directUrl && typeof directUrl === 'string' && directUrl.startsWith('http')) {
-      console.log(`[game-frame] Resolved direct URL: ${directUrl.substring(0, 120)}...`);
-      return directUrl;
-    }
-  } catch (e) {
-    console.log(`[game-frame] Check URL resolve failed: ${e.message}`);
-  }
-  return null;
-}
-
-router.get('/game-frame/:token', async (req, res) => {
+router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
   console.log(`[game-frame] GET: token=${req.params.token}, found=${!!entry}, store size=${gameFrameStore.size}`);
   if (!entry) {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
 
-  // For providers that use check5.wscenter.xyz + createElement('iframe'),
-  // resolve the final game URL server-side and redirect.
-  // This avoids double-nested iframes which cause third-party cookie blocking.
-  if (entry.html.includes('wscenter') && entry.html.includes("createElement('iframe')")) {
-    try {
-      const directUrl = await resolveCheckUrl(entry.html);
-      if (directUrl) {
-        res.removeHeader('X-Frame-Options');
-        res.removeHeader('Content-Security-Policy');
-        return res.redirect(directUrl);
-      }
-    } catch (e) {
-      console.log(`[game-frame] Redirect failed, falling back to HTML: ${e.message}`);
-    }
+  let html = entry.html;
+
+  // For providers using check5.wscenter.xyz: the HTML calls a check URL,
+  // then creates an iframe with the returned game URL. This causes double-
+  // nested iframes → third-party cookie blocking → black screen.
+  // Fix: replace iframe creation with direct page navigation so the check
+  // URL runs client-side (preserving user IP/geo) but no nested iframe.
+  if (html.includes('wscenter') && html.includes("createElement('iframe')")) {
+    html = html.replace(
+      /var\s+ifr\s*=\s*document\.createElement\('iframe'\);[\s\S]*?\.appendChild\(ifr\);/,
+      'window.location.replace(resp.data);'
+    );
+    console.log(`[game-frame] Patched HTML: replaced iframe creation with redirect`);
   }
 
   const page = `<!DOCTYPE html>
@@ -752,7 +723,7 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
-</head><body>${entry.html}</body></html>`;
+</head><body>${html}</body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
