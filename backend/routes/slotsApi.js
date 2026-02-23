@@ -197,12 +197,9 @@ router.get('/games', async (req, res) => {
     // ONLY games from ACTIVATED providers. When SoftGamings activates
     // Pragmatic/Hacksaw/PlaynGO/Endorphina — add their games back here.
     const topGameCodes = new Set([
-      // === Spribe (895) — crash/instant ===
-      'aviator',                                          // Aviator
-      'mines',                                            // Mines
-      'plinko',                                           // Plinko
+      // === TOP SLOTS — curated by real popularity ===
 
-      // === Push Gaming (911) — топ слоты ===
+      // Push Gaming (911) — топ слоты
       'bigbamboo-01',                                     // Big Bamboo
       'jamminjars',                                       // Jammin' Jars
       'razorshark',                                       // Razor Shark
@@ -213,7 +210,21 @@ router.get('/games', async (req, res) => {
       'retrotapes-01',                                    // Retro Tapes
       'dragonhopper-01',                                  // Dragon Hopper
 
-      // === BGaming (901) ===
+      // Thunderkick (920) — топ слоты
+      'tk-s1-g82-94',                                     // Esqueleto Explosivo 3
+      'tk-s1-g22',                                        // Midas Golden Touch
+      'tk-s1-g53-96',                                     // Midas Golden Touch – Reborn
+      'tk-s1-g90-94',                                     // Midas Golden Touch 3
+      'tk-s1-g13',                                        // Pink Elephants 2
+      'tk-s1-g55-96',                                     // Pink Elephants 2 – Reborn
+      'tk-s1-g34',                                        // Beat the Beast: Griffin's Gold
+      'tk-barbershop-a',                                  // Barbershop: Uncut
+      'tk-s1-g21',                                        // Carnival Queen
+      'tk-s1-g93-94',                                     // Carnival Queen 2
+      'tk-s1-g48-96',                                     // Shifting Seas
+      'tk-s1-g46',                                        // Gods of Rock
+
+      // BGaming (901)
       'BonanzaBillion',                                   // Bonanza Billion
       'FireLightning',                                    // Fire Lightning
       'BookOfCats',                                       // Book of Cats
@@ -222,33 +233,28 @@ router.get('/games', async (req, res) => {
       'AztecMagicDeluxe',                                 // Aztec Magic Deluxe
       'WildWestTrueways',                                 // Wild West TRUEWAYS
 
-      // === NetEnt / RedTiger (892 EvoOSS) ===
+      // NetEnt / RedTiger (892 EvoOSS)
       'deadoralive2:deadoralive20000',                    // Dead or Alive 2
       'rabidrandy:rabidrandyr96000',                      // Rabid Randy
       'dragonslock:dragonslock00000',                     // Dragons Lock
 
-      // === PG Soft (939) ===
+      // PG Soft (939)
       '1815268',                                          // Oishi Delights
 
-      // === Belatra (956) ===
+      // Belatra (956)
       'buffalo',                                          // Big Wild Buffalo
       'dragons_bonanza',                                  // Dragon's Bonanza
       'wolf_thunder',                                     // Wolf Thunder
-      'golden_plinko',                                    // Golden Plinko
       'towers',                                           // X Towers
 
-      // === Thunderkick (920) ===
-      'tk-esqueleto-a',                                   // Esqueleto Explosivo
-      'tk-s1-g22',                                        // Midas Golden Touch
-      'tk-s1-g13',                                        // Pink Elephants
+      // Spribe (895) — crash/instant (после слотов)
+      'plinko',                                           // Plinko
 
-      // === Yggdrasil (953) ===
+      // Yggdrasil (953)
       '7329',                                             // Double Dragons
       '7348',                                             // Lucha Maniacs
 
-      // === Kalamba (874) ===
-
-      // === Spinomenal (959) ===
+      // Spinomenal (959)
       'SlotMachine_DemiGods2',                            // Demi Gods 2
       'SlotMachine_MajesticKing',                         // Majestic King
 
