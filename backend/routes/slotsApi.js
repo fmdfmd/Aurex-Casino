@@ -708,6 +708,26 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
+<script>
+// Prevent double-nested iframes that break third-party cookies.
+// When the provider script creates a nested iframe with an external game URL,
+// redirect this page to that URL instead — keeping only one iframe level.
+(function(){
+  var redirected = false;
+  var origAppendChild = Element.prototype.appendChild;
+  Element.prototype.appendChild = function(child) {
+    if (!redirected && child && child.tagName === 'IFRAME') {
+      var src = child.getAttribute && child.getAttribute('src');
+      if (src && /^https?:\\/\\//.test(src) && src.indexOf(location.hostname) === -1) {
+        redirected = true;
+        window.location.replace(src);
+        return child;
+      }
+    }
+    return origAppendChild.call(this, child);
+  };
+})();
+</script>
 </head><body>${entry.html}</body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
