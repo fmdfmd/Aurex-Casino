@@ -50,6 +50,7 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
   crossOriginOpenerPolicy: false,
   crossOriginResourcePolicy: false,
+  frameguard: false,
 }));
 app.use(compression());
 app.use(cookieParser());

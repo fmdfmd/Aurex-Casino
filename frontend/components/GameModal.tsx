@@ -132,7 +132,6 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
             src={gameFrameUrl}
             allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
             allowFullScreen
-            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-modals allow-popups-to-escape-sandbox"
           />
         ) : null}
       </div>
