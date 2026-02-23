@@ -255,6 +255,74 @@ server.listen(PORT, () => {
   const { expireOldBonuses } = require('./config/bonusConfig');
   setInterval(() => expireOldBonuses(pool), 60 * 60 * 1000);
   setTimeout(() => expireOldBonuses(pool), 5000);
+
+  // Weekly cashback auto-processing — check every hour, process on Monday 00:00-01:00
+  const { getCashbackPercent } = require('./config/vipLevels');
+  let lastCashbackWeek = null;
+  
+  async function processWeeklyCashbackAuto() {
+    const now = new Date();
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon
+    const hour = now.getHours();
+    
+    // Only run on Monday between 00:00 and 01:00
+    if (dayOfWeek !== 1 || hour !== 0) return;
+    
+    // Prevent double-processing in the same week
+    const weekKey = `${now.getFullYear()}-W${Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 604800000)}`;
+    if (lastCashbackWeek === weekKey) return;
+    
+    console.log('[Cashback] Auto-processing weekly cashback...');
+    try {
+      const lastWeekStart = new Date(now);
+      lastWeekStart.setHours(0, 0, 0, 0);
+      lastWeekStart.setDate(lastWeekStart.getDate() - 7); // Previous Monday
+      
+      const lastWeekEnd = new Date(lastWeekStart);
+      lastWeekEnd.setDate(lastWeekEnd.getDate() + 7);
+      
+      const usersResult = await pool.query(`
+        SELECT 
+          u.id, u.vip_level,
+          COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
+          COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+        FROM users u
+        LEFT JOIN transactions t ON u.id = t.user_id 
+          AND t.created_at >= $1 AND t.created_at < $2
+        GROUP BY u.id
+        HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) > 
+               COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0)
+      `, [lastWeekStart, lastWeekEnd]);
+      
+      let processed = 0;
+      let totalCashback = 0;
+      
+      for (const user of usersResult.rows) {
+        const netLoss = parseFloat(user.total_bets) - parseFloat(user.total_wins);
+        const cashbackPercent = getCashbackPercent(user.vip_level || 1);
+        const cashbackAmount = netLoss * (cashbackPercent / 100);
+        const wagerRequired = cashbackAmount * 5;
+        
+        if (cashbackAmount >= 10) {
+          await pool.query(
+            `INSERT INTO cashback_records (user_id, amount, period, wager_required, status)
+             VALUES ($1, $2, 'weekly', $3, 'pending')`,
+            [user.id, cashbackAmount, wagerRequired]
+          );
+          processed++;
+          totalCashback += cashbackAmount;
+        }
+      }
+      
+      lastCashbackWeek = weekKey;
+      console.log(`[Cashback] Done: ${processed} users, total ₽${totalCashback.toFixed(2)}`);
+    } catch (err) {
+      console.error('[Cashback] Auto-process error:', err.message);
+    }
+  }
+  
+  setInterval(processWeeklyCashbackAuto, 60 * 60 * 1000); // check every hour
+  setTimeout(processWeeklyCashbackAuto, 10000); // check on startup too
 });
 
 module.exports = app;
