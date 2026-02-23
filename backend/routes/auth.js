@@ -799,9 +799,10 @@ async function processTelegramAuth(telegramData) {
 
   const crypto = require('crypto');
 
-  // Create the data-check-string
-  const checkFields = Object.keys(telegramData)
-    .filter(k => k !== 'hash')
+  // Only include fields that Telegram actually signs
+  const telegramFields = ['id', 'first_name', 'last_name', 'username', 'photo_url', 'auth_date'];
+  const checkFields = telegramFields
+    .filter(k => telegramData[k] !== undefined && telegramData[k] !== null)
     .sort()
     .map(k => `${k}=${telegramData[k]}`)
     .join('\n');

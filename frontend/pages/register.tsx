@@ -16,7 +16,6 @@ import {
   Star,
   Phone
 } from 'lucide-react';
-import axios from 'axios';
 import InputMask from 'react-input-mask';
 import Image from 'next/image';
 import { useAuthStore } from '../store/authStore';
@@ -27,7 +26,6 @@ import TelegramLoginButton from '../components/TelegramLoginButton';
 interface RegisterForm {
   username: string;
   phone: string;
-  smsCode: string;
   password: string;
   confirmPassword: string;
   firstName?: string;
@@ -43,10 +41,6 @@ export default function RegisterPage() {
   const { t } = useTranslation();
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
-  const [smsSent, setSmsSent] = useState(false);
-  const [smsVerified, setSmsVerified] = useState(false);
-  const [smsCountdown, setSmsCountdown] = useState(0);
-  const [smsError, setSmsError] = useState('');
   
   const {
     register,
@@ -73,53 +67,9 @@ export default function RegisterPage() {
     }
   }, [router.isReady, router.query.ref, setValue]);
 
-  // SMS countdown timer
-  useEffect(() => {
-    if (smsCountdown <= 0) return;
-    const timer = setTimeout(() => setSmsCountdown(smsCountdown - 1), 1000);
-    return () => clearTimeout(timer);
-  }, [smsCountdown]);
-
   const password = watch('password');
-  const phoneValue = watch('phone');
-
-  const sendCallCode = async () => {
-    const phone = phoneValue?.replace(/\D/g, '');
-    if (!phone || phone.length < 10) {
-      setSmsError('Введите корректный номер телефона');
-      return;
-    }
-    setSmsError('');
-    try {
-      await axios.post('/api/auth/otp/sms/send', { phone });
-      setSmsSent(true);
-      setSmsCountdown(15);
-    } catch (err: any) {
-      setSmsError(err.response?.data?.error || 'Ошибка звонка');
-    }
-  };
-
-  const verifyCallCode = async () => {
-    const phone = phoneValue?.replace(/\D/g, '');
-    const code = watch('smsCode');
-    if (!code || code.length < 4) {
-      setSmsError('Введите последние 4 цифры номера');
-      return;
-    }
-    setSmsError('');
-    try {
-      await axios.post('/api/auth/otp/sms/verify', { phone, code });
-      setSmsVerified(true);
-    } catch (err: any) {
-      setSmsError(err.response?.data?.error || 'Неверный код');
-    }
-  };
 
   const onSubmit = async (data: RegisterForm) => {
-    if (!smsVerified) {
-      setSmsError('Подтвердите номер телефона');
-      return;
-    }
     try {
       await registerUser({
         username: data.username,
@@ -224,70 +174,25 @@ export default function RegisterPage() {
                       <label className="block text-sm font-medium text-gray-300 mb-2">
                         Номер телефона *
                       </label>
-                      <div className="space-y-3">
-                        <div className="relative">
-                          <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
-                          <InputMask
-                            mask="+7 (999) 999-99-99"
-                            maskChar="_"
-                            {...register('phone', {
-                              required: 'Номер телефона обязателен',
-                              validate: (value) => {
-                                const digits = value?.replace(/\D/g, '') || '';
-                                return digits.length === 11 || 'Введите полный номер телефона';
-                              }
-                            })}
-                            className={`w-full pl-10 pr-28 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
-                              errors.phone || smsError ? 'border-red-500' : smsVerified ? 'border-green-500' : 'border-gray-700'
-                            }`}
-                            placeholder="+7 (___) ___-__-__"
-                            disabled={smsVerified}
-                          />
-                          {!smsVerified && (
-                            <button
-                              type="button"
-                              onClick={sendCallCode}
-                              disabled={smsCountdown > 0}
-                              className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-casino-gold text-black text-xs font-bold rounded-md hover:bg-casino-gold-dark transition-colors disabled:opacity-50"
-                            >
-                              {smsCountdown > 0 ? `${smsCountdown}с` : smsSent ? 'Ещё раз' : 'Позвонить'}
-                            </button>
-                          )}
-                          {smsVerified && (
-                            <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                              <Check className="w-5 h-5 text-green-500" />
-                            </div>
-                          )}
-                        </div>
-
-                        {smsSent && !smsVerified && (
-                          <>
-                            <p className="text-xs text-gray-400 text-center">
-                              Мы позвоним на ваш номер. Введите последние 4 цифры входящего номера.
-                            </p>
-                            <div className="relative">
-                              <input
-                                type="text"
-                                {...register('smsCode')}
-                                maxLength={4}
-                                className="w-full pl-4 pr-28 py-3 bg-dark-200 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all text-center text-lg tracking-widest"
-                                placeholder="_ _ _ _"
-                              />
-                              <button
-                                type="button"
-                                onClick={verifyCallCode}
-                                className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-green-600 text-white text-xs font-bold rounded-md hover:bg-green-500 transition-colors"
-                              >
-                                Подтвердить
-                              </button>
-                            </div>
-                          </>
-                        )}
-
-                        {smsError && <p className="text-sm text-red-400">{smsError}</p>}
-                        {errors.phone && <p className="text-sm text-red-400">{errors.phone.message}</p>}
-                        {smsVerified && <p className="text-sm text-green-400">Телефон подтверждён</p>}
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 transform -translate-y-1/2 text-gray-400 w-5 h-5" />
+                        <InputMask
+                          mask="+7 (999) 999-99-99"
+                          maskChar="_"
+                          {...register('phone', {
+                            required: 'Номер телефона обязателен',
+                            validate: (value) => {
+                              const digits = value?.replace(/\D/g, '') || '';
+                              return digits.length === 11 || 'Введите полный номер телефона';
+                            }
+                          })}
+                          className={`w-full pl-10 py-3 bg-dark-200 border rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-casino-gold transition-all ${
+                            errors.phone ? 'border-red-500' : 'border-gray-700'
+                          }`}
+                          placeholder="+7 (___) ___-__-__"
+                        />
                       </div>
+                      {errors.phone && <p className="mt-1 text-sm text-red-400">{errors.phone.message}</p>}
                     </div>
 
                     {/* Name Fields */}
