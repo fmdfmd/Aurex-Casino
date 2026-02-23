@@ -178,216 +178,94 @@ router.get('/games', async (req, res) => {
 
     const merchants = apiData.merchants || {};
 
-    // Curated top games — these always appear first (in this exact order)
-    // Based on popular modern casino catalogs (Dragon Money, etc.)
+    // Curated top games — pinned at the top in this exact order.
+    // ONLY games from ACTIVATED providers. When SoftGamings activates
+    // Pragmatic/Hacksaw/PlaynGO/Endorphina — add their games back here.
     const topGameCodes = new Set([
-      // === #1 — Big Bamboo (per owner request) ===
-      'bigbamboo-01',                                     // Big Bamboo — Push Gaming
+      // === Push Gaming (911) ===
+      'bigbamboo-01',                                     // Big Bamboo
+      'firehopper-01',                                    // Fire Hopper
+      'razorshark',                                       // Razor Shark
+      'razorreturns-01',                                  // Razor Returns
+      'retrotapes-01',                                    // Retro Tapes
+      'retrosweets-01',                                   // Retro Sweets
+      'mysteryofthenile-96',                              // Mystery of the Nile
+      'dragonhopper-01',                                  // Dragon Hopper
 
-      // === Top Pragmatic Play hits ===
-      'vs20fruitsw',                                      // Sweet Bonanza — Pragmatic
-      'vs20olympgate',                                    // Gates of Olympus — Pragmatic
-      'vs20doghouse',                                     // The Dog House — Pragmatic
-      'vs20sugarrushx',                                   // Sugar Rush 1000 — Pragmatic
-      'vs20olympx',                                       // Gates of Olympus 1000 — Pragmatic
-      'vs20fruitswx',                                     // Sweet Bonanza 1000 — Pragmatic
-      'vs15godsofwar',                                    // Zeus vs Hades - Gods of War — Pragmatic
-      'vs20starlight',                                    // Starlight Princess — Pragmatic
-      'vs20starlightx',                                   // Starlight Princess 1000 — Pragmatic
+      // === BGaming (901) ===
+      'BonanzaBillion',                                   // Bonanza Billion
+      'WildWestTrueways',                                 // Wild West TRUEWAYS
+      'SakuraRiches60',                                   // Sakura Riches 60
 
-      // === Hacksaw Gaming ===
-      '1067_desktop',                                     // Wanted Dead or a Wild — Hacksaw
-      '1562_desktop',                                     // Le Pharaoh — Hacksaw
-      '1400_desktop',                                     // 2 Wild 2 Die — Hacksaw
-      '1554_desktop',                                     // Shaolin Master — Hacksaw
-      '1438_desktop',                                     // Klowns — Hacksaw
+      // === NetEnt (421) / RedTiger (420) ===
+      'rabidrandy:rabidrandyr96000',                      // Rabid Randy
+      'deadoralive2:deadoralive20000',                    // Dead or Alive 2
+      'dragonslock:dragonslock00000',                     // Dragons Lock
 
-      // === Push Gaming ===
-      'firehopper-01',                                    // Fire Hopper — Push Gaming
-      'razorshark',                                       // Razor Shark — Push Gaming
-      'razorreturns-01',                                  // Razor Returns — Push Gaming
-      'retrotapes-01',                                    // Retro Tapes — Push Gaming
-      'retrosweets-01',                                   // Retro Sweets — Push Gaming
-      'mysteryofthenile-96',                              // Mystery of the Nile — Push Gaming
-      'dragonhopper-01',                                  // Dragon Hopper — Push Gaming
+      // === PG Soft (939) ===
+      '1815268',                                          // Oishi Delights
 
-      // === Play'n GO ===
-      '310',                                              // Book of Dead — Play'n GO
-      '333',                                              // Reactoonz — Play'n GO
-      '930',                                              // Beasts of Fire Maximum — Play'n GO
-      '924',                                              // Piggy Blitz Disco Gold — Play'n GO
-      '738',                                              // Tower Quest Legacy — Play'n GO
-      '972',                                              // Kingdom Below — Play'n GO
-      '976',                                              // Lady of Fortune Remastered — Play'n GO
+      // === Spribe (895) ===
+      'aviator',                                          // Aviator
 
-      // === More Pragmatic Play modern hits ===
-      'vswaysdogs',                                       // The Dog House Megaways — Pragmatic
-      'vs20olympxmas',                                    // Gates of Olympus Xmas 1000 — Pragmatic
-      'vs40wildwest',                                     // Wild West Gold — Pragmatic
-      'vswaysmadame',                                     // Madame Destiny Megaways — Pragmatic
-      'vs10bbbonanza',                                    // Big Bass Bonanza — Pragmatic
-      'vs20fruitparty',                                   // Fruit Party — Pragmatic
-      'vs20sbxmas',                                       // Sweet Bonanza Xmas — Pragmatic
-      'vs20dhcluster2',                                   // The Dog House – Muttley Crew — Pragmatic
-      'vs20swrbon',                                       // Sweet Rush Bonanza — Pragmatic
-      'vs20rainbowrsh',                                   // Santa's Xmas Rush — Pragmatic
-      'vs10bhallbnza2',                                   // Big Bass Halloween 2 — Pragmatic
-      'vs20clreacts',                                     // Moleionaire — Pragmatic
-      'vs20fourmc',                                       // Candy Corner — Pragmatic
-      'vs10dkinghp',                                      // Dragon King Hot Pots — Pragmatic
-      'vswaysbblitz',                                     // Money Stacks Megaways — Pragmatic
-      'vswaysaztec',                                      // Aztec Gems Megaways — Pragmatic
-      'vs10fireice',                                      // Escape the Pyramid – Fire & Ice — Pragmatic
-      'vs20olympgold',                                    // Gates of Olympus Super Scatter — Pragmatic
-      'vs20goldfever',                                    // Gems Bonanza — Pragmatic
-      'vs25checaishen',                                   // Chests of Cai Shen — Pragmatic
-      'vs20sugarrush',                                    // Sugar Rush — Pragmatic
-      'vs20bblitz',                                       // Money Stacks — Pragmatic
-      'vs20wwgcluster',                                   // Wild West Gold Blazing Bounty — Pragmatic
-      'vswayswildwest',                                   // Wild West Gold Megaways — Pragmatic
-      'vs10txbigbass',                                    // Big Bass Splash — Pragmatic
-      'vs20swbonsup',                                     // Sweet Bonanza Super Scatter — Pragmatic
-      'vs20dhsuper',                                      // The Dog House – Royal Hunt — Pragmatic
+      // === Yggdrasil (953) ===
+      'vikings-go-berzerk-reloaded',                      // Vikings Go Berzerk Reloaded
 
-      // === Hacksaw Gaming (more) ===
-      '1651_desktop',                                     // Super Twins — Hacksaw
-      '1616_desktop',                                     // Rise of Ymir — Hacksaw
-      '1620_desktop',                                     // Duel at Dawn — Hacksaw
-      '1612_desktop',                                     // Wings of Horus — Hacksaw
-      '1558_desktop',                                     // Snow Slingers — Hacksaw
-      '1689_desktop',                                     // Le Viking — Hacksaw
-      '1675_desktop',                                     // Phoenix DuelReels — Hacksaw
-      '1580_desktop',                                     // Get The Cheese — Hacksaw
+      // === BetSoft (991) ===
+      'TakeTheBank',                                      // Take the Bank
 
-      // === NetEnt / Red Tiger ===
-      'rabidrandy:rabidrandyr96000',                      // Rabid Randy — NetEnt
-      'deadoralive2:deadoralive20000',                    // Dead or Alive 2 — NetEnt
-      'dragonslock:dragonslock00000',                     // Dragons Lock — Red Tiger
-
-      // === BGaming ===
-      'BonanzaBillion',                                   // Bonanza Billion — BGaming
-      'WildWestTrueways',                                 // Wild West TRUEWAYS — BGaming
-      'SakuraRiches60',                                   // Sakura Riches 60 — BGaming
-
-      // === PG Soft / Endorphina ===
-      '1815268',                                          // Oishi Delights — PG Soft
-      'endorphina2_PandaStrike@ENDORPHINA',               // Panda Strike — Endorphina
-      'endorphina2_BigBrown@ENDORPHINA',                  // Big Brown — Endorphina
-      'endorphina2_VikingsWay@ENDORPHINA',                // Vikings Way — Endorphina
-      'endorphina2_RoyalXmass2@ENDORPHINA',               // Royal Xmass 2 — Endorphina
-      'endorphina_Minotaur@ENDORPHINA',                   // Minotaurus — Endorphina
+      // === Thunderkick (920) ===
+      'pink-elephants-2',                                 // Pink Elephants 2
 
       // =============================================
-      // === LIVE CASINO — curated order (per Dragon Money) ===
+      // === LIVE CASINO ===
       // =============================================
-      'crazytime:CrazyTime0000001',                         // Crazy Time — Evolution
-      'roulette:LightningTable01',                          // Lightning Roulette — Evolution
-      'funkytime:FunkyTime0000001',                         // Funky Time — Evolution
-      'crazycoinflip:CrazyCoinFlip001',                     // Crazy Coin Flip — Evolution
-      'megaball:MegaBall00000001',                          // Mega Ball — Evolution
-      'roulette:InstantRo0000001',                          // Instant Roulette — Evolution
-      'moneywheel:MOWDream00000001',                        // Dream Catcher — Evolution
-      'lightningstorm:LightningStorm01',                    // Lightning Storm — Evolution
-      'stockmarket:StockMarket00001',                       // Stock Market — Evolution
-      'lightningdice:LightningDice001',                     // Lightning Dice — Evolution
-      'deadoralivesaloon:doasaloon0000001',                 // Dead or Alive: Saloon — Evolution
-      'crazypachinko:CrazyPachinko001',                     // Crazy Pachinko — Evolution
-      'monopoly:Monopoly00000001',                          // MONOPOLY Live — Evolution
-      'extrachilliepicspins:ExChEpicSpins001',              // Extra Chilli Epic Spins — Evolution
-      'dragontiger:LightningDT00001',                       // Lightning Dragon Tiger — Evolution
-      'balloonrace:BalloonRace00001',                       // Balloon Race — Evolution
-      'reddoorroulette:RedDoorRoulette1',                   // Red Door Roulette — Evolution
-      'baccarat:XXXtremeLB000001',                          // XXXtreme Lightning Baccarat — Evolution
-      'blackjack:PowerInfiniteBJ1',                         // Power Infinite Blackjack — Evolution
-      'classicbetstackerbj:clabetstack00001',               // Bet Stacker Blackjack — Evolution
-      'bacbo:BacBo00000000001',                             // Bac Bo — Evolution
-      'baccarat:gwbaccarat000001',                          // Golden Wealth Baccarat — Evolution
-      '1601',                                               // Snakes & Ladders Live — Pragmatic Play Live
-      'rng-roulette:rng-rt-lightning',                      // First Person Lightning Roulette — Evolution
-      'rng-videopoker:FPVP000000000001',                    // First Person Video Poker — Evolution
-      'rng-blackjack:rng-bj-standard0',                     // First Person Blackjack — Evolution
-      'rng-baccarat:rng-gwbaccarat00',                      // First Person Golden Wealth Baccarat — Evolution
-      'rng-roulette:rng-rt-xxxtreme1',                      // First Person XXXtreme Lightning Roulette — Evolution
+      'crazytime:CrazyTime0000001',                       // Crazy Time — Evolution
+      'roulette:LightningTable01',                        // Lightning Roulette — Evolution
+      'funkytime:FunkyTime0000001',                       // Funky Time — Evolution
+      'crazycoinflip:CrazyCoinFlip001',                   // Crazy Coin Flip — Evolution
+      'megaball:MegaBall00000001',                        // Mega Ball — Evolution
+      'roulette:InstantRo0000001',                        // Instant Roulette — Evolution
+      'moneywheel:MOWDream00000001',                      // Dream Catcher — Evolution
+      'lightningstorm:LightningStorm01',                  // Lightning Storm — Evolution
+      'stockmarket:StockMarket00001',                     // Stock Market — Evolution
+      'lightningdice:LightningDice001',                   // Lightning Dice — Evolution
+      'deadoralivesaloon:doasaloon0000001',               // Dead or Alive: Saloon — Evolution
+      'crazypachinko:CrazyPachinko001',                   // Crazy Pachinko — Evolution
+      'monopoly:Monopoly00000001',                        // MONOPOLY Live — Evolution
+      'extrachilliepicspins:ExChEpicSpins001',            // Extra Chilli Epic Spins — Evolution
+      'dragontiger:LightningDT00001',                     // Lightning Dragon Tiger — Evolution
+      'balloonrace:BalloonRace00001',                     // Balloon Race — Evolution
+      'reddoorroulette:RedDoorRoulette1',                 // Red Door Roulette — Evolution
+      'baccarat:XXXtremeLB000001',                        // XXXtreme Lightning Baccarat — Evolution
+      'blackjack:PowerInfiniteBJ1',                       // Power Infinite Blackjack — Evolution
+      'classicbetstackerbj:clabetstack00001',             // Bet Stacker Blackjack — Evolution
+      'bacbo:BacBo00000000001',                           // Bac Bo — Evolution
+      'baccarat:gwbaccarat000001',                        // Golden Wealth Baccarat — Evolution
+      'rng-roulette:rng-rt-lightning',                    // First Person Lightning Roulette — Evolution
+      'rng-videopoker:FPVP000000000001',                  // First Person Video Poker — Evolution
+      'rng-blackjack:rng-bj-standard0',                   // First Person Blackjack — Evolution
+      'rng-baccarat:rng-gwbaccarat00',                    // First Person Golden Wealth Baccarat — Evolution
+      'rng-roulette:rng-rt-xxxtreme1',                    // First Person XXXtreme Lightning Roulette — Evolution
     ]);
     const topGameOrder = [...topGameCodes];
 
-    // Provider tier system — slot providers first, then live
-    const providerTier = {
-      // Tier 1 — top slot providers
-      '960': 1, // Pragmatic Play
-      '850': 1, // Hacksaw Gaming
-      '938': 1, // Nolimit City
-      '911': 1, // Push Gaming
-      '944': 1, // Play'n GO
-      '939': 1, // PG Soft
-      '421': 1, // NetEnt
-      '892': 1, // EvoOSS (NetEnt/Red Tiger/BTG)
-      '997': 1, // Microgaming/GamesGlobal
-      '953': 1, // Yggdrasil
-      '940': 1, // Evoplay
-      '935': 1, // Relax Gaming
-      '920': 1, // Thunderkick
-      '925': 1, // ELK Studios
-      '973': 1, // Endorphina
-      '901': 1, // BGaming
-      // Tier 2 — good slot providers
-      '991': 2, // BetSoft
-      '976': 2, // Habanero
-      '865': 2, // Habanero (alt)
-      '969': 2, // Quickspin
-      '963': 2, // iSoftBet
-      '943': 2, // Playson
-      '941': 2, // Wazdan
-      '924': 2, // 3 Oaks Gaming
-      '949': 2, // Platipus
-      '845': 2, // Platipus (alt)
-      '899': 2, // Mascot Gaming
-      '895': 2, // Spribe
-      '773': 2, // Spribe (alt)
-      '955': 2, // GameArt
-      '842': 2, // NucleusGaming
-      '846': 2, // Slotmill
-      '956': 2, // Belatra
-      '927': 2, // Fugaso
-      '867': 2, // Netgame
-      '896': 2, // Onlyplay
-      '874': 2, // Kalamba
-      '959': 2, // Spinomenal
-      // Tier 3 — decent
-      '307': 3, // Novomatic
-      '835': 3, // Kaga
-      '898': 3, // Kaga (alt)
-      '987': 3, // Tom Horn
-      '979': 3, // WorldMatch
-      '977': 3, // BoomingGames
-      '975': 3, // Amatic
-      '917': 3, // Stakelogic
-      '910': 3, // Red Rake
-      '879': 3, // Gamzix
-      '869': 3, // SmartSoft
-      '849': 3, // TurboGames
-      '923': 3, // CQ9
-      '834': 3, // JDB
-      '919': 3, // Spadegaming
-      '930': 3, // Genii
-      '929': 3, // Concept Gaming
-      '860': 3, // PLS Gaming
-      '810': 3, // RevDev
-      // Tier 4 — live casino (after slots)
-      '998': 4, // Evolution
-      '913': 4, // Pragmatic Play Live
-      '945': 4, // VivoGaming
-      '990': 4, // BetGames.tv
-      '980': 4, // LuckyStreak
-      '983': 4, // Ezugi
-      '904': 4, // HoGaming
-      '866': 4, // WM Casino
-      '814': 4, // Oriental Games
-      '934': 4, // LiveGames
-      '968': 4, // SA Gaming
-      '900': 4, // TVBet
-      '314': 4, // ICONIC21 Live
-    };
+    // Live casino providers — shown after all slot providers
+    const liveProviderIds = new Set([
+      '998',  // Evolution
+      '913',  // Pragmatic Play Live
+      '945',  // VivoGaming
+      '990',  // BetGames.tv
+      '980',  // LuckyStreak
+      '983',  // Ezugi
+      '904',  // HoGaming
+      '866',  // WM Casino
+      '814',  // Oriental Games
+      '934',  // LiveGames
+      '968',  // SA Gaming
+      '900',  // TVBet
+      '314',  // ICONIC21 Live
+    ]);
     
     if (apiData.games && Array.isArray(apiData.games)) {
       const activatedGames = apiData.games.filter(game => {
@@ -429,18 +307,17 @@ router.get('/games', async (req, res) => {
         // Max win multiplier
         const maxMultiplier = parseFloat(game.MaxMultiplier) || null;
 
-        // Sort score: curated top games first (tier 0), then by provider tier
+        // Sort score: pinned top games first, then Fundist sorting, live casino last.
+        // Provider weights are managed in Fundist backoffice (www5.fundist.org → Sorting).
         const pageCode = game.PageCode || '';
         const topIdx = topGameOrder.indexOf(pageCode);
         let sortScore;
         if (topIdx !== -1) {
-          // Curated top game — use its position (0-19)
           sortScore = topIdx;
         } else {
-          // Provider tier for sorting (1 = best, 6 = unknown)
-          const tier = providerTier[merchantId] || 6;
           const fundistSort = parseInt(game.Sort || game.GSort || '999999', 10);
-          sortScore = 1000 + tier * 1000000 + Math.min(fundistSort, 999999);
+          const isLive = liveProviderIds.has(merchantId);
+          sortScore = (isLive ? 100_000_000 : 1000) + Math.min(fundistSort, 99_999_999);
         }
 
         const uniqueId = `${merchantId}_${game.PageCode}`;
