@@ -887,6 +887,10 @@ router.all('/ext-proxy', async (req, res) => {
         `if(bgAll&&bgAll.indexOf('://')>=0&&bgAll.indexOf('/api/slots/')<0){` +
         `var nbA=pxCss(bgAll);if(nbA!==bgAll)el.style.background=nbA;}` +
         `}});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:['style'],subtree:true});}` +
+        `var cssFixId=setInterval(function(){var els=document.querySelectorAll('[style]');` +
+        `for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;` +
+        `if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){var nb=pxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);` +
+        `setTimeout(function(){clearInterval(cssFixId);},10000);` +
         // Override Blob constructor to inject interceptors into HTML blob URLs
         `var OB=window.Blob;` +
         `var blobInj='<script>(function(){` +
@@ -930,6 +934,10 @@ router.all('/ext-proxy', async (req, res) => {
         `if(bgA&&bgA.indexOf("://")>=0&&bgA.indexOf("/api/slots/")<0){` +
         `var nbA=bpxCss(bgA);if(nbA!==bgA)el.style.background=nbA;}}` +
         `});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:["style"],subtree:true});}` +
+        `var cssFixId=setInterval(function(){var els=document.querySelectorAll("[style]");` +
+        `for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;` +
+        `if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){var nb=bpxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);` +
+        `setTimeout(function(){clearInterval(cssFixId);},10000);` +
         `})()<\\/script>';` +
         `window.Blob=function(p,o){` +
         `if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){` +
@@ -1087,6 +1095,10 @@ var bgAll=el.style.background;
 if(bgAll&&bgAll.indexOf('://')>=0&&bgAll.indexOf('/api/slots/')<0){
 var nbA=pxCss(bgAll);if(nbA!==bgAll)el.style.background=nbA;}
 }});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:['style'],subtree:true});}
+var cssFixId=setInterval(function(){var els=document.querySelectorAll('[style]');
+for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;
+if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){var nb=pxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);
+setTimeout(function(){clearInterval(cssFixId);},10000);
 var OB=window.Blob;
 var blobInj='<script>(function(){'+
 'var P="/api/slots/ext-proxy?u=";'+
@@ -1129,6 +1141,10 @@ var blobInj='<script>(function(){'+
 'if(bgA&&bgA.indexOf("://")>=0&&bgA.indexOf("/api/slots/")<0){'+
 'var nbA=bpxCss(bgA);if(nbA!==bgA)el.style.background=nbA;}}'+
 '});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:["style"],subtree:true});}'+
+'var cssFixId=setInterval(function(){var els=document.querySelectorAll("[style]");'+
+'for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;'+
+'if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){var nb=bpxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);'+
+'setTimeout(function(){clearInterval(cssFixId);},10000);'+
 '})()<\\/script>';
 window.Blob=function(p,o){
 if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){
