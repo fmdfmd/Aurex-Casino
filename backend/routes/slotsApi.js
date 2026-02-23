@@ -906,7 +906,24 @@ router.all('/ext-proxy', async (req, res) => {
         `p=[blobInj].concat(Array.from(p));}` +
         `return new OB(p,o);};` +
         `window.Blob.prototype=OB.prototype;` +
-        `console.warn('[AUREX-PROXY] Interceptors installed: XHR, fetch, iframe.src, script.src, setAttribute, MutationObserver, Blob');` +
+        // Override srcdoc setter — Thunderkick's generic.js sets iFrame.srcdoc = html
+        `var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');` +
+        `if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{` +
+        `set:function(v){` +
+        `if(typeof v==='string'){` +
+        `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
+        `else{v=blobInj+v;}}` +
+        `return srcdocD.set.call(this,v);},` +
+        `get:srcdocD.get,configurable:true});}` +
+        // Also catch setAttribute('srcdoc', ...)
+        `var origSA2=origSA;` +
+        `Element.prototype.setAttribute=function(n,v){` +
+        `if((n==='src'||n==='href')&&typeof v==='string')v=px(v);` +
+        `if(n==='srcdoc'&&typeof v==='string'){` +
+        `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
+        `else{v=blobInj+v;}}` +
+        `return origSA2.call(this,n,v);};` +
+        `console.warn('[AUREX-PROXY] Interceptors installed: XHR, fetch, iframe.src, script.src, img.src, link.href, srcdoc, setAttribute, MutationObserver, Blob');` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -1057,6 +1074,21 @@ if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){
 p=[blobInj].concat(Array.from(p));}
 return new OB(p,o);};
 window.Blob.prototype=OB.prototype;
+var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');
+if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{
+set:function(v){
+if(typeof v==='string'){
+if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
+else{v=blobInj+v;}}
+return srcdocD.set.call(this,v);},
+get:srcdocD.get,configurable:true});}
+var origSA2=origSA;
+Element.prototype.setAttribute=function(n,v){
+if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
+if(n==='srcdoc'&&typeof v==='string'){
+if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
+else{v=blobInj+v;}}
+return origSA2.call(this,n,v);};
 })()</script>`;
 
   const page = `<!DOCTYPE html>
