@@ -199,8 +199,7 @@ export default function GamesPage() {
 
   const visibleGames = useMemo(() => filteredGames.slice(0, visibleCount), [filteredGames, visibleCount]);
 
-  // Section Data: top games are first 20 from backend (curated), slot games for the "all games" section
-  const topGames = useMemo(() => allGames.slice(0, 20), [allGames]);
+  // Section Data: slot games for the "all games" section
   const slotGames = useMemo(() => allGames.filter(g => g.category === 'slots'), [allGames]);
 
   const handleSportClick = (e: React.MouseEvent) => {
@@ -412,73 +411,25 @@ export default function GamesPage() {
               </AnimatePresence>
             </div>
 
-            {/* TOP GAMES section — shown on default view */}
-            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && topGames.length > 0 && (
-              <div className="mb-10">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
+            {/* PLINKO featured — shown on default view */}
+            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && (() => {
+              const plinkoGame = allGames.find(g => g.name?.toLowerCase().includes('plinko') && g.provider?.toLowerCase().includes('upgaming'));
+              if (!plinkoGame) return null;
+              return (
+                <div className="mb-10">
+                  <div className="flex items-center gap-3 mb-5">
                     <Flame className="w-6 h-6 text-casino-gold" />
-                    <h2 className="text-2xl font-bold text-white">Топ игры</h2>
+                    <h2 className="text-2xl font-bold text-white">Популярное</h2>
                     <span className="bg-red-500/20 text-red-400 text-xs font-bold px-2.5 py-1 rounded-full">HOT</span>
                   </div>
-                  <button
-                    onClick={() => setSelectedCategory('popular')}
-                    className="flex items-center gap-1 text-sm text-aurex-gold-500 hover:text-aurex-gold-400 transition-colors"
-                  >
-                    Все популярные <ChevronRight className="w-4 h-4" />
-                  </button>
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-4">
+                    <GameCard game={plinkoGame} onPlay={handleGamePlay} />
+                  </div>
                 </div>
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-4">
-                  {topGames.map((game, i) => (
-                    <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
-                  ))}
-                </div>
-              </div>
-            )}
+              );
+            })()}
 
-            {/* ALL SLOT GAMES section — shown on default view with infinite scroll */}
-            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && slotGames.length > 0 && (
-              <div className="mb-10">
-                <div className="flex items-center justify-between mb-5">
-                  <div className="flex items-center gap-3">
-                    <Gamepad2 className="w-6 h-6 text-casino-gold" />
-                    <h2 className="text-2xl font-bold text-white">Все слоты</h2>
-                    <span className="text-aurex-platinum-500 text-sm font-normal">({slotGames.length})</span>
-                  </div>
-                  <button
-                    onClick={() => setSelectedCategory('slots')}
-                    className="flex items-center gap-1 text-sm text-aurex-gold-500 hover:text-aurex-gold-400 transition-colors"
-                  >
-                    Фильтр и поиск <ChevronRight className="w-4 h-4" />
-                  </button>
-                </div>
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-                  {slotGames.slice(0, visibleCount).map((game, i) => (
-                    <GameCard key={game.id || i} game={game} onPlay={handleGamePlay} />
-                  ))}
-                </div>
-                {visibleCount < slotGames.length && visibleCount < MAX_DEFAULT_GAMES && (
-                  <div className="flex justify-center py-8">
-                    <button
-                      onClick={handleLoadMore}
-                      className="px-8 py-3 bg-aurex-obsidian-800 border border-aurex-gold-500/30 text-aurex-gold-500 font-semibold rounded-xl hover:bg-aurex-gold-500/10 hover:border-aurex-gold-500/50 transition-all"
-                    >
-                      Показать ещё ({Math.min(slotGames.length - visibleCount, GAMES_PER_PAGE)} из {slotGames.length - visibleCount})
-                    </button>
-                  </div>
-                )}
-                {visibleCount >= MAX_DEFAULT_GAMES && visibleCount < slotGames.length && (
-                  <div className="flex justify-center py-8">
-                    <button
-                      onClick={() => { setSelectedCategory('slots'); setVisibleCount(GAMES_PER_PAGE); }}
-                      className="px-8 py-3 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all"
-                    >
-                      Все слоты ({slotGames.length}) →
-                    </button>
-                  </div>
-                )}
-              </div>
-            )}
+            {/* ALL SLOT GAMES section removed from default view — accessible via category blocks or filter */}
             
             {/* 2. Category Navigation (Dragon Style Tabs) - ONLY show when user selected a category */}
             {(searchTerm || selectedCategory !== 'all' || selectedProviders.length > 0) && (
