@@ -304,16 +304,37 @@ router.get('/games', async (req, res) => {
       });
       console.log(`[games] Filtered: ${apiData.games.length} total → ${activatedGames.length} activated`);
 
-      // Force correct display names (Fundist returns outdated/internal names)
       const PROVIDER_RENAME = {
+        'AGTSoftware': 'AGT Software',
+        'Aviator': 'Spribe',
+        'AviatrixDirect': 'Aviatrix',
+        'BetGames': 'BetGames.tv',
+        'BetradarVS': 'Betradar VS',
         'Booongo': '3 Oaks Gaming',
-        'MGAsia': 'Microgaming',
         'CTGaming': 'CT Interactive',
-        'EvoSW': 'Evolution',
+        'ConceptGaming': 'Concept Gaming',
+        'EurasianGaming': 'Eurasian Gaming',
         'EvoOSS': 'NetEnt / Red Tiger',
-        'RAWGames': 'RAW iGaming',
-        'VAGaming': 'Victory Ark Gaming',
+        'EvoSW': 'Evolution',
+        'FaChai': 'Fa Chai',
         'IMoon': 'iMoon',
+        'JiliAsia': 'Jili',
+        'MGAsia': 'Microgaming',
+        'MascotGaming': 'Mascot Gaming',
+        'NetgameEntertainment': 'Netgame',
+        'OrientalGames': 'Oriental Games',
+        'OriginalGames': 'Original Games',
+        'PGSoft': 'PG Soft',
+        'Patagonia': 'Salsa Technology',
+        'PeterAndSons': 'Peter & Sons',
+        'PushGaming': 'Push Gaming',
+        'RAWGames': 'RAW iGaming',
+        'RevolverGaming': 'Revolver Gaming',
+        'SAGaming': 'SA Gaming',
+        'UrgentGames': 'Urgent Games',
+        'VAGaming': 'Victory Ark Gaming',
+        'WMCasino': 'WM Casino',
+        'YGRGames': 'YGR Games',
       };
 
       activatedGames.forEach(game => {
