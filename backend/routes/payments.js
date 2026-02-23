@@ -1,15 +1,16 @@
 const express = require('express');
 const router = express.Router();
 const pool = require('../config/database');
-const { auth } = require('../middleware/auth');
+const { auth, adminAuth } = require('../middleware/auth');
 const avePayService = require('../services/avePayService');
 const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 // Получить историю транзакций пользователя
 router.get('/history', auth, async (req, res) => {
   try {
-    const { page = 1, limit = 20, type } = req.query;
-    const offset = (parseInt(page) - 1) * parseInt(limit);
+    const { page = 1, type } = req.query;
+    const limit = Math.min(parseInt(req.query.limit) || 20, 100);
+    const offset = (Math.max(1, parseInt(page)) - 1) * limit;
     
     let query = 'SELECT * FROM transactions WHERE user_id = $1';
     const values = [req.user.id];
@@ -19,7 +20,7 @@ router.get('/history', auth, async (req, res) => {
       query += ` AND type = $${values.length}`;
     }
     
-    values.push(parseInt(limit));
+    values.push(limit);
     query += ` ORDER BY created_at DESC LIMIT $${values.length}`;
     values.push(offset);
     query += ` OFFSET $${values.length}`;
@@ -45,15 +46,15 @@ router.get('/history', auth, async (req, res) => {
           createdAt: t.created_at
         })),
         pagination: {
-          page: parseInt(page),
-          limit: parseInt(limit),
+          page: Math.max(1, parseInt(page)),
+          limit,
           total: parseInt(countResult.rows[0].count)
         }
       }
     });
   } catch (error) {
     console.error('Get payment history error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка загрузки истории' });
   }
 });
 
@@ -138,17 +139,20 @@ router.post('/deposit', auth, async (req, res) => {
   }
 });
 
-// Подтвердить депозит (вызывается webhook от платёжки или вручную)
-router.post('/deposit/:id/confirm', auth, async (req, res) => {
+// Подтвердить депозит (только admin — для ручного зачисления, основной путь через webhook AVE PAY)
+router.post('/deposit/:id/confirm', adminAuth, async (req, res) => {
   try {
     const { id } = req.params;
+    const { userId } = req.body;
+    if (!userId) {
+      return res.status(400).json({ success: false, message: 'userId required' });
+    }
     const { withTransaction } = require('../utils/dbTransaction');
     
     const result = await withTransaction(pool, async (client) => {
-      // Получаем транзакцию с блокировкой
       const txResult = await client.query(
         "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'deposit' AND status = 'pending' FOR UPDATE",
-        [id, req.user.id]
+        [id, userId]
       );
       
       if (txResult.rows.length === 0) {
@@ -163,12 +167,11 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
         [id]
       );
       
-      // Добавляем на баланс + обновляем total_deposited + deposit_count
       const userResult = await client.query(
         `UPDATE users SET balance = balance + $1, deposit_count = deposit_count + 1, 
          total_deposited = total_deposited + $1
          WHERE id = $2 RETURNING *`,
-        [parseFloat(tx.amount), req.user.id]
+        [parseFloat(tx.amount), userId]
       );
       
       const updatedUser = userResult.rows[0];
@@ -176,38 +179,31 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
       const newDepositCount = updatedUser.deposit_count;
       let bonusInfo = null;
       
-      // Проверяем, выбрал ли пользователь бонус (selectedBonus в used_bonuses)
       const usedBonuses = updatedUser.used_bonuses || {};
       const selectedBonus = usedBonuses.selectedBonus;
       
       if (selectedBonus && selectedBonus.startsWith('deposit_')) {
         const depositNumber = parseInt(selectedBonus.replace('deposit_', ''));
-        
-        // Конфигурация бонусов
         const bonusConfig = DEPOSIT_BONUSES[depositNumber];
         
-        // Проверяем: бонус для правильного депозита и ещё не был использован
         if (bonusConfig && depositNumber === newDepositCount) {
           const bonusAmount = Math.min(depositAmount * (bonusConfig.percent / 100), bonusConfig.maxBonus);
           const wagerRequired = (depositAmount + bonusAmount) * bonusConfig.wager;
           
-          // Создаём бонус
           await client.query(
             `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
              VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
-            [req.user.id, `deposit_${depositNumber}`, bonusAmount, wagerRequired]
+            [userId, `deposit_${depositNumber}`, bonusAmount, wagerRequired]
           );
           
-          // Зачисляем на бонусный баланс
           await client.query(
             'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-            [bonusAmount, req.user.id]
+            [bonusAmount, userId]
           );
           
-          // Убираем selectedBonus
           await client.query(
             `UPDATE users SET used_bonuses = used_bonuses - 'selectedBonus' WHERE id = $1`,
-            [req.user.id]
+            [userId]
           );
           
           bonusInfo = {
@@ -233,7 +229,7 @@ router.post('/deposit/:id/confirm', auth, async (req, res) => {
       return res.status(error.status).json({ success: false, message: error.message });
     }
     console.error('Confirm deposit error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка подтверждения депозита' });
   }
 });
 
@@ -363,27 +359,25 @@ router.post('/withdraw', auth, async (req, res) => {
 router.post('/withdraw/:id/cancel', auth, async (req, res) => {
   try {
     const { id } = req.params;
-    
-    const txResult = await pool.query(
-      "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'withdrawal' AND status = 'pending'",
-      [id, req.user.id]
-    );
-    
-    if (txResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Транзакция не найдена' });
-    }
-    
-    const tx = txResult.rows[0];
     const { withTransaction } = require('../utils/dbTransaction');
     
     await withTransaction(pool, async (client) => {
-      // Отменяем транзакцию
+      const txResult = await client.query(
+        "SELECT * FROM transactions WHERE id = $1 AND user_id = $2 AND type = 'withdrawal' AND status = 'pending' FOR UPDATE",
+        [id, req.user.id]
+      );
+      
+      if (txResult.rows.length === 0) {
+        throw { status: 404, message: 'Транзакция не найдена' };
+      }
+      
+      const tx = txResult.rows[0];
+      
       await client.query(
         "UPDATE transactions SET status = 'cancelled', updated_at = CURRENT_TIMESTAMP WHERE id = $1",
         [id]
       );
       
-      // Возвращаем деньги
       await client.query(
         'UPDATE users SET balance = balance + $1 WHERE id = $2',
         [Math.abs(parseFloat(tx.amount)), req.user.id]
@@ -392,8 +386,11 @@ router.post('/withdraw/:id/cancel', auth, async (req, res) => {
     
     res.json({ success: true, message: 'Заявка отменена, средства возвращены' });
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ success: false, message: error.message });
+    }
     console.error('Cancel withdrawal error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });
 
@@ -425,7 +422,7 @@ router.get('/stats', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Get payment stats error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка загрузки статистики' });
   }
 });
 

@@ -106,6 +106,7 @@ export default function WalletPage() {
       }
     } catch (error) {
       console.error('Failed to fetch payment methods:', error);
+      toast.error('Не удалось загрузить методы оплаты');
     }
   };
 
@@ -131,6 +132,7 @@ export default function WalletPage() {
       }
     } catch (error) {
       console.error('Failed to fetch active bonus:', error);
+      toast.error('Не удалось загрузить бонусы');
     }
   };
 
@@ -172,6 +174,7 @@ export default function WalletPage() {
       }
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
+      toast.error('Не удалось загрузить историю транзакций');
     }
   };
 

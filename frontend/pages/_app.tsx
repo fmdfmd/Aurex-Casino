@@ -69,23 +69,38 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="description" content="AUREX - премиальное онлайн-казино. Слоты от лучших провайдеров, Live Casino, турниры с призами до ₽1,000,000. Мгновенные выплаты, VIP программа, щедрые бонусы до ₽140,000." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         
+        {/* Canonical URL */}
+        <link rel="canonical" href="https://aurex.casino" />
+        
         {/* Favicon */}
         <link rel="icon" type="image/png" href="/favicon.png" />
         <link rel="icon" type="image/png" sizes="32x32" href="/favicon.png" />
         <link rel="icon" type="image/png" sizes="16x16" href="/favicon.png" />
         <link rel="apple-touch-icon" sizes="180x180" href="/favicon.png" />
         
+        {/* Trust & Security Meta Tags */}
+        <meta name="referrer" content="strict-origin-when-cross-origin" />
+        <meta name="author" content="AUREX Casino — Empire Gaming N.V." />
+        <meta name="publisher" content="Empire Gaming N.V." />
+        <meta name="copyright" content="© 2026 AUREX Casino. All rights reserved." />
+        <meta name="format-detection" content="telephone=no" />
+        <meta httpEquiv="X-Content-Type-Options" content="nosniff" />
+        <meta name="rating" content="mature" />
+        <meta name="classification" content="Gaming, Entertainment" />
+        
         {/* SEO */}
-        <meta name="keywords" content="crypto casino, premium casino, slots, bitcoin casino, high-roller, VIP casino, AUREX" />
+        <meta name="keywords" content="AUREX casino, онлайн казино, слоты, live casino, premium casino, VIP casino, мгновенные выплаты" />
         <meta name="robots" content="index, follow" />
         <meta name="theme-color" content="#0A0A0A" />
+        <meta name="apple-mobile-web-app-title" content="AUREX Casino" />
+        <meta name="application-name" content="AUREX Casino" />
         
         {/* Open Graph / Facebook */}
         <meta property="og:type" content="website" />
-        <meta property="og:url" content={process.env.NEXT_PUBLIC_SITE_URL || "https://aurex.io/"} />
+        <meta property="og:url" content="https://aurex.casino/" />
         <meta property="og:title" content="AUREX - The Golden Empire of Win" />
         <meta property="og:description" content="Премиальное онлайн-казино с мгновенными выплатами. Слоты, Live Casino, турниры с призами до ₽1,000,000. VIP программа и щедрые бонусы." />
-        <meta property="og:image" content={`${process.env.NEXT_PUBLIC_SITE_URL || "https://aurex.io"}/images/og-image.jpg`} />
+        <meta property="og:image" content="https://aurex.casino/images/og-image.jpg" />
         <meta property="og:image:width" content="1264" />
         <meta property="og:image:height" content="848" />
         <meta property="og:image:type" content="image/jpeg" />
@@ -94,10 +109,64 @@ export default function App({ Component, pageProps }: AppProps) {
         
         {/* Twitter */}
         <meta name="twitter:card" content="summary_large_image" />
-        <meta name="twitter:url" content={process.env.NEXT_PUBLIC_SITE_URL || "https://aurex.io/"} />
+        <meta name="twitter:url" content="https://aurex.casino/" />
         <meta name="twitter:title" content="AUREX - The Golden Empire of Win" />
         <meta name="twitter:description" content="Премиальное онлайн-казино. Мгновенные выплаты, слоты, Live Casino, VIP программа." />
-        <meta name="twitter:image" content={`${process.env.NEXT_PUBLIC_SITE_URL || "https://aurex.io"}/images/og-image.jpg`} />
+        <meta name="twitter:image" content="https://aurex.casino/images/og-image.jpg" />
+
+        {/* JSON-LD Structured Data — Organization */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "Organization",
+              "name": "AUREX Casino",
+              "alternateName": "AUREX - The Golden Empire of Win",
+              "url": "https://aurex.casino",
+              "logo": "https://aurex.casino/images/aurexlogo.png",
+              "description": "Премиальное онлайн-казино с мгновенными выплатами. Слоты от лучших провайдеров, Live Casino, VIP программа.",
+              "foundingDate": "2025",
+              "contactPoint": [
+                {
+                  "@type": "ContactPoint",
+                  "contactType": "customer support",
+                  "email": "support@aurex.casino",
+                  "availableLanguage": ["Russian", "English"],
+                  "areaServed": "Worldwide"
+                },
+                {
+                  "@type": "ContactPoint",
+                  "contactType": "VIP support",
+                  "email": "vip@aurex.casino"
+                }
+              ],
+              "sameAs": [
+                "https://t.me/aurex_casino",
+                "https://instagram.com/aurexcasino",
+                "https://twitter.com/aurexcasino"
+              ]
+            })
+          }}
+        />
+
+        {/* JSON-LD Structured Data — WebSite */}
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify({
+              "@context": "https://schema.org",
+              "@type": "WebSite",
+              "name": "AUREX Casino",
+              "url": "https://aurex.casino",
+              "inLanguage": ["ru", "en"],
+              "publisher": {
+                "@type": "Organization",
+                "name": "Empire Gaming N.V."
+              }
+            })
+          }}
+        />
       </Head>
       
       <QueryClientProvider client={queryClient}>

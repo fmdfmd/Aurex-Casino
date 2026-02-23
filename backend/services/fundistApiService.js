@@ -550,6 +550,9 @@ class FundistApiService {
     if (data.startsWith('17,')) {
       throw new Error('Пользователь не найден или заблокирован');
     }
+    if (data.startsWith('18,')) {
+      throw new Error('Этот провайдер временно недоступен. Попробуйте другую игру.');
+    }
 
     if (data.startsWith('1,')) {
       const htmlFragment = data.substring(2);

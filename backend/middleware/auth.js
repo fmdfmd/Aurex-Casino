@@ -14,7 +14,10 @@ const auth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
+    const result = await pool.query(
+      'SELECT id, odid, username, email, phone, is_admin, is_active, vip_level, balance, bonus_balance, currency, country, used_bonuses, deposit_count FROM users WHERE id = $1',
+      [decoded.userId || decoded.id]
+    );
     
     if (result.rows.length === 0) {
       return res.status(401).json({ success: false, message: 'Пользователь не найден' });
@@ -60,13 +63,20 @@ const adminAuth = async (req, res, next) => {
 
     const decoded = jwt.verify(token, JWT_SECRET);
     
-    const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
+    const result = await pool.query(
+      'SELECT id, odid, username, email, is_admin, is_active, vip_level FROM users WHERE id = $1',
+      [decoded.userId || decoded.id]
+    );
     
     if (result.rows.length === 0) {
       return res.status(401).json({ success: false, message: 'Пользователь не найден' });
     }
 
     const user = result.rows[0];
+
+    if (!user.is_active) {
+      return res.status(401).json({ success: false, message: 'Аккаунт заблокирован' });
+    }
     
     if (!user.is_admin) {
       return res.status(403).json({ success: false, message: 'Доступ запрещён' });
@@ -98,7 +108,10 @@ const optionalAuth = async (req, res, next) => {
     
     if (token) {
       const decoded = jwt.verify(token, JWT_SECRET);
-      const result = await pool.query('SELECT * FROM users WHERE id = $1', [decoded.userId || decoded.id]);
+      const result = await pool.query(
+        'SELECT id, odid, username, email, is_admin, is_active, vip_level, balance, bonus_balance, currency, country FROM users WHERE id = $1',
+        [decoded.userId || decoded.id]
+      );
       
       if (result.rows.length > 0) {
         const user = result.rows[0];

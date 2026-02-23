@@ -289,11 +289,33 @@ java -jar OWClientTest_v2.14.jar \
 
 ## Бонусная система
 
-### Приветственный пакет (4 депозита)
-1. 200% на первый депозит
-2. 150% на второй
-3. 100% на третий
-4. 75% на четвёртый
+### Приветственный пакет (4 депозита) — ПОЛНОСТЬЮ РЕАЛИЗОВАНО
+
+| Депозит | Бонус | Макс. бонус | Вейджер |
+|---|---|---|---|
+| 1-й | 200% | 70 000 ₽ | x30 |
+| 2-й | 150% | 50 000 ₽ | x30 |
+| 3-й | 100% | 30 000 ₽ | x30 |
+| 4-й | 75% | 20 000 ₽ | x30 |
+
+**Механика:**
+- Бонус начисляется автоматически при успешном депозите (через вебхук AVE PAY)
+- Бонус зачисляется на `bonus_balance` (отдельно от основного баланса)
+- Баланс в играх = `balance + bonus_balance` (суммарный)
+- При ставке: списывается сначала с `balance`, потом с `bonus_balance`
+- Защита от отрицательного `bonus_balance`: `GREATEST(0, bonus_balance - bet)`
+- Отыгрыш отслеживается: `wagering_completed` / `wagering_requirement` (в рублях)
+- При завершении отыгрыша: `bonus_balance` переводится в `balance`, бонус → `completed`
+- Срок действия: 30 дней, истекшие бонусы → `expired` (ежечасная проверка cron)
+- Блокировка вывода при активном бонусе с неотыгранным вейджером
+
+**Файлы:**
+- `backend/config/bonusConfig.js` — конфиг DEPOSIT_BONUSES, trackDepositBonusWager(), expireOldBonuses()
+- `backend/routes/bonuses.js` — API: active, available, activate, cancel, history
+- `backend/routes/gameCallback.js` — вызов trackDepositBonusWager при ставках
+- `backend/routes/softgamingsCallback.js` — вызов trackDepositBonusWager при ставках (OneWallet)
+- `backend/routes/payments.js` — блокировка вывода при незавершённом вейджере
+- `frontend/pages/wallet.tsx` — баннер бонуса, прогресс отыгрыша
 
 ### Кэшбэк
 - Еженедельно, по понедельникам
@@ -333,9 +355,9 @@ java -jar OWClientTest_v2.14.jar \
 ## Структура БД (PostgreSQL)
 
 ### Основные таблицы
-- `users` — пользователи (balance, currency, google_id, telegram_id, is_admin)
-- `transactions` — все транзакции
-- `bonuses` — бонусы
+- `users` — пользователи (balance, bonus_balance, currency, deposit_count, google_id, telegram_id, is_admin)
+- `transactions` — все транзакции (type, status, amount, payment_method, avepay_id, avepay_redirect_url)
+- `bonuses` — бонусы (user_id, bonus_type, status, bonus_amount, wagering_requirement, wagering_completed, expires_at, updated_at)
 - `game_sessions` — игровые сессии (user_id, game_id, session_id, provider, currency, status, bet_amount, win_amount)
 - `cashback_records` — кэшбэк
 - `loyalty_purchases` — покупки VIP
@@ -456,7 +478,7 @@ java -jar OWClientTest_v2.14.jar \
 
 ### AVE PAY — ОСНОВНАЯ ПЛАТЁЖКА (ПОЛНОСТЬЮ ИНТЕГРИРОВАНА)
 
-**Статус:** Интеграция завершена и ПРОВЕРЕНА. Вебхуки доходят, баланс зачисляется автоматически. Депозиты P2P_CARD/P2P_SBP работают. CRYPTO — отсутствует у провайдера. Выплаты P2P_CARD/P2P_SBP работают (зависят от баланса мерчанта).
+**Статус:** Интеграция завершена и ПРОВЕРЕНА. Вебхуки доходят с HMAC-SHA256 верификацией, баланс зачисляется автоматически. Депозиты P2P_CARD/P2P_SBP работают. CRYPTO — отсутствует у провайдера. Выплаты P2P_CARD/P2P_SBP работают (зависят от баланса мерчанта). Бонусная система (x30 вейджер) полностью интегрирована.
 
 **Актуальные лимиты (от ТП AVE PAY):**
 - P2P_CARD: мин. 5 000 ₽, макс. 300 000 ₽
@@ -473,10 +495,11 @@ java -jar OWClientTest_v2.14.jar \
 
 **Дашборд:**
 ```
-URL:      https://dashboard.avepay.com
-Login:    loanline@mail.ru
-Password: ICNKuzQ4Vuvf
-API Key:  XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd
+URL:          https://dashboard.avepay.com
+Login:        loanline@mail.ru
+Password:     ICNKuzQ4Vuvf
+API Key:      XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd
+Signing Key:  Ss1C1ibuEHvU
 ```
 
 **API:**
@@ -536,7 +559,7 @@ Postman:  https://www.postman.com/avepay/avepay-api-examples-rus/overview
 | `accountName` | string | Имя счёта |
 | `bank` | string | Банк |
 | `bankBranch` | string | Отделение банка |
-| `bankCode` | string | Код банка: `nspk:100000000111` (Сбербанк), `nspk:100000000004` (Т-Банк), `nspk:100000000005` (ВТБ) |
+| `bankCode` | string | Код банка: `nspk:100000000111` (Сбербанк), `nspk:100000000004` (Т-Банк), `nspk:100000000005` (ВТБ). **Только для ВЫВОДОВ!** Для депозитов не нужен (подтверждено ТП) |
 | `documentType` | enum | Тип документа (BR_CPF и 55 вариантов) |
 | `documentNumber` | string | Номер документа |
 | `kycStatus` | bool | Прошёл ли KYC |
@@ -615,9 +638,10 @@ CHECKOUT → PENDING → AUTHORIZED → CANCELLED (preAuth → void)
 **Webhooks:**
 - Отправляются при финальном статусе: **COMPLETED**, **DECLINED**, **CANCELLED**
 - Можно задать webhookUrl в настройках шопа ИЛИ в createPayment (запрос имеет приоритет)
-- Подпись: `Signature` header = HMAC-SHA256(raw JSON body, Signing Key)
+- Подпись: `Signature` header = HMAC-SHA256(raw JSON body, Signing Key `Ss1C1ibuEHvU`)
 - **ВАЖНО:** для подписи использовать raw body строку, НЕ десериализовать+сериализовать обратно
 - Payload = формат ответа `GET /api/v1/payments/{id}` (поле `result`)
+- **Верификация АКТИВНА:** `backend/routes/avePayCallback.js` проверяет HMAC-SHA256 подпись каждого вебхука
 
 **Test Cards (Sandbox):**
 | Карта | Результат |
@@ -672,7 +696,7 @@ CHECKOUT → PENDING → AUTHORIZED → CANCELLED (preAuth → void)
 **Переменные Railway:**
 - `AVEPAY_API_KEY` — `XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd`
 - `AVEPAY_API_URL` — `https://engine.avepay.com` (прод)
-- `AVEPAY_WEBHOOK_SECRET` — Signing Key из дашборда (нужно сгенерировать)
+- `AVEPAY_WEBHOOK_SECRET` — `Ss1C1ibuEHvU` (Signing Key, HMAC-SHA256 верификация вебхуков)
 - `AVEPAY_CALLBACK_URL` — `https://aurex.casino/api/payments/avepay/callback`
   - **Рекомендация:** Для надёжности поставить напрямую на Railway: `https://aurex-casino-production.up.railway.app/api/payments/avepay/callback` (минуя Next.js rewrite)
 - `AVEPAY_RETURN_URL` — `https://aurex.casino/wallet`
@@ -713,8 +737,8 @@ curl -X POST https://aurex.casino/api/payments/avepay/callback/test \
 3. Отправляем `PATCH /api/v1/payments/{id}` с телом `{"customerIp": "IP_клиента"}`
 4. В ответе приходят реквизиты в `externalRefs` (номер карты, банк, сумма)
 
-**Депозит с указанием банка:**
-Можно передать `customer.bankCode` для маршрутизации на конкретный банк:
+**bankCode — только для выводов:**
+Для депозитов bankCode НЕ нужен (подтверждено ТП AVE PAY). Для выводов через СБП:
 - Сбербанк: `nspk:100000000111`
 - Т-Банк: `nspk:100000000004`
 - ВТБ: `nspk:100000000005`
@@ -741,32 +765,37 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 **Файлы интеграции:**
 - `backend/services/avePayService.js` — сервис API (createDeposit, createWithdrawal, confirmPaymentH2H, capturePayment, voidPayment, listPayments, getBalances, getSubscription, cancelSubscription, formatPhone, verifyWebhookSignature)
 - `backend/routes/avePayCallback.js` — вебхук обработчик + debug/test endpoints
-- `backend/routes/payments.js` — роуты /deposit (с bankCode) и /withdraw (с cardNumber/phone/bankCode)
+- `backend/routes/payments.js` — роуты /deposit и /withdraw (с cardNumber/phone/bankCode для выводов, блокировка вывода при активном вейджере)
+- `backend/routes/bonuses.js` — бонусы: active, available, activate, cancel, update-wager, admin
+- `backend/config/bonusConfig.js` — единый конфиг бонусов (x30 вейджер), trackDepositBonusWager(), expireOldBonuses()
 - `backend/routes/config.js` — конфигурация методов оплаты + список банков для фронтенда
-- `frontend/pages/wallet.tsx` — кошелёк: депозит/вывод формы, выбор банка, ввод карты/телефона
+- `frontend/pages/wallet.tsx` — кошелёк: депозит/вывод, ввод карты/телефона, бонусный баннер
+- `frontend/components/ActiveBonusWidget.tsx` — виджет активных бонусов с прогрессом отыгрыша
 
 **Полный цикл оплаты (flow):**
 ```
-1. Пользователь выбирает метод + сумму на /wallet
-2. Frontend → POST /api/payments/deposit (amount, paymentMethod, currency, bankCode?)
+1. Пользователь выбирает метод + сумму на /wallet, видит доступный бонус
+2. Frontend → POST /api/payments/deposit (amount, paymentMethod, currency)
 3. Backend создаёт transaction (status: pending) в PostgreSQL
-4. Backend → POST engine.avepay.com/api/v1/payments (с customer.referenceId, routingGroup, locale)
+4. Backend → POST engine.avepay.com/api/v1/payments (с customer.referenceId, routingGroup, phone для SBP)
 5. AVE PAY возвращает redirectUrl → Frontend делает window.location.href = redirectUrl
 6. Пользователь оплачивает на странице AVE PAY
-7. AVE PAY → POST /api/payments/avepay/callback (webhook с state: COMPLETED)
-8. Backend: обновляет transaction → completed, зачисляет balance, начисляет бонус
-9. Пользователь возвращается на /wallet — видит новый баланс
+7. AVE PAY → POST /api/payments/avepay/callback (webhook с Signature header)
+8. Backend: верифицирует HMAC-SHA256 подпись, обновляет transaction → completed
+9. Backend: зачисляет balance, начисляет бонус (bonus_balance + wagering_requirement)
+10. Пользователь возвращается на /wallet — видит новый баланс + прогресс отыгрыша
 ```
 
 **Вывод средств (flow):**
 ```
 1. Пользователь выбирает метод + вводит реквизиты (карта/телефон+банк/кошелёк)
 2. Frontend → POST /api/payments/withdraw (amount, paymentMethod, cardNumber/phone/bankCode)
-3. Backend: проверяет баланс → списывает → создаёт transaction (pending)
-4. Backend → POST engine.avepay.com/api/v1/payments (WITHDRAWAL, с additionalParameters.cardNumber или customer.phone)
-5. AVE PAY обрабатывает выплату (нужен ненулевой баланс мерчанта)
-6. AVE PAY → POST webhook (COMPLETED или DECLINED)
-7. Если DECLINED → возврат средств на баланс пользователя
+3. Backend: проверяет активный бонус → если вейджер не отыгран, блокирует вывод (400)
+4. Backend: проверяет баланс → списывает → создаёт transaction (pending)
+5. Backend → POST engine.avepay.com/api/v1/payments (WITHDRAWAL, с additionalParameters.cardNumber или customer.phone)
+6. AVE PAY обрабатывает выплату (нужен ненулевой баланс мерчанта)
+7. AVE PAY → POST webhook (COMPLETED или DECLINED)
+8. Если DECLINED → возврат средств на баланс пользователя
 ```
 
 ### SoftGamings (Moneygrator) — резерв
@@ -829,6 +858,30 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ---
 
+## Безопасность (security hardening — 10.02.2026)
+
+### Закрытые уязвимости:
+1. **`/deposit/:id/confirm`** — закрыт за `adminAuth` (ранее любой юзер мог сам подтвердить депозит без оплаты). Основной путь зачисления — через webhook AVE PAY
+2. **`/bonuses/update-wager`** — закрыт за `adminAuth` (ранее юзер мог отправить любой amount и мгновенно отыграть вейджер). Реальный трекинг через `trackDepositBonusWager()` в game callbacks
+3. **Webhook подпись обязательна** — если нет `Signature` header → 403. Невалидная подпись → 403. Используется `rawBody` (буфер до парсинга JSON) для корректной HMAC-SHA256 верификации
+4. **`/api/diag`** — закрыт за `adminAuth` (ранее был публичный, светил IP сервера и маски ключей)
+5. **`adminAuth` проверяет `is_active`** — заблокированный админ не пройдёт
+6. **Отмена вывода** — `SELECT` перенесён внутрь транзакции с `FOR UPDATE` (ранее race condition мог привести к двойному возврату)
+7. **`SELECT *` в auth** — заменён на конкретные поля (пароль не утекает в middleware)
+8. **`error.message`** — заменено на generic сообщения (SQL и внутренности не утекают клиенту)
+9. **`limit` пагинации** — ограничен max 100 (защита от `limit=999999`)
+
+### Текущие меры:
+- `helmet()` — security headers
+- `express-rate-limit` — 5000 req/15 min на IP (кроме `/slots/img`, `/slots/games`)
+- CORS — только `FRONTEND_URL`
+- JWT — 7 дней, проверка `is_active` при каждом запросе
+- Webhook HMAC-SHA256 — обязательная подпись
+- Database transactions с `FOR UPDATE` — защита от race conditions
+- `GREATEST(0, bonus_balance - bet)` — защита от отрицательного бонусного баланса
+
+---
+
 ## Чеклист: Что сделано / Что осталось
 
 ### Сделано
@@ -845,21 +898,35 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [x] Админ-панель
 - [x] Мультивалютность (RUB, USD, EUR, UZS)
 - [x] AVE PAY — полная интеграция (Payment Page + Webhooks + Выплаты)
+- [x] AVE PAY — вебхуки с HMAC-SHA256 верификацией (Signing Key: Ss1C1ibuEHvU)
 - [x] AVE PAY — вебхуки работают, баланс зачисляется автоматически (проверено 21.02.2026)
-- [x] AVE PAY — выбор банка для СБП (Сбербанк, Т-Банк, ВТБ)
+- [x] AVE PAY — выбор банка для СБП выводов (Сбербанк, Т-Банк, ВТБ). bankCode не нужен для депозитов
 - [x] AVE PAY — Postman коллекция полностью изучена, код приведён в соответствие (routingGroup: secondary)
-- [x] Кошелёк (wallet) — новый UI: выбор метода, ввод карты, телефон+банк для СБП
+- [x] Кошелёк (wallet) — новый UI: выбор метода, ввод карты, телефон+банк для СБП, бонусный баннер
+- [x] Бонусная система — приветственный пакет x30 вейджер, отслеживание отыгрыша, блокировка вывода, экспирация 30 дней
 - [x] Тестовый webhook endpoint для ручного зачисления (admin)
 - [x] AI чат Стефани (Claude 3.5 Sonnet через OpenRouter)
 - [x] AML/KYC страница (/aml, 10 разделов)
+- [x] Security hardening — 9 уязвимостей закрыто (deposit confirm, update-wager, webhook подпись, diag, adminAuth, race conditions, SELECT *, error leaks, pagination limit)
+- [x] Trust meta-теги: JSON-LD (Organization + WebSite), canonical URL, author/publisher/copyright, rating, referrer policy
+- [x] Исправлены все OG/Twitter meta URL с aurex.io → aurex.casino
+- [x] Политика конфиденциальности (/privacy) — 11 разделов: GDPR, правовые основания, cookies, права пользователей, DPO контакт
+- [x] Правила и условия (/terms) — 11 разделов: регистрация, депозиты/выводы, бонусы, честность игр, ответственная игра, запрещённые действия, территориальные ограничения, разрешение споров, интеллектуальная собственность
 
 ### В процессе
-- [ ] Тестирование Live Casino (чёрные экраны на некоторых играх)
-- [ ] Переход на продакшн Fundist (прод-креды получены, ждём прод-среду)
+- [x] Переход на продакшн Fundist — **ПРОД АКТИВЕН (пре-лайв)**, 71 провайдер работает
+- [ ] Ожидание активации провайдеров от SoftGamings (2-3 недели, до месяца):
+  - PragmaticPlay (960) — ~555 игр
+  - PragmaticPlayLive (913) — ~22 игры
+  - HacksawGaming (850) — ~215 игр
+  - Play'n GO (944) — ~385 игр
+  - Endorphina (973) — ~178 игр
+  - EvoOSS (892) — ~332 игры (NetEnt/RedTiger bundle)
+- [ ] Финальные тесты на проде (100 EUR лимит), уведомить SG за 24ч до лайва (не в пятницу)
 - [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
 - [ ] Добавить `OPENROUTER_API_KEY` в Railway env vars бэкенда
 - [ ] Настроить `AVEPAY_CALLBACK_URL` на Railway (напрямую на backend URL)
-- [ ] Сгенерировать Signing Key в AVE PAY дашборде и добавить `AVEPAY_WEBHOOK_SECRET`
+- [x] ~~Сгенерировать Signing Key в AVE PAY дашборде и добавить `AVEPAY_WEBHOOK_SECRET`~~ — ГОТОВО (Ss1C1ibuEHvU)
 - [ ] Первый реальный депозит через P2P_CARD (ждём активные P2P-терминалы)
 
 ### Потом
@@ -903,4 +970,4 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ---
 
-*Последнее обновление: 21 февраля 2026 — AVE PAY Postman коллекция изучена, routingGroup исправлен на secondary, код полностью соответствует документации*
+*Последнее обновление: 23 февраля 2026 — Trust meta-теги (JSON-LD, canonical, OG fix), расширены /privacy (11 разделов) и /terms (11 разделов), исправлены URL aurex.io → aurex.casino*

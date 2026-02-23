@@ -69,6 +69,90 @@ const determineCategory = (game, categoriesMap) => {
   return 'slots';
 };
 
+// Providers officially activated on SoftGamings production.
+// Games from providers NOT in this set are hidden from the catalog.
+// When SoftGamings activates a new provider, add its system ID here.
+const ACTIVATED_PROVIDERS = new Set([
+  '924',  // 3 Oaks Gaming
+  '845',  // AGTSoftware
+  '967',  // AsiaGaming
+  '773',  // Aviator Studio
+  '791',  // AviatrixDirect
+  '901',  // BGaming
+  '956',  // Belatra
+  '990',  // BetGames.tv
+  '991',  // BetSoft
+  '882',  // BetSolutions
+  '952',  // BetradarVS
+  '338',  // BigTimeGaming
+  '923',  // CQ9
+  '885',  // CT Interactive
+  '929',  // ConceptGaming
+  '998',  // Evolution
+  '349',  // Evoplay
+  '983',  // Ezugi
+  '796',  // FBastards
+  '827',  // Fa Chai
+  '927',  // Fugaso
+  '955',  // GameArt
+  '879',  // Gamzix
+  '930',  // Genii
+  '976',  // Habanero
+  '904',  // HoGaming
+  '314',  // ICONIC21 Live
+  '926',  // Igrosoft
+  '834',  // JDB
+  '819',  // JiliAsia
+  '898',  // Kaga
+  '874',  // Kalamba
+  '934',  // LiveGames
+  '980',  // LuckyStreak
+  '899',  // Mascot Gaming
+  '870',  // Microgaming
+  '421',  // NetEnt
+  '867',  // NetgameEntertainment
+  '307',  // NovomaticGames
+  '814',  // Oriental Games
+  '777',  // OriginalGames
+  '939',  // PGSoft
+  '412',  // PLS
+  '805',  // PeterAndSons
+  '949',  // Platipus
+  '828',  // PopiPlay
+  '911',  // Push Gaming
+  '420',  // RedTigerOSS
+  '810',  // RevDev
+  '902',  // RevolverGaming
+  '968',  // SAGaming
+  '947',  // SalsaTechnology
+  '844',  // SimplePlay
+  '869',  // SmartSoft
+  '919',  // Spadegaming
+  '959',  // Spinomenal
+  '851',  // Spinthon
+  '895',  // Spribe
+  '900',  // TVBet
+  '920',  // Thunderkick
+  '422',  // TomHornGaming
+  '849',  // TurboGames
+  '872',  // Upgaming
+  '797',  // UrgentGames
+  '792',  // Victory Ark Gaming
+  '945',  // VivoGaming
+  '866',  // WMCasino
+  '941',  // Wazdan
+  '818',  // YGRGames
+  '953',  // Yggdrasil
+  '813',  // iMoon
+  // --- Pending activation (add here when SoftGamings confirms) ---
+  // '960',  // PragmaticPlay
+  // '913',  // PragmaticPlayLive
+  // '850',  // HacksawGaming
+  // '944',  // Play'n GO
+  // '973',  // Endorphina
+  // '892',  // EvoOSS (NetEnt/RedTiger bundle)
+]);
+
 // Get games list
 router.get('/games', async (req, res) => {
   try {
@@ -304,7 +388,13 @@ router.get('/games', async (req, res) => {
     };
     
     if (apiData.games && Array.isArray(apiData.games)) {
-      apiData.games.forEach(game => {
+      const activatedGames = apiData.games.filter(game => {
+        const mid = String(game.MerchantID || game.System || '');
+        return ACTIVATED_PROVIDERS.has(mid);
+      });
+      console.log(`[games] Filtered: ${apiData.games.length} total → ${activatedGames.length} activated`);
+
+      activatedGames.forEach(game => {
         const merchantId = String(game.MerchantID || game.System || '');
         const merchantsName = merchants[merchantId]?.Name;
         const isPlaceholder = typeof merchantsName === 'string' && /^(Merchant|Provider)\s+\d+$/.test(merchantsName);

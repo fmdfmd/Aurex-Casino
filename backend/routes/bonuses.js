@@ -44,7 +44,7 @@ router.get('/active', auth, async (req, res) => {
     res.json({ success: true, data: bonuses });
   } catch (error) {
     console.error('Get active bonuses error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка загрузки бонусов' });
   }
 });
 
@@ -80,7 +80,7 @@ router.get('/history', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Get bonus history error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка загрузки истории бонусов' });
   }
 });
 
@@ -134,35 +134,48 @@ router.post('/activate-deposit', auth, async (req, res) => {
   } catch (error) {
     if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     console.error('Activate deposit bonus error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка активации бонуса' });
   }
 });
 
-// Обновить прогресс отыгрыша (вызывается при ставках)
-router.post('/update-wager', auth, async (req, res) => {
+// Обновить прогресс отыгрыша (только admin — реальный трекинг через game callbacks в bonusConfig.js)
+router.post('/update-wager', adminAuth, async (req, res) => {
   try {
-    const { amount } = req.body;
+    const { userId, amount } = req.body;
+    if (!userId || !amount || amount <= 0) {
+      return res.status(400).json({ success: false, message: 'userId and positive amount required' });
+    }
     
-    // Обновляем прогресс всех активных бонусов
-    await pool.query(
-      `UPDATE bonuses 
-       SET wagering_completed = wagering_completed + $1
-       WHERE user_id = $2 AND status = 'active'`,
-      [amount, req.user.id]
-    );
-    
-    // Проверяем завершённые бонусы
-    await pool.query(
-      `UPDATE bonuses 
-       SET status = 'completed', completed_at = CURRENT_TIMESTAMP
-       WHERE user_id = $1 AND status = 'active' AND wagering_completed >= wagering_requirement`,
-      [req.user.id]
-    );
+    const { withTransaction } = require('../utils/dbTransaction');
+    await withTransaction(pool, async (client) => {
+      await client.query(
+        `UPDATE bonuses 
+         SET wagering_completed = LEAST(wagering_requirement, wagering_completed + $1),
+             updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $2 AND status = 'active'`,
+        [amount, userId]
+      );
+      
+      const completed = await client.query(
+        `UPDATE bonuses 
+         SET status = 'completed', updated_at = CURRENT_TIMESTAMP
+         WHERE user_id = $1 AND status = 'active' AND wagering_completed >= wagering_requirement
+         RETURNING amount`,
+        [userId]
+      );
+      
+      for (const row of completed.rows) {
+        await client.query(
+          'UPDATE users SET balance = balance + $1, bonus_balance = GREATEST(0, bonus_balance - $1) WHERE id = $2',
+          [parseFloat(row.amount), userId]
+        );
+      }
+    });
     
     res.json({ success: true });
   } catch (error) {
     console.error('Update wager error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });
 
@@ -203,7 +216,7 @@ router.get('/available', auth, async (req, res) => {
     res.json({ success: true, data: available });
   } catch (error) {
     console.error('Get available bonuses error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка загрузки бонусов' });
   }
 });
 
@@ -252,7 +265,7 @@ router.post('/:id/activate', auth, async (req, res) => {
     });
   } catch (error) {
     console.error('Activate bonus error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка активации бонуса' });
   }
 });
 
@@ -268,7 +281,7 @@ router.post('/:id/deactivate', auth, async (req, res) => {
     res.json({ success: true, message: 'Бонус деактивирован' });
   } catch (error) {
     console.error('Deactivate bonus error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка деактивации бонуса' });
   }
 });
 
@@ -297,7 +310,7 @@ router.post('/:id/cancel', auth, async (req, res) => {
   } catch (error) {
     if (error.status) return res.status(error.status).json({ success: false, message: error.message });
     console.error('Cancel bonus error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Ошибка отмены бонуса' });
   }
 });
 
@@ -334,7 +347,7 @@ router.get('/admin/all', adminAuth, async (req, res) => {
     });
   } catch (error) {
     console.error('Get all bonuses error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });
 
@@ -362,7 +375,7 @@ router.post('/admin/grant', adminAuth, async (req, res) => {
     res.json({ success: true, message: 'Бонус выдан', data: bonus });
   } catch (error) {
     console.error('Grant bonus error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });
 
@@ -383,7 +396,7 @@ router.get('/admin/stats', adminAuth, async (req, res) => {
     res.json({ success: true, data: result.rows[0] });
   } catch (error) {
     console.error('Bonus stats error:', error);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({ success: false, message: 'Internal error' });
   }
 });
 

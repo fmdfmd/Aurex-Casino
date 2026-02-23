@@ -52,7 +52,14 @@ app.use(cors({
   credentials: true
 }));
 
-app.use(express.json({ limit: '50mb' }));
+app.use(express.json({ 
+  limit: '50mb',
+  verify: (req, res, buf) => {
+    if (req.originalUrl && req.originalUrl.includes('/avepay/callback')) {
+      req.rawBody = buf.toString('utf8');
+    }
+  }
+}));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // Static files for uploads
@@ -140,8 +147,9 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Diagnostic endpoint — check server config & outgoing IP
-app.get('/api/diag', async (req, res) => {
+// Diagnostic endpoint — check server config & outgoing IP (admin only)
+const { adminAuth: diagAdminAuth } = require('./middleware/auth');
+app.get('/api/diag', diagAdminAuth, async (req, res) => {
   const config = require('./config/config');
   const axios = require('axios');
   let outgoingIp = 'unknown';
