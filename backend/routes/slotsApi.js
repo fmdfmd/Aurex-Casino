@@ -684,22 +684,129 @@ router.post('/game-frame', auth, async (req, res) => {
   }
 });
 
-// Proxy for check5.wscenter.xyz — blocked by Russian ISPs.
-// The browser calls our proxy instead; we forward to wscenter and return the response.
+// ---------------------------------------------------------------------------
+// Proxy layer — Russian ISPs block wscenter.xyz and many game-provider domains.
+// We proxy ALL external game traffic through our Railway server so the user's
+// browser never contacts blocked hosts directly.
+// ---------------------------------------------------------------------------
+
+// 1. check-proxy: legacy XHR interceptor target (wscenter)
 router.get('/check-proxy', async (req, res) => {
   const target = req.query.u;
   if (!target || !target.startsWith('https://')) {
     return res.status(400).json({ error: 'bad url' });
   }
   try {
-    const resp = await axios.get(target, { timeout: 10000 });
-    res.json(resp.data);
+    const resp = await axios.get(target, { timeout: 10000, responseType: 'text' });
+    const ct = resp.headers['content-type'] || 'application/json';
+    res.setHeader('Content-Type', ct);
+    res.send(resp.data);
   } catch (e) {
     console.log(`[check-proxy] Failed: ${e.message}`);
     res.status(502).json({ error: 'upstream error' });
   }
 });
 
+// 2. ws-proxy/*: wildcard proxy for check*.wscenter.xyz (scripts, XHR, etc.)
+router.get('/ws-proxy/*', async (req, res) => {
+  const subpath = req.params[0] || '';
+  const qIdx = req.originalUrl.indexOf('?');
+  const qs = qIdx !== -1 ? req.originalUrl.substring(qIdx) : '';
+  const target = `https://check5.wscenter.xyz/${subpath}${qs}`;
+  try {
+    const resp = await axios.get(target, { timeout: 15000, responseType: 'arraybuffer' });
+    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
+    res.send(resp.data);
+  } catch (e) {
+    console.log(`[ws-proxy] Failed ${target}: ${e.message}`);
+    res.status(502).send('proxy error');
+  }
+});
+
+// 3. ext-proxy: generic external-content proxy.
+//    For HTML responses it rewrites src/href to route through itself
+//    and injects XHR/fetch interceptors so dynamic requests also go through us.
+router.all('/ext-proxy', async (req, res) => {
+  const target = req.query.u;
+  if (!target) return res.status(400).send('missing u');
+
+  let parsedUrl;
+  try { parsedUrl = new URL(target); }
+  catch { return res.status(400).send('invalid url'); }
+
+  try {
+    const up = await axios({
+      method: req.method === 'OPTIONS' ? 'GET' : req.method,
+      url: target,
+      data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
+      timeout: 30000,
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+        'Accept': req.headers['accept'] || '*/*',
+        'Accept-Language': req.headers['accept-language'] || 'ru,en',
+        'Referer': parsedUrl.origin + '/',
+      },
+      validateStatus: () => true,
+      maxRedirects: 10,
+    });
+
+    const ct = up.headers['content-type'] || '';
+    if (ct) res.setHeader('Content-Type', ct);
+    if (up.headers['cache-control']) res.setHeader('Cache-Control', up.headers['cache-control']);
+    res.removeHeader('X-Frame-Options');
+    res.removeHeader('Content-Security-Policy');
+
+    if (ct.toLowerCase().includes('text/html')) {
+      let h = Buffer.from(up.data).toString('utf-8');
+      const origin = parsedUrl.origin;
+
+      // Rewrite absolute external URLs in HTML attributes
+      h = h.replace(
+        /((?:src|href|action|poster)\s*=\s*)(["'])(https?:\/\/[^"'\s>]+)\2/gi,
+        (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(u)}${q}`
+      );
+      // Protocol-relative URLs
+      h = h.replace(
+        /((?:src|href)\s*=\s*)(["'])(\/\/[^"'\s>]+)\2/gi,
+        (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent('https:' + u)}${q}`
+      );
+      // Root-relative URLs → absolute through proxy
+      h = h.replace(
+        /((?:src|href)\s*=\s*)(["'])(\/(?!\/|api\/slots\/)[^"'\s>]*)\2/gi,
+        (_, pre, q, p) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(origin + p)}${q}`
+      );
+
+      // Inject XHR + fetch interceptor
+      const inj = `<script>(function(){` +
+        `var P='/api/slots/ext-proxy?u=',H=location.host;` +
+        `function px(u){if(typeof u!='string'||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}` +
+        `var xo=XMLHttpRequest.prototype.open;` +
+        `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
+        `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
+        `})()<\/script>`;
+
+      if (h.includes('<head')) {
+        h = h.replace(/<head[^>]*>/i, m => m + inj);
+      } else {
+        h = inj + h;
+      }
+
+      res.setHeader('Content-Type', 'text/html; charset=utf-8');
+      res.send(h);
+    } else {
+      res.status(up.status).send(up.data);
+    }
+  } catch (e) {
+    console.log(`[ext-proxy] Error: ${target} — ${e.message}`);
+    res.status(502).send('proxy error');
+  }
+});
+
+// ---------------------------------------------------------------------------
+// game-frame — serves the Fundist HTML as a full page inside our iframe.
+// All external domains are rewritten so the user's browser talks only to us.
+// ---------------------------------------------------------------------------
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
   console.log(`[game-frame] GET: token=${req.params.token}, found=${!!entry}, store size=${gameFrameStore.size}`);
@@ -709,29 +816,46 @@ router.get('/game-frame/:token', (req, res) => {
 
   let html = entry.html;
 
-  // Two fixes for providers using check5.wscenter.xyz:
-  // 1. Intercept XHR to wscenter (blocked by Russian ISPs) → proxy through our server
-  // 2. Replace iframe creation with direct navigation (avoid nested iframes)
-  if (html.includes('wscenter') && html.includes("createElement('iframe')")) {
+  // Log external domains for diagnostics
+  const domains = [...new Set((html.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []))];
+  console.log(`[game-frame] External domains: ${domains.join(', ')}`);
+
+  // --- wscenter providers (Thunderkick, Spinomenal, BGaming, Habanero, NetEnt, …) ---
+  const hasWscenter = html.includes('wscenter');
+  if (hasWscenter) {
+    // Replace iframe creation with redirect through our ext-proxy
     html = html.replace(
-      /var\s+ifr\s*=\s*document\.createElement\('iframe'\);[\s\S]*?\.appendChild\(ifr\);/,
-      'window.location.replace(resp.data);'
+      /var\s+ifr\s*=\s*document\.createElement\(['"]iframe['"]\);[\s\S]*?\.appendChild\(ifr\);/,
+      "window.location.replace('/api/slots/ext-proxy?u='+encodeURIComponent(resp.data));"
     );
-    console.log(`[game-frame] Patched HTML: proxied check URL + replaced iframe`);
+    // Rewrite wscenter domain to our wildcard proxy (covers <script src>, XHR URLs, etc.)
+    html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
+    console.log('[game-frame] Patched wscenter: domain rewrite + iframe → ext-proxy redirect');
   }
 
-  const wsProxy = html.includes('wscenter') ? `<script>
-(function(){var o=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){
-if(typeof u==='string'&&u.indexOf('wscenter.xyz')!==-1)u='/api/slots/check-proxy?u='+encodeURIComponent(u);
-return o.apply(this,[m,u].concat([].slice.call(arguments,2)));};})();
-</script>` : '';
+  // Rewrite any remaining external <iframe src="https://…"> to go through ext-proxy
+  html = html.replace(
+    /(<iframe[^>]+src\s*=\s*)(["'])(https?:\/\/[^"']+)\2/gi,
+    (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
+  );
+
+  // Comprehensive interceptor: XHR, fetch, MutationObserver for dynamic iframes
+  const interceptor = `<script>(function(){
+var P='/api/slots/ext-proxy?u=',H=location.host;
+function px(u){if(typeof u!='string'||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
+var xo=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
+if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
+if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
+if(n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0){n.src=P+encodeURIComponent(n.src);}
+});});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}
+})()</script>`;
 
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-${wsProxy}
+${interceptor}
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
 iframe,object,embed,div.game-container,.game-frame{
