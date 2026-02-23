@@ -778,6 +778,8 @@ router.all('/ext-proxy', async (req, res) => {
       let h = body;
       const origin = parsedUrl.origin;
 
+      const baseDir = target.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
+
       // Rewrite absolute external URLs in HTML attributes
       h = h.replace(
         /((?:src|href|action|poster)\s*=\s*)(["'])(https?:\/\/[^"'\s>]+)\2/gi,
@@ -793,13 +795,26 @@ router.all('/ext-proxy', async (req, res) => {
         /((?:src|href)\s*=\s*)(["'])(\/(?!\/|api\/slots\/)[^"'\s>]*)\2/gi,
         (_, pre, q, p) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(origin + p)}${q}`
       );
+      // Path-relative URLs (no leading slash, no protocol) → resolve against game base dir
+      h = h.replace(
+        /((?:src|href)\s*=\s*)(["'])(?!https?:|\/\/|\/|#|data:|javascript:|mailto:|about:|blob:|\{)([^"'\s>]+)\2/gi,
+        (_, pre, q, rel) => {
+          try {
+            const abs = new URL(rel, baseDir).href;
+            return `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(abs)}${q}`;
+          } catch { return `${pre}${q}${rel}${q}`; }
+        }
+      );
 
-      // Inject XHR + fetch interceptor — also catches relative URLs (game API calls)
+      // Inject XHR + fetch interceptor — catches absolute, root-relative, AND path-relative URLs
+      const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const inj = `<script>(function(){` +
-        `var P='/api/slots/ext-proxy?u=',H=location.host,O='${origin}';` +
+        `var P='/api/slots/ext-proxy?u=',H=location.host,O='${origin}',B='${escapedBaseDir}';` +
         `function px(u){if(typeof u!='string')return u;` +
         `if(u.indexOf('://')>=0&&u.indexOf(H)<0)return P+encodeURIComponent(u);` +
         `if(u.indexOf('://')<0&&u.charAt(0)==='/'&&u.indexOf('/api/slots/')!==0)return P+encodeURIComponent(O+u);` +
+        `if(u.indexOf('://')<0&&u.charAt(0)!=='/'&&u.indexOf('data:')!==0&&u.indexOf('blob:')!==0)` +
+        `{try{return P+encodeURIComponent(new URL(u,B).href);}catch(e){}}` +
         `return u;}` +
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
@@ -1017,6 +1032,63 @@ router.get('/bonus-status', auth, async (req, res) => {
   } catch (error) {
     console.error('[bonus-status] Error:', error.message);
     res.json({ success: true, data: { balance: 0, bonus_balance: 0, active_wagers: [] } });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Catch-all: proxy unmatched GET requests that are likely game assets loaded
+// via relative URLs from proxied game HTML. The Referer header contains the
+// ext-proxy URL with the game origin encoded in the `u` parameter.
+// ---------------------------------------------------------------------------
+router.get('/*', async (req, res, next) => {
+  // Only intercept paths that look like static assets (not API routes we handle)
+  const subpath = req.params[0] || '';
+  if (!subpath || subpath.startsWith('game') || subpath.startsWith('check-proxy') ||
+      subpath.startsWith('ws-proxy') || subpath.startsWith('ext-proxy') ||
+      subpath.startsWith('freerounds') || subpath.startsWith('bonus') ||
+      subpath.startsWith('img') || subpath.startsWith('start') ||
+      subpath.startsWith('catalog') || subpath.startsWith('cdn')) {
+    return next();
+  }
+
+  const referer = req.headers.referer || '';
+  let gameOrigin = '';
+
+  // Extract game origin from Referer (ext-proxy?u=...) or game-frame
+  const extMatch = referer.match(/ext-proxy\?u=([^&\s]+)/);
+  if (extMatch) {
+    try {
+      const gameUrl = decodeURIComponent(extMatch[1]);
+      gameOrigin = new URL(gameUrl).origin;
+    } catch {}
+  }
+
+  if (!gameOrigin) {
+    return next();
+  }
+
+  const qs = req.originalUrl.includes('?')
+    ? req.originalUrl.substring(req.originalUrl.indexOf('?'))
+    : '';
+  const target = `${gameOrigin}/${subpath}${qs}`;
+
+  try {
+    const resp = await axios.get(target, {
+      timeout: 15000,
+      responseType: 'arraybuffer',
+      headers: {
+        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+        'Accept': req.headers['accept'] || '*/*',
+        'Referer': gameOrigin + '/',
+      },
+      validateStatus: () => true,
+    });
+    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
+    if (resp.headers['cache-control']) res.setHeader('Cache-Control', resp.headers['cache-control']);
+    res.status(resp.status).send(resp.data);
+  } catch (e) {
+    console.log(`[cdn-catch-all] Failed ${target}: ${e.message}`);
+    next();
   }
 });
 

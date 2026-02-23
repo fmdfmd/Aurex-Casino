@@ -104,7 +104,8 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
           <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-300">
             <div className="flex gap-2">
               <button 
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (onPlay) onPlay({ ...game, mode: 'demo' });
                 }}
                 className="bg-casino-gold text-black px-4 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-casino-gold-dark transition-colors transform hover:scale-105 flex-1"
@@ -113,7 +114,8 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
                 {t('games.demo')}
               </button>
               <button 
-                onClick={() => {
+                onClick={(e) => {
+                  e.stopPropagation();
                   if (onPlay) onPlay({ ...game, mode: 'real' });
                 }}
                 className="bg-casino-purple text-white px-4 py-3 rounded-lg font-bold flex items-center gap-2 hover:bg-casino-purple-dark transition-colors transform hover:scale-105 flex-1"
