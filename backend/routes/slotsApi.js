@@ -910,7 +910,7 @@ router.all('/ext-proxy', async (req, res) => {
         `var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');` +
         `if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{` +
         `set:function(v){` +
-        `if(typeof v==='string'){` +
+        `if(typeof v==='string'&&v.indexOf('function px(')< 0&&v.indexOf('function bpx(')< 0){` +
         `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
         `else{v=blobInj+v;}}` +
         `return srcdocD.set.call(this,v);},` +
@@ -919,7 +919,7 @@ router.all('/ext-proxy', async (req, res) => {
         `var origSA2=origSA;` +
         `Element.prototype.setAttribute=function(n,v){` +
         `if((n==='src'||n==='href')&&typeof v==='string')v=px(v);` +
-        `if(n==='srcdoc'&&typeof v==='string'){` +
+        `if(n==='srcdoc'&&typeof v==='string'&&v.indexOf('function px(')< 0&&v.indexOf('function bpx(')< 0){` +
         `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
         `else{v=blobInj+v;}}` +
         `return origSA2.call(this,n,v);};` +
@@ -1077,7 +1077,7 @@ window.Blob.prototype=OB.prototype;
 var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');
 if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{
 set:function(v){
-if(typeof v==='string'){
+if(typeof v==='string'&&v.indexOf('function px(')<0&&v.indexOf('function bpx(')<0){
 if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
 else{v=blobInj+v;}}
 return srcdocD.set.call(this,v);},
@@ -1085,7 +1085,7 @@ get:srcdocD.get,configurable:true});}
 var origSA2=origSA;
 Element.prototype.setAttribute=function(n,v){
 if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
-if(n==='srcdoc'&&typeof v==='string'){
+if(n==='srcdoc'&&typeof v==='string'&&v.indexOf('function px(')<0&&v.indexOf('function bpx(')<0){
 if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
 else{v=blobInj+v;}}
 return origSA2.call(this,n,v);};
