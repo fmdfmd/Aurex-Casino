@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ArrowLeft, X } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
@@ -13,13 +13,11 @@ interface GameModalProps {
 }
 
 export default function GameModal({ isOpen, onClose, game, mode, onModeChange }: GameModalProps) {
-  const [gameHtml, setGameHtml] = useState('');
+  const [gameFrameUrl, setGameFrameUrl] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const { user } = useAuthStore();
-  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
-  // Lock body scroll when game is open
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
@@ -29,7 +27,6 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     return () => { document.body.style.overflow = ''; };
   }, [isOpen]);
 
-  // Keyboard: Escape to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (!isOpen) return;
@@ -39,12 +36,11 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, onClose]);
 
-  // Fetch game HTML from backend
   useEffect(() => {
     const run = async () => {
       if (!game || !isOpen) return;
       setIsLoading(true);
-      setGameHtml('');
+      setGameFrameUrl('');
       setLoadError('');
 
       try {
@@ -59,7 +55,12 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 
         const html = resp.data?.data?.html;
         if (!html) throw new Error('Сервер не вернул HTML-фрагмент');
-        setGameHtml(html);
+
+        const frameResp = await axios.post('/api/slots/game-frame', { html });
+        const token = frameResp.data?.token;
+        if (!token) throw new Error('Не удалось создать игровую сессию');
+
+        setGameFrameUrl(`/api/slots/game-frame/${token}`);
       } catch (e: any) {
         console.error('Failed to start game:', e);
         const msg = e?.response?.data?.error || e?.message || 'Не удалось запустить игру';
@@ -73,63 +74,10 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     run();
   }, [game, mode, isOpen, user]);
 
-  // Write HTML into iframe using document.write
-  useEffect(() => {
-    if (!gameHtml || !iframeRef.current) return;
-    const iframe = iframeRef.current;
-
-    const onLoad = () => {
-      try {
-        const doc = iframe.contentDocument || iframe.contentWindow?.document;
-        if (!doc) return;
-
-        // Build a full HTML page wrapping the Fundist fragment
-        const fullPage = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-iframe,object,embed{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-body>div{width:100%;height:100%}
-</style>
-</head><body>${gameHtml}</body></html>`;
-
-        doc.open();
-        doc.write(fullPage);
-        doc.close();
-      } catch (err) {
-        console.error('Failed to write game HTML into iframe:', err);
-      }
-    };
-
-    // If iframe is already loaded (about:blank), write immediately
-    if (iframe.contentDocument?.readyState === 'complete') {
-      onLoad();
-    } else {
-      iframe.addEventListener('load', onLoad, { once: true });
-    }
-
-    return () => {
-      iframe.removeEventListener('load', onLoad);
-    };
-  }, [gameHtml]);
-
-  // Clear on close
   useEffect(() => {
     if (!isOpen) {
-      setGameHtml('');
+      setGameFrameUrl('');
       setLoadError('');
-      if (iframeRef.current) {
-        try {
-          const doc = iframeRef.current.contentDocument;
-          if (doc) { doc.open(); doc.write(''); doc.close(); }
-        } catch (_) {}
-      }
     }
   }, [isOpen]);
 
@@ -178,13 +126,13 @@ body>div{width:100%;height:100%}
               </button>
             </div>
           </div>
-        ) : gameHtml ? (
+        ) : gameFrameUrl ? (
           <iframe
-            ref={iframeRef}
             className="absolute inset-0 w-full h-full border-0"
-            src="about:blank"
+            src={gameFrameUrl}
             allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
             allowFullScreen
+            sandbox="allow-scripts allow-same-origin allow-popups allow-forms allow-top-navigation allow-modals allow-popups-to-escape-sandbox"
           />
         ) : null}
       </div>
