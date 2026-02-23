@@ -85,12 +85,24 @@ export default function GamesPage() {
     setGameMode(mode);
   };
 
-  // Extract games from API response
+  // Extract games from API response, prioritize Plinko (Upgaming) first, deprioritize BetSoft
   const allGames = useMemo(() => {
     if (!gamesData?.data?.games) {
       return [];
     }
-    return gamesData.data.games;
+    const games = [...gamesData.data.games];
+    games.sort((a: any, b: any) => {
+      const aIsPlinko = a.name?.toLowerCase().includes('plinko') && a.provider?.toLowerCase().includes('upgaming');
+      const bIsPlinko = b.name?.toLowerCase().includes('plinko') && b.provider?.toLowerCase().includes('upgaming');
+      if (aIsPlinko && !bIsPlinko) return -1;
+      if (!aIsPlinko && bIsPlinko) return 1;
+      const aIsBetsoft = a.provider?.toLowerCase().includes('betsoft');
+      const bIsBetsoft = b.provider?.toLowerCase().includes('betsoft');
+      if (aIsBetsoft && !bIsBetsoft) return 1;
+      if (!aIsBetsoft && bIsBetsoft) return -1;
+      return 0;
+    });
+    return games;
   }, [gamesData]);
 
   // Extract real providers from loaded games
@@ -411,23 +423,7 @@ export default function GamesPage() {
               </AnimatePresence>
             </div>
 
-            {/* PLINKO featured — shown on default view */}
-            {!searchTerm && selectedCategory === 'all' && selectedProviders.length === 0 && (() => {
-              const plinkoGame = allGames.find(g => g.name?.toLowerCase().includes('plinko') && g.provider?.toLowerCase().includes('upgaming'));
-              if (!plinkoGame) return null;
-              return (
-                <div className="mb-10">
-                  <div className="flex items-center gap-3 mb-5">
-                    <Flame className="w-6 h-6 text-casino-gold" />
-                    <h2 className="text-2xl font-bold text-white">Популярное</h2>
-                    <span className="bg-red-500/20 text-red-400 text-xs font-bold px-2.5 py-1 rounded-full">HOT</span>
-                  </div>
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-5 gap-4">
-                    <GameCard game={plinkoGame} onPlay={handleGamePlay} />
-                  </div>
-                </div>
-              );
-            })()}
+            {/* Games sections are accessible via category blocks (Slots/Live/Sport) or search/filter */}
 
             {/* ALL SLOT GAMES section removed from default view — accessible via category blocks or filter */}
             
