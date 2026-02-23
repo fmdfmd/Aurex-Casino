@@ -571,6 +571,62 @@ class FundistApiService {
     // Any other unexpected response
     throw new Error(`Не удалось запустить игру: ${data.slice(0, 200)}`);
   }
+  /**
+   * Launch a demo game session — no user account needed.
+   * Uses Fundist's $DemoUser$ / Demo convention.
+   */
+  async startDemoSession(pageCode, systemId, userIp = '0.0.0.0', language = 'en', opts = {}) {
+    const login = '$DemoUser$';
+    const password = 'Demo';
+    const tid = this.generateTid();
+
+    const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${login}/${password}/${systemId}/${this.apiPassword}`;
+    const hash = this.generateHash(hashString);
+
+    const params = new URLSearchParams({
+      Login: login,
+      Password: password,
+      System: String(systemId),
+      TID: tid,
+      Hash: hash,
+      Page: String(pageCode),
+      UserIP: String(userIp),
+      Language: String(language),
+      Demo: '1',
+      ...(opts.referer ? { Referer: String(opts.referer) } : {}),
+      ...(opts.isMobile ? { IsMobile: '1' } : {})
+    });
+
+    const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
+
+    let response;
+    try {
+      response = await axios.get(url, { timeout: 30000, family: 4 });
+    } catch (axiosErr) {
+      const status = axiosErr?.response?.status;
+      const body = String(axiosErr?.response?.data || '').slice(0, 300);
+      if (body.includes('Wrong authorization IP') || body.startsWith('12,')) {
+        throw new Error('IP сервера не в вайтлисте Fundist. Обратитесь в поддержку SoftGamings.');
+      }
+      throw new Error(`Провайдер недоступен (HTTP ${status || '?'}). Попробуйте позже.`);
+    }
+
+    const data = String(response.data || '');
+
+    if (data.startsWith('12,')) throw new Error('IP сервера не в вайтлисте Fundist.');
+    if (data.includes('Demo not supported')) throw new Error('Демо-режим недоступен для этой игры');
+    if (data.includes('Restricted country')) throw new Error('Игра недоступна в вашей стране');
+    if (data.startsWith('24,')) throw new Error(`Игра не может быть запущена: ${data.slice(3, 200)}`);
+    if (data.startsWith('15,')) throw new Error('Ошибка авторизации (неверный хеш).');
+    if (data.startsWith('18,')) throw new Error('Этот провайдер временно недоступен.');
+
+    if (data.startsWith('1,')) {
+      return { success: true, html: data.substring(2), tid };
+    }
+
+    throw new Error(`Не удалось запустить демо: ${data.slice(0, 200)}`);
+  }
+
   // ---------------------------------------------------------------------------
   // Freerounds API
   // ---------------------------------------------------------------------------

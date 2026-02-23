@@ -1,5 +1,5 @@
 const express = require('express');
-const { auth } = require('../middleware/auth');
+const { auth, optionalAuth } = require('../middleware/auth');
 const fundistService = require('../services/fundistApiService');
 const axios = require('axios');
 const https = require('https');
@@ -589,24 +589,28 @@ router.post('/catalog/upload', express.json({ limit: '100mb' }), async (req, res
   }
 });
 
-// Start game session
-router.post('/start-game', auth, async (req, res) => {
+// Start game session (optionalAuth: demo works without login)
+router.post('/start-game', optionalAuth, async (req, res) => {
   try {
     const { gameCode, systemId: systemIdFromClient, language = 'en', mode = 'real' } = req.body;
-    const userId = req.user.id;
-    // Use the user's currency from DB first, then request body, default RUB
-    const currency = req.user.currency || req.body.currency || 'RUB';
-    // Get real user IP behind proxy (Railway, nginx, etc.)
+    const isDemo = mode === 'demo';
     const userIp = req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+
+    if (!isDemo && !req.user) {
+      return res.status(401).json({ success: false, error: 'Требуется авторизация для игры на реальные деньги' });
+    }
 
     if (!gameCode) {
       return res.status(400).json({ success: false, error: 'Missing gameCode' });
     }
 
-    // `systemId` is required by Fundist AuthHTML, but frontend doesn't always send it.
-    // Resolve it from cached Fundist catalog if missing.
+    // Resolve systemId from catalog if not provided
     let resolvedSystemId = systemIdFromClient;
-    if (!resolvedSystemId) {
+    const ua = (req.headers['user-agent'] || '').toLowerCase();
+    const isMobile = /mobile|android|iphone|ipad|ipod|webos|blackberry/i.test(ua);
+    let effectiveGameCode = gameCode;
+
+    if (!resolvedSystemId || isMobile) {
       const apiData = await fundistService.getGamesList();
       const game = Array.isArray(apiData?.games)
         ? apiData.games.find((g) =>
@@ -614,44 +618,46 @@ router.post('/start-game', auth, async (req, res) => {
           )
         : null;
 
-      if (!game) {
-        return res.status(404).json({ success: false, error: 'Game not found in catalog (missing systemId)' });
+      if (!resolvedSystemId) {
+        if (!game) {
+          return res.status(404).json({ success: false, error: 'Game not found in catalog (missing systemId)' });
+        }
+        resolvedSystemId = game.MerchantID;
       }
-      resolvedSystemId = game.MerchantID;
-    }
 
-    const extParam = `aurex_${userId}_${Date.now()}`;
-    const referer = req.headers.referer || '';
-    // Detect mobile from user-agent
-    const ua = (req.headers['user-agent'] || '').toLowerCase();
-    const isMobile = /mobile|android|iphone|ipad|ipod|webos|blackberry/i.test(ua);
-
-    // Use MobilePageCode if on mobile device
-    let effectiveGameCode = gameCode;
-    if (isMobile) {
-      const apiData = await fundistService.getGamesList();
-      const game = Array.isArray(apiData?.games)
-        ? apiData.games.find((g) =>
-            String(g.PageCode) === String(gameCode) || String(g.ID) === String(gameCode)
-          )
-        : null;
-      if (game?.MobilePageCode && game.MobilePageCode !== gameCode) {
+      if (isMobile && game?.MobilePageCode && game.MobilePageCode !== gameCode) {
         console.log(`[start-game] Mobile: ${gameCode} → ${game.MobilePageCode}`);
         effectiveGameCode = game.MobilePageCode;
       }
     }
 
-    const gameData = await fundistService.startGameSession(
-      userId,
-      effectiveGameCode,
-      resolvedSystemId,
-      currency,
-      userIp,
-      language,
-      { extParam, referer, demo: mode === 'demo', isMobile }
-    );
+    const referer = req.headers.referer || '';
+    let gameData;
+
+    if (isDemo) {
+      gameData = await fundistService.startDemoSession(
+        effectiveGameCode,
+        resolvedSystemId,
+        userIp,
+        language,
+        { referer, isMobile }
+      );
+    } else {
+      const userId = req.user.id;
+      const currency = req.user.currency || req.body.currency || 'RUB';
+      const extParam = `aurex_${userId}_${Date.now()}`;
+      gameData = await fundistService.startGameSession(
+        userId,
+        effectiveGameCode,
+        resolvedSystemId,
+        currency,
+        userIp,
+        language,
+        { extParam, referer, demo: false, isMobile }
+      );
+    }
     
-    console.log(`[start-game] OK: gameCode=${effectiveGameCode}, systemId=${resolvedSystemId}, html size=${gameData?.html?.length || 0}`);
+    console.log(`[start-game] OK: mode=${mode}, gameCode=${effectiveGameCode}, systemId=${resolvedSystemId}, html size=${gameData?.html?.length || 0}`);
     res.json({ success: true, data: gameData });
   } catch (error) {
     console.error(`[start-game] ERROR: ${error.message}`);
@@ -663,13 +669,13 @@ router.post('/start-game', auth, async (req, res) => {
 // Stores game HTML temporarily in memory keyed by token
 const gameFrameStore = new Map();
 
-router.post('/game-frame', auth, async (req, res) => {
+router.post('/game-frame', optionalAuth, async (req, res) => {
   try {
     const { html } = req.body;
     if (!html) return res.status(400).json({ success: false, error: 'Missing html' });
     
     const token = `gf_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
-    gameFrameStore.set(token, { html, created: Date.now(), userId: req.user.id });
+    gameFrameStore.set(token, { html, created: Date.now(), userId: req.user?.id || 'demo' });
     console.log(`[game-frame] POST: stored token=${token}, html size=${html.length}, store size=${gameFrameStore.size}`);
     
     // Cleanup old entries (> 10 min)

@@ -49,14 +49,16 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
       setLoadError('');
 
       try {
-        const currency = (user as any)?.currency || 'RUB';
-        const resp = await axios.post('/api/slots/start-game', {
+        const payload: any = {
           gameCode: game.pageCode || game.id,
           systemId: (game as any).systemId,
-          currency,
           language: 'ru',
           mode
-        });
+        };
+        if (mode === 'real') {
+          payload.currency = (user as any)?.currency || 'RUB';
+        }
+        const resp = await axios.post('/api/slots/start-game', payload);
 
         const html = resp.data?.data?.html;
         if (!html) throw new Error('Сервер не вернул HTML-фрагмент');

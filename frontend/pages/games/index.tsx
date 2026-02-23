@@ -70,9 +70,18 @@ export default function GamesPage() {
 
   // Game handlers
   const handleGamePlay = (gameData: any) => {
+    const requestedMode = gameData.mode || 'real';
+    // Non-authenticated users clicking "Play" → redirect to login
+    if (!isAuthenticated && requestedMode === 'real') {
+      toast.error('Войдите, чтобы играть на реальные деньги', {
+        style: { background: '#1F2937', color: '#fff', border: '1px solid #D4AF37' },
+        icon: '🔒',
+      });
+      setTimeout(() => router.push('/login'), 1500);
+      return;
+    }
     setSelectedGame(gameData);
-    // Default to 'real' for logged-in users, 'demo' for guests
-    setGameMode(gameData.mode || (isAuthenticated ? 'real' : 'demo'));
+    setGameMode(requestedMode);
     setIsGameModalOpen(true);
   };
 
