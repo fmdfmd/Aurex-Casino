@@ -593,14 +593,15 @@ router.post('/start-game', auth, async (req, res) => {
 
     // Use MobilePageCode if on mobile device
     let effectiveGameCode = gameCode;
-    if (isMobile && !systemIdFromClient) {
+    if (isMobile) {
       const apiData = await fundistService.getGamesList();
       const game = Array.isArray(apiData?.games)
         ? apiData.games.find((g) =>
             String(g.PageCode) === String(gameCode) || String(g.ID) === String(gameCode)
           )
         : null;
-      if (game?.MobilePageCode) {
+      if (game?.MobilePageCode && game.MobilePageCode !== gameCode) {
+        console.log(`[start-game] Mobile: ${gameCode} → ${game.MobilePageCode}`);
         effectiveGameCode = game.MobilePageCode;
       }
     }
