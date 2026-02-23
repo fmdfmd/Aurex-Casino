@@ -60,7 +60,14 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         const token = frameResp.data?.token;
         if (!token) throw new Error('Не удалось создать игровую сессию');
 
-        setGameFrameUrl(`/api/slots/game-frame/${token}`);
+        const frameUrl = `/api/slots/game-frame/${token}`;
+
+        if (html.includes('check') && html.includes('wscenter') && html.includes("createElement('iframe')")) {
+          window.open(frameUrl, '_blank');
+          setLoadError('__opened__');
+        } else {
+          setGameFrameUrl(frameUrl);
+        }
       } catch (e: any) {
         console.error('Failed to start game:', e);
         const msg = e?.response?.data?.error || e?.message || 'Не удалось запустить игру';
@@ -113,6 +120,17 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto mb-4"></div>
               <p className="text-gray-400 text-sm">Загрузка игры...</p>
+            </div>
+          </div>
+        ) : loadError === '__opened__' ? (
+          <div className="flex items-center justify-center h-full">
+            <div className="text-center px-6 max-w-md">
+              <div className="text-yellow-500 text-5xl mb-4">🎮</div>
+              <p className="text-white font-bold text-lg mb-2">Игра открыта в новой вкладке</p>
+              <p className="text-gray-400 text-sm mb-6">Если вкладка не открылась, разрешите всплывающие окна для этого сайта</p>
+              <button onClick={onClose} className="px-8 py-3 bg-yellow-500 text-black rounded-xl font-bold text-sm">
+                Назад к играм
+              </button>
             </div>
           </div>
         ) : loadError ? (
