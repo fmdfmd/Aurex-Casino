@@ -149,6 +149,18 @@ const ACTIVATED_PROVIDERS = new Set([
   '818',  // YGRGames
   '953',  // Yggdrasil
   '813',  // iMoon
+  // --- Alt IDs (same providers, different catalog system IDs) ---
+  '835',  // Kaga (alt of 898)
+  '865',  // Habanero (alt of 976)
+  '860',  // PLS Gaming (alt of 412)
+  '987',  // TomHorn (alt of 422)
+  // --- Additional providers (may or may not be activated by SG) ---
+  '864',  // EurasianGaming
+  '896',  // OnlyPlay
+  '914',  // BeeFee
+  '854',  // Betconstruct
+  '816',  // InOut
+  '974',  // Kiron
   // --- Pending activation (add here when SoftGamings confirms) ---
   // '960',  // PragmaticPlay
   // '913',  // PragmaticPlayLive
