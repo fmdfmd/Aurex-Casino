@@ -842,8 +842,8 @@ async function processTelegramAuth(telegramData) {
 
     // Check referral code
     let referredBy = null;
-    if (data.referralCode) {
-      const refResult = await pool.query('SELECT id FROM users WHERE referral_code = $1', [data.referralCode]);
+    if (telegramData.referralCode) {
+      const refResult = await pool.query('SELECT id FROM users WHERE referral_code = $1', [telegramData.referralCode]);
       if (refResult.rows.length > 0) referredBy = refResult.rows[0].id;
     }
 
