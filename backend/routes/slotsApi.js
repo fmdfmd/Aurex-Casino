@@ -808,8 +808,9 @@ router.all('/ext-proxy', async (req, res) => {
 
       // Inject comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver, new Image()
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
+      const serverHost = req.get('host') || 'aurex.casino';
       const inj = `<script>(function(){` +
-        `var P='/api/slots/ext-proxy?u=',H=location.host,O='${origin}',B='${escapedBaseDir}';` +
+        `var P='/api/slots/ext-proxy?u=',H=location.host||'${serverHost}',O='${origin}',B='${escapedBaseDir}';` +
         `function px(u){if(typeof u!='string')return u;` +
         `if(u.indexOf('://')>=0&&u.indexOf(H)<0)return P+encodeURIComponent(u);` +
         `if(u.indexOf('://')<0&&u.charAt(0)==='/'&&u.indexOf('/api/slots/')!==0)return P+encodeURIComponent(O+u);` +
@@ -927,8 +928,9 @@ router.get('/game-frame/:token', (req, res) => {
   );
 
   // Comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver
+  const gfHost = req.get('host') || 'aurex.casino';
   const interceptor = `<script>(function(){
-var P='/api/slots/ext-proxy?u=',H=location.host;
+var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
 function px(u){if(typeof u!='string'||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
 var xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
