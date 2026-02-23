@@ -170,6 +170,7 @@ const defaultPromotionsConfig = {
 };
 
 const defaultReferralConfig = {
+  commissionModel: 'GGR',
   tiers: [
     { level: 1, name: 'Новичок', requiredReferrals: 0, commissionPercent: 10, bonus: 0 },
     { level: 2, name: 'Партнёр', requiredReferrals: 5, commissionPercent: 12, bonus: 1000 },
@@ -177,7 +178,8 @@ const defaultReferralConfig = {
     { level: 4, name: 'Мастер', requiredReferrals: 30, commissionPercent: 18, bonus: 15000 },
     { level: 5, name: 'Легенда', requiredReferrals: 50, commissionPercent: 20, bonus: 50000 }
   ],
-  minWithdrawal: 500
+  minWithdrawal: 500,
+  bloggerContact: 'https://t.me/pavel_aurex',
 };
 
 const defaultSupportConfig = {

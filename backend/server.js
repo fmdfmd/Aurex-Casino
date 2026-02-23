@@ -323,6 +323,30 @@ server.listen(PORT, () => {
   
   setInterval(processWeeklyCashbackAuto, 60 * 60 * 1000); // check every hour
   setTimeout(processWeeklyCashbackAuto, 10000); // check on startup too
+
+  // Weekly referral GGR commission — process on Monday alongside cashback
+  const { processWeeklyReferralGGR } = require('./routes/referral');
+  let lastReferralWeek = null;
+
+  async function processWeeklyReferralAuto() {
+    const now = new Date();
+    if (now.getDay() !== 1 || now.getHours() !== 0) return;
+
+    const weekKey = `ref-${now.getFullYear()}-W${Math.ceil((now.getTime() - new Date(now.getFullYear(), 0, 1).getTime()) / 604800000)}`;
+    if (lastReferralWeek === weekKey) return;
+
+    console.log('[Referral] Auto-processing weekly GGR commissions...');
+    try {
+      const result = await processWeeklyReferralGGR(pool);
+      lastReferralWeek = weekKey;
+      console.log(`[Referral] Done: ${result.processed} referrers, total ₽${result.totalCommission.toFixed(2)}`);
+    } catch (err) {
+      console.error('[Referral] Auto-process error:', err.message);
+    }
+  }
+
+  setInterval(processWeeklyReferralAuto, 60 * 60 * 1000);
+  setTimeout(processWeeklyReferralAuto, 12000);
 });
 
 module.exports = app;
