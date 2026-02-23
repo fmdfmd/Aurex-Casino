@@ -304,18 +304,32 @@ router.get('/games', async (req, res) => {
       });
       console.log(`[games] Filtered: ${apiData.games.length} total → ${activatedGames.length} activated`);
 
+      // Force correct display names (Fundist returns outdated/internal names)
+      const PROVIDER_RENAME = {
+        'Booongo': '3 Oaks Gaming',
+        'MGAsia': 'Microgaming',
+        'CTGaming': 'CT Interactive',
+        'EvoSW': 'Evolution',
+        'EvoOSS': 'NetEnt / Red Tiger',
+        'RAWGames': 'RAW iGaming',
+        'VAGaming': 'Victory Ark Gaming',
+        'IMoon': 'iMoon',
+      };
+
       activatedGames.forEach(game => {
         const merchantId = String(game.MerchantID || game.System || '');
         const merchantsName = merchants[merchantId]?.Name;
         const isPlaceholder = typeof merchantsName === 'string' && /^(Merchant|Provider)\s+\d+$/.test(merchantsName);
 
-        const merchantName =
+        let merchantName =
           (!isPlaceholder ? merchantsName : null) ||
           game.MerchantName ||
           game.SubMerchantName ||
           merchantFallback[merchantId] ||
           merchantsName ||
           (merchantId ? `Provider ${merchantId}` : 'Unknown');
+
+        merchantName = PROVIDER_RENAME[merchantName] || merchantName;
 
         // Handle image: FullList has ImageFullPath, List has ImageURL (relative)
         let imageUrl = game.ImageFullPath;
