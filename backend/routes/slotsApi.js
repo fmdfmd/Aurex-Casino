@@ -684,6 +684,22 @@ router.post('/game-frame', auth, async (req, res) => {
   }
 });
 
+// Proxy for check5.wscenter.xyz — blocked by Russian ISPs.
+// The browser calls our proxy instead; we forward to wscenter and return the response.
+router.get('/check-proxy', async (req, res) => {
+  const target = req.query.u;
+  if (!target || !target.startsWith('https://')) {
+    return res.status(400).json({ error: 'bad url' });
+  }
+  try {
+    const resp = await axios.get(target, { timeout: 10000 });
+    res.json(resp.data);
+  } catch (e) {
+    console.log(`[check-proxy] Failed: ${e.message}`);
+    res.status(502).json({ error: 'upstream error' });
+  }
+});
+
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
   console.log(`[game-frame] GET: token=${req.params.token}, found=${!!entry}, store size=${gameFrameStore.size}`);
@@ -693,23 +709,29 @@ router.get('/game-frame/:token', (req, res) => {
 
   let html = entry.html;
 
-  // For providers using check5.wscenter.xyz: the HTML calls a check URL,
-  // then creates an iframe with the returned game URL. This causes double-
-  // nested iframes → third-party cookie blocking → black screen.
-  // Fix: replace iframe creation with direct page navigation so the check
-  // URL runs client-side (preserving user IP/geo) but no nested iframe.
+  // Two fixes for providers using check5.wscenter.xyz:
+  // 1. Intercept XHR to wscenter (blocked by Russian ISPs) → proxy through our server
+  // 2. Replace iframe creation with direct navigation (avoid nested iframes)
   if (html.includes('wscenter') && html.includes("createElement('iframe')")) {
     html = html.replace(
       /var\s+ifr\s*=\s*document\.createElement\('iframe'\);[\s\S]*?\.appendChild\(ifr\);/,
       'window.location.replace(resp.data);'
     );
-    console.log(`[game-frame] Patched HTML: replaced iframe creation with redirect`);
+    console.log(`[game-frame] Patched HTML: proxied check URL + replaced iframe`);
   }
+
+  const wsProxy = html.includes('wscenter') ? `<script>
+(function(){var o=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){
+if(typeof u==='string'&&u.indexOf('wscenter.xyz')!==-1)u='/api/slots/check-proxy?u='+encodeURIComponent(u);
+return o.apply(this,[m,u].concat([].slice.call(arguments,2)));};})();
+</script>` : '';
 
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+${wsProxy}
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
 iframe,object,embed,div.game-container,.game-frame{
