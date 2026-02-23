@@ -73,7 +73,9 @@ const determineCategory = (game, categoriesMap) => {
 // Games from providers NOT in this set are hidden from the catalog.
 // When SoftGamings activates a new provider, add its system ID here.
 const ACTIVATED_PROVIDERS = new Set([
+  '312',  // 7777Gaming
   '924',  // 3 Oaks Gaming
+  '842',  // NucleusGaming
   '845',  // AGTSoftware
   '967',  // AsiaGaming
   '773',  // Aviator Studio

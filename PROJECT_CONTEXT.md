@@ -914,15 +914,15 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [x] Правила и условия (/terms) — 11 разделов: регистрация, депозиты/выводы, бонусы, честность игр, ответственная игра, запрещённые действия, территориальные ограничения, разрешение споров, интеллектуальная собственность
 
 ### В процессе
-- [x] Переход на продакшн Fundist — **ПРОД АКТИВЕН (пре-лайв)**, 71 провайдер работает
-- [ ] Ожидание активации провайдеров от SoftGamings (2-3 недели, до месяца):
+- [x] Переход на продакшн Fundist — **ЛАЙВ! 73 провайдера активны** (22.02.2026)
+- [ ] Ожидание активации провайдеров от SoftGamings (в процессе, ~7 шт):
   - PragmaticPlay (960) — ~555 игр
   - PragmaticPlayLive (913) — ~22 игры
   - HacksawGaming (850) — ~215 игр
   - Play'n GO (944) — ~385 игр
   - Endorphina (973) — ~178 игр
   - EvoOSS (892) — ~332 игры (NetEnt/RedTiger bundle)
-- [ ] Финальные тесты на проде (100 EUR лимит), уведомить SG за 24ч до лайва (не в пятницу)
+  - + ещё 1 провайдер
 - [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
 - [ ] Добавить `OPENROUTER_API_KEY` в Railway env vars бэкенда
 - [ ] Настроить `AVEPAY_CALLBACK_URL` на Railway (напрямую на backend URL)
@@ -970,4 +970,4 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ---
 
-*Последнее обновление: 23 февраля 2026 — Trust meta-теги (JSON-LD, canonical, OG fix), расширены /privacy (11 разделов) и /terms (11 разделов), исправлены URL aurex.io → aurex.casino*
+*Последнее обновление: 23 февраля 2026 — ЛАЙВ! 73 провайдера активны, неактивные скрыты из каталога, ожидание PragmaticPlay/Hacksaw/PlaynGO/Endorphina (~7 шт)*
