@@ -616,6 +616,11 @@ router.get('/google', (req, res) => {
     return res.status(500).json({ success: false, error: 'Google OAuth не настроен' });
   }
 
+  // Save referral code in cookie so it survives the OAuth redirect
+  if (req.query.ref) {
+    res.cookie('aurex_ref', req.query.ref, { maxAge: 30 * 60 * 1000, httpOnly: true, sameSite: 'lax' });
+  }
+
   const fullCallbackUrl = getGoogleCallbackUrl();
 
   const params = new URLSearchParams({
@@ -742,10 +747,19 @@ router.get('/google/callback', async (req, res) => {
       const odid = `AUREX-${Date.now().toString(36).toUpperCase()}`;
       const referralCode = `REF-${username.toUpperCase().slice(0, 6)}${crypto.randomBytes(3).toString('hex').toUpperCase()}`;
 
+      // Check referral from cookie
+      let referredBy = null;
+      const refCode = req.cookies?.aurex_ref;
+      if (refCode) {
+        const refResult = await pool.query('SELECT id FROM users WHERE referral_code = $1', [refCode]);
+        if (refResult.rows.length > 0) referredBy = refResult.rows[0].id;
+        res.clearCookie('aurex_ref');
+      }
+
       const insertResult = await pool.query(
-        `INSERT INTO users (odid, username, email, google_id, google_email, first_name, last_name, referral_code, balance, bonus_balance, vip_level, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 0, 0, 1, true) RETURNING *`,
-        [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode]
+        `INSERT INTO users (odid, username, email, google_id, google_email, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true) RETURNING *`,
+        [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode, referredBy]
       );
       user = insertResult.rows[0];
 
@@ -825,10 +839,17 @@ async function processTelegramAuth(telegramData) {
     const existingUsername = await pool.query('SELECT id FROM users WHERE username = $1', [username]);
     const finalUsername = existingUsername.rows.length > 0 ? `${username}_${randomSuffix}` : username;
 
+    // Check referral code
+    let referredBy = null;
+    if (data.referralCode) {
+      const refResult = await pool.query('SELECT id FROM users WHERE referral_code = $1', [data.referralCode]);
+      if (refResult.rows.length > 0) referredBy = refResult.rows[0].id;
+    }
+
     const insertResult = await pool.query(
-      `INSERT INTO users (odid, username, telegram_id, first_name, last_name, referral_code, balance, bonus_balance, vip_level, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, 0, 0, 1, true) RETURNING *`,
-      [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode]
+      `INSERT INTO users (odid, username, telegram_id, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 1, true) RETURNING *`,
+      [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode, referredBy]
     );
     user = insertResult.rows[0];
 
@@ -865,8 +886,14 @@ router.post('/telegram', async (req, res) => {
 router.get('/telegram/callback', async (req, res) => {
   const frontendUrl = config.server.frontendUrl;
   try {
-    const user = await processTelegramAuth(req.query);
+    // Pass referral code from cookie to processTelegramAuth
+    const refCode = req.cookies?.aurex_ref;
+    const authData = { ...req.query };
+    if (refCode) authData.referralCode = refCode;
+
+    const user = await processTelegramAuth(authData);
     const token = generateToken(user.id);
+    res.clearCookie('aurex_ref');
     res.redirect(`${frontendUrl}/auth/callback?token=${encodeURIComponent(token)}`);
   } catch (error) {
     console.error('Telegram callback error:', error);

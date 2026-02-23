@@ -223,7 +223,10 @@ export default function LoginPage() {
                     {/* Google */}
                     <button
                       type="button"
-                      onClick={() => { window.location.href = '/api/auth/google'; }}
+                      onClick={() => {
+                        const ref = new URLSearchParams(window.location.search).get('ref') || '';
+                        window.location.href = `/api/auth/google${ref ? `?ref=${ref}` : ''}`;
+                      }}
                       className="w-full flex items-center justify-center gap-3 py-3 px-4 bg-white hover:bg-gray-100 text-gray-800 font-medium rounded-lg transition-colors"
                     >
                       <svg className="w-5 h-5" viewBox="0 0 24 24">

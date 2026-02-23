@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 const compression = require('compression');
+const cookieParser = require('cookie-parser');
 const rateLimit = require('express-rate-limit');
 // MongoDB removed - using PostgreSQL only
 const socketIo = require('socket.io');
@@ -46,6 +47,7 @@ const io = socketIo(server, {
 // Middleware
 app.use(helmet());
 app.use(compression());
+app.use(cookieParser());
 app.use(morgan('combined'));
 app.use(cors({
   origin: process.env.FRONTEND_URL || "http://localhost:3000",
