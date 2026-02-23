@@ -652,6 +652,30 @@ router.post('/start-game', auth, async (req, res) => {
     );
     
     console.log(`[start-game] OK: gameCode=${effectiveGameCode}, systemId=${resolvedSystemId}, html size=${gameData?.html?.length || 0}`);
+
+    // Try to resolve the direct game URL from provider's check service.
+    // This avoids double-nested iframes that break third-party cookies
+    // (Thunderkick, Yggdrasil, etc.).
+    if (gameData?.html) {
+      const checkMatch = gameData.html.match(/var\s+checkurl\s*=\s*'(https:\/\/[^']+)'/);
+      if (checkMatch) {
+        const checkBase = checkMatch[1];
+        const ref = encodeURI('https://aurex.casino');
+        const checkUrl = checkBase + '&ref=' + ref;
+        try {
+          const axios = require('axios');
+          const checkResp = await axios.get(checkUrl, { timeout: 10000 });
+          const directUrl = checkResp.data?.data;
+          if (directUrl && directUrl.startsWith('http')) {
+            console.log(`[start-game] Resolved direct game URL: ${directUrl.substring(0, 100)}...`);
+            return res.json({ success: true, data: { ...gameData, gameUrl: directUrl } });
+          }
+        } catch (checkErr) {
+          console.log(`[start-game] Check URL resolve failed: ${checkErr.message}, falling back to HTML`);
+        }
+      }
+    }
+
     res.json({ success: true, data: gameData });
   } catch (error) {
     console.error(`[start-game] ERROR: ${error.message}`);
