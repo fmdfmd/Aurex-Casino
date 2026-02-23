@@ -53,19 +53,14 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
           mode
         });
 
-        const gameUrl = resp.data?.data?.gameUrl;
-        if (gameUrl) {
-          setGameFrameUrl(gameUrl);
-        } else {
-          const html = resp.data?.data?.html;
-          if (!html) throw new Error('Сервер не вернул HTML-фрагмент');
+        const html = resp.data?.data?.html;
+        if (!html) throw new Error('Сервер не вернул HTML-фрагмент');
 
-          const frameResp = await axios.post('/api/slots/game-frame', { html });
-          const token = frameResp.data?.token;
-          if (!token) throw new Error('Не удалось создать игровую сессию');
+        const frameResp = await axios.post('/api/slots/game-frame', { html });
+        const token = frameResp.data?.token;
+        if (!token) throw new Error('Не удалось создать игровую сессию');
 
-          setGameFrameUrl(`/api/slots/game-frame/${token}`);
-        }
+        setGameFrameUrl(`/api/slots/game-frame/${token}`);
       } catch (e: any) {
         console.error('Failed to start game:', e);
         const msg = e?.response?.data?.error || e?.message || 'Не удалось запустить игру';

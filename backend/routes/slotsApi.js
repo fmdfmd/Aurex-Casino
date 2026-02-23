@@ -652,30 +652,6 @@ router.post('/start-game', auth, async (req, res) => {
     );
     
     console.log(`[start-game] OK: gameCode=${effectiveGameCode}, systemId=${resolvedSystemId}, html size=${gameData?.html?.length || 0}`);
-
-    // Try to resolve the direct game URL from provider's check service.
-    // This avoids double-nested iframes that break third-party cookies
-    // (Thunderkick, Yggdrasil, etc.).
-    if (gameData?.html) {
-      const checkMatch = gameData.html.match(/var\s+checkurl\s*=\s*'(https:\/\/[^']+)'/);
-      if (checkMatch) {
-        const checkBase = checkMatch[1];
-        const ref = encodeURI('https://aurex.casino');
-        const checkUrl = checkBase + '&ref=' + ref;
-        try {
-          const axios = require('axios');
-          const checkResp = await axios.get(checkUrl, { timeout: 10000 });
-          const directUrl = checkResp.data?.data;
-          if (directUrl && directUrl.startsWith('http')) {
-            console.log(`[start-game] Resolved direct game URL: ${directUrl.substring(0, 100)}...`);
-            return res.json({ success: true, data: { ...gameData, gameUrl: directUrl } });
-          }
-        } catch (checkErr) {
-          console.log(`[start-game] Check URL resolve failed: ${checkErr.message}, falling back to HTML`);
-        }
-      }
-    }
-
     res.json({ success: true, data: gameData });
   } catch (error) {
     console.error(`[start-game] ERROR: ${error.message}`);
@@ -732,26 +708,6 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
-<script>
-// Prevent double-nested iframes that break third-party cookies.
-// When the provider script creates a nested iframe with an external game URL,
-// redirect this page to that URL instead — keeping only one iframe level.
-(function(){
-  var redirected = false;
-  var origAppendChild = Element.prototype.appendChild;
-  Element.prototype.appendChild = function(child) {
-    if (!redirected && child && child.tagName === 'IFRAME') {
-      var src = child.getAttribute && child.getAttribute('src');
-      if (src && /^https?:\\/\\//.test(src) && src.indexOf(location.hostname) === -1) {
-        redirected = true;
-        window.location.replace(src);
-        return child;
-      }
-    }
-    return origAppendChild.call(this, child);
-  };
-})();
-</script>
 </head><body>${entry.html}</body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
