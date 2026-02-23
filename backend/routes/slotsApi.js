@@ -769,6 +769,9 @@ router.all('/ext-proxy', async (req, res) => {
     if (setCookies) res.setHeader('Set-Cookie', setCookies);
     res.removeHeader('X-Frame-Options');
     res.removeHeader('Content-Security-Policy');
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
 
     // Only rewrite actual HTML pages, not API responses that happen to have text/html
     const body = Buffer.from(up.data).toString('utf-8');
@@ -833,6 +836,21 @@ router.all('/ext-proxy', async (req, res) => {
         `if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{` +
         `set:function(v){return scrDesc.set.call(this,px(v));},` +
         `get:scrDesc.get,configurable:true});}` +
+        // Override img.src setter — proxy external images (fixes white screen without VPN)
+        `var imgDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');` +
+        `if(imgDesc&&imgDesc.set){Object.defineProperty(HTMLImageElement.prototype,'src',{` +
+        `set:function(v){return imgDesc.set.call(this,px(v));},` +
+        `get:imgDesc.get,configurable:true});}` +
+        // Override link.href setter — proxy external CSS/fonts
+        `var linkDesc=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,'href');` +
+        `if(linkDesc&&linkDesc.set){Object.defineProperty(HTMLLinkElement.prototype,'href',{` +
+        `set:function(v){return linkDesc.set.call(this,px(v));},` +
+        `get:linkDesc.get,configurable:true});}` +
+        // Override audio/video src
+        `var audDesc=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');` +
+        `if(audDesc&&audDesc.set){Object.defineProperty(HTMLMediaElement.prototype,'src',{` +
+        `set:function(v){return audDesc.set.call(this,px(v));},` +
+        `get:audDesc.get,configurable:true});}` +
         // Override setAttribute to catch src/href set via setAttribute
         `var origSA=Element.prototype.setAttribute;` +
         `Element.prototype.setAttribute=function(n,v){` +
@@ -841,10 +859,17 @@ router.all('/ext-proxy', async (req, res) => {
         // MutationObserver for dynamically added elements
         `if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){` +
         `m.addedNodes.forEach(function(n){if(n.nodeType===1){` +
-        `if(n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0)` +
-        `{ifrDesc.set.call(n,px(n.src));}` +
-        `if(n.tagName==='SCRIPT'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0)` +
-        `{n.src=px(n.src);}` +
+        `var s=n.src,h2=n.href,t=n.tagName;` +
+        `if(t==='IFRAME'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){ifrDesc.set.call(n,px(s));}` +
+        `if(t==='SCRIPT'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}` +
+        `if(t==='IMG'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){imgDesc.set.call(n,px(s));}` +
+        `if(t==='LINK'&&h2&&h2.indexOf('://')>=0&&h2.indexOf(H)<0){linkDesc.set.call(n,px(h2));}` +
+        `if((t==='AUDIO'||t==='VIDEO'||t==='SOURCE')&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}` +
+        `n.querySelectorAll&&n.querySelectorAll('img[src],script[src],link[href],audio[src],video[src],source[src]').forEach(function(c){` +
+        `var cs=c.getAttribute('src'),ch=c.getAttribute('href');` +
+        `if(cs&&cs.indexOf('://')>=0&&cs.indexOf(H)<0)c.setAttribute('src',px(cs));` +
+        `if(ch&&ch.indexOf('://')>=0&&ch.indexOf(H)<0)c.setAttribute('href',px(ch));` +
+        `});` +
         `}});});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}` +
         // Override Blob constructor to inject interceptors into HTML blob URLs
         `var OB=window.Blob;` +
@@ -861,6 +886,15 @@ router.all('/ext-proxy', async (req, res) => {
         `var sd=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,"src");` +
         `if(sd&&sd.set){Object.defineProperty(HTMLScriptElement.prototype,"src",{` +
         `set:function(v){return sd.set.call(this,bpx(v));},get:sd.get,configurable:true});}` +
+        `var id=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");` +
+        `if(id&&id.set){Object.defineProperty(HTMLImageElement.prototype,"src",{` +
+        `set:function(v){return id.set.call(this,bpx(v));},get:id.get,configurable:true});}` +
+        `var ld=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,"href");` +
+        `if(ld&&ld.set){Object.defineProperty(HTMLLinkElement.prototype,"href",{` +
+        `set:function(v){return ld.set.call(this,bpx(v));},get:ld.get,configurable:true});}` +
+        `var md=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,"src");` +
+        `if(md&&md.set){Object.defineProperty(HTMLMediaElement.prototype,"src",{` +
+        `set:function(v){return md.set.call(this,bpx(v));},get:md.get,configurable:true});}` +
         `var sa=Element.prototype.setAttribute;` +
         `Element.prototype.setAttribute=function(n,v){` +
         `if((n==="src"||n==="href")&&typeof v==="string")v=bpx(v);` +
@@ -883,6 +917,28 @@ router.all('/ext-proxy', async (req, res) => {
 
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.send(h);
+    } else if (ct.toLowerCase().includes('text/css')) {
+      let css = body;
+      const cssBase = target.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
+      css = css.replace(
+        /url\(\s*(["']?)(https?:\/\/[^"')]+)\1\s*\)/gi,
+        (_, q, u) => `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent(u)}${q})`
+      );
+      css = css.replace(
+        /url\(\s*(["']?)(\/\/[^"')]+)\1\s*\)/gi,
+        (_, q, u) => `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent('https:' + u)}${q})`
+      );
+      css = css.replace(
+        /url\(\s*(["']?)(?!https?:|\/\/|data:|blob:|\/api\/slots\/)([^"')]+)\1\s*\)/gi,
+        (_, q, rel) => {
+          try {
+            const abs = new URL(rel.trim(), cssBase).href;
+            return `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent(abs)}${q})`;
+          } catch { return `url(${q}${rel}${q})`; }
+        }
+      );
+      res.setHeader('Content-Type', 'text/css; charset=utf-8');
+      res.send(css);
     } else {
       res.status(up.status).send(up.data);
     }
@@ -942,12 +998,31 @@ set:function(v){return ifrDesc.set.call(this,px(v));},get:ifrDesc.get,configurab
 var scrDesc=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');
 if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{
 set:function(v){return scrDesc.set.call(this,px(v));},get:scrDesc.get,configurable:true});}
+var imgDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
+if(imgDesc&&imgDesc.set){Object.defineProperty(HTMLImageElement.prototype,'src',{
+set:function(v){return imgDesc.set.call(this,px(v));},get:imgDesc.get,configurable:true});}
+var linkDesc=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,'href');
+if(linkDesc&&linkDesc.set){Object.defineProperty(HTMLLinkElement.prototype,'href',{
+set:function(v){return linkDesc.set.call(this,px(v));},get:linkDesc.get,configurable:true});}
+var audDesc=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');
+if(audDesc&&audDesc.set){Object.defineProperty(HTMLMediaElement.prototype,'src',{
+set:function(v){return audDesc.set.call(this,px(v));},get:audDesc.get,configurable:true});}
 var origSA=Element.prototype.setAttribute;
 Element.prototype.setAttribute=function(n,v){
 if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
 return origSA.call(this,n,v);};
 if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-if(n.nodeType===1&&n.tagName==='IFRAME'&&n.src&&n.src.indexOf('://')>=0&&n.src.indexOf(H)<0){ifrDesc.set.call(n,px(n.src));}
+if(n.nodeType===1){var s=n.src,h2=n.href,t=n.tagName;
+if(t==='IFRAME'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){ifrDesc.set.call(n,px(s));}
+if(t==='SCRIPT'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}
+if(t==='IMG'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){imgDesc.set.call(n,px(s));}
+if(t==='LINK'&&h2&&h2.indexOf('://')>=0&&h2.indexOf(H)<0){linkDesc.set.call(n,px(h2));}
+if((t==='AUDIO'||t==='VIDEO'||t==='SOURCE')&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}
+n.querySelectorAll&&n.querySelectorAll('img[src],script[src],link[href],audio[src],video[src],source[src]').forEach(function(c){
+var cs=c.getAttribute('src'),ch=c.getAttribute('href');
+if(cs&&cs.indexOf('://')>=0&&cs.indexOf(H)<0)c.setAttribute('src',px(cs));
+if(ch&&ch.indexOf('://')>=0&&ch.indexOf(H)<0)c.setAttribute('href',px(ch));
+});}
 });});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}
 var OB=window.Blob;
 var blobInj='<script>(function(){'+
@@ -963,6 +1038,15 @@ var blobInj='<script>(function(){'+
 'var sd=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,"src");'+
 'if(sd&&sd.set){Object.defineProperty(HTMLScriptElement.prototype,"src",{'+
 'set:function(v){return sd.set.call(this,bpx(v));},get:sd.get,configurable:true});}'+
+'var id=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");'+
+'if(id&&id.set){Object.defineProperty(HTMLImageElement.prototype,"src",{'+
+'set:function(v){return id.set.call(this,bpx(v));},get:id.get,configurable:true});}'+
+'var ld=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,"href");'+
+'if(ld&&ld.set){Object.defineProperty(HTMLLinkElement.prototype,"href",{'+
+'set:function(v){return ld.set.call(this,bpx(v));},get:ld.get,configurable:true});}'+
+'var md=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,"src");'+
+'if(md&&md.set){Object.defineProperty(HTMLMediaElement.prototype,"src",{'+
+'set:function(v){return md.set.call(this,bpx(v));},get:md.get,configurable:true});}'+
 'var sa=Element.prototype.setAttribute;'+
 'Element.prototype.setAttribute=function(n,v){'+
 'if((n==="src"||n==="href")&&typeof v==="string")v=bpx(v);'+
