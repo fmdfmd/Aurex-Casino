@@ -73,10 +73,13 @@ const determineCategory = (game, categoriesMap) => {
 // Games from providers NOT in this set are hidden from the catalog.
 // When SoftGamings activates a new provider, add its system ID here.
 const ACTIVATED_PROVIDERS = new Set([
-  '312',  // 7777Gaming
+  '312',  // 7777Gaming (SG ID)
+  '843',  // 7777Gaming (catalog ID)
   '924',  // 3 Oaks Gaming
   '842',  // NucleusGaming
   '845',  // AGTSoftware
+  '892',  // EvoOSS — NetEnt + RedTiger bundle (catalog ID)
+  '940',  // Evoplay (catalog ID)
   '967',  // AsiaGaming
   '773',  // Aviator Studio
   '791',  // AviatrixDirect
@@ -182,40 +185,60 @@ router.get('/games', async (req, res) => {
     // ONLY games from ACTIVATED providers. When SoftGamings activates
     // Pragmatic/Hacksaw/PlaynGO/Endorphina — add their games back here.
     const topGameCodes = new Set([
-      // === Push Gaming (911) ===
+      // === Spribe (895) — crash/instant ===
+      'aviator',                                          // Aviator
+      'mines',                                            // Mines
+      'plinko',                                           // Plinko
+
+      // === Push Gaming (911) — топ слоты ===
       'bigbamboo-01',                                     // Big Bamboo
-      'firehopper-01',                                    // Fire Hopper
+      'jamminjars',                                       // Jammin' Jars
       'razorshark',                                       // Razor Shark
       'razorreturns-01',                                  // Razor Returns
+      'firehopper-01',                                    // Fire Hopper
+      'fatrabbit1-01',                                    // Fat Rabbit
+      'wildswarm',                                        // Wild Swarm
       'retrotapes-01',                                    // Retro Tapes
-      'retrosweets-01',                                   // Retro Sweets
-      'mysteryofthenile-96',                              // Mystery of the Nile
       'dragonhopper-01',                                  // Dragon Hopper
 
       // === BGaming (901) ===
       'BonanzaBillion',                                   // Bonanza Billion
+      'FireLightning',                                    // Fire Lightning
+      'BookOfCats',                                       // Book of Cats
+      'CandyMonsta',                                      // Candy Monsta
+      'LuckyLadyMoon',                                    // Lady Wolf Moon
+      'AztecMagicDeluxe',                                 // Aztec Magic Deluxe
       'WildWestTrueways',                                 // Wild West TRUEWAYS
-      'SakuraRiches60',                                   // Sakura Riches 60
 
-      // === NetEnt (421) / RedTiger (420) ===
-      'rabidrandy:rabidrandyr96000',                      // Rabid Randy
+      // === NetEnt / RedTiger (892 EvoOSS) ===
       'deadoralive2:deadoralive20000',                    // Dead or Alive 2
+      'rabidrandy:rabidrandyr96000',                      // Rabid Randy
       'dragonslock:dragonslock00000',                     // Dragons Lock
 
       // === PG Soft (939) ===
       '1815268',                                          // Oishi Delights
 
-      // === Spribe (895) ===
-      'aviator',                                          // Aviator
-
-      // === Yggdrasil (953) ===
-      'vikings-go-berzerk-reloaded',                      // Vikings Go Berzerk Reloaded
-
-      // === BetSoft (991) ===
-      'TakeTheBank',                                      // Take the Bank
+      // === Belatra (956) ===
+      'buffalo',                                          // Big Wild Buffalo
+      'dragons_bonanza',                                  // Dragon's Bonanza
+      'wolf_thunder',                                     // Wolf Thunder
+      'golden_plinko',                                    // Golden Plinko
+      'towers',                                           // X Towers
 
       // === Thunderkick (920) ===
-      'pink-elephants-2',                                 // Pink Elephants 2
+      'tk-esqueleto-a',                                   // Esqueleto Explosivo
+      'tk-s1-g22',                                        // Midas Golden Touch
+      'tk-s1-g13',                                        // Pink Elephants
+
+      // === Yggdrasil (953) ===
+      '7329',                                             // Double Dragons
+      '7348',                                             // Lucha Maniacs
+
+      // === Kalamba (874) ===
+
+      // === Spinomenal (959) ===
+      'SlotMachine_DemiGods2',                            // Demi Gods 2
+      'SlotMachine_MajesticKing',                         // Majestic King
 
       // =============================================
       // === LIVE CASINO ===
@@ -228,25 +251,14 @@ router.get('/games', async (req, res) => {
       'roulette:InstantRo0000001',                        // Instant Roulette — Evolution
       'moneywheel:MOWDream00000001',                      // Dream Catcher — Evolution
       'lightningstorm:LightningStorm01',                  // Lightning Storm — Evolution
-      'stockmarket:StockMarket00001',                     // Stock Market — Evolution
-      'lightningdice:LightningDice001',                   // Lightning Dice — Evolution
       'deadoralivesaloon:doasaloon0000001',               // Dead or Alive: Saloon — Evolution
-      'crazypachinko:CrazyPachinko001',                   // Crazy Pachinko — Evolution
       'monopoly:Monopoly00000001',                        // MONOPOLY Live — Evolution
-      'extrachilliepicspins:ExChEpicSpins001',            // Extra Chilli Epic Spins — Evolution
-      'dragontiger:LightningDT00001',                     // Lightning Dragon Tiger — Evolution
-      'balloonrace:BalloonRace00001',                     // Balloon Race — Evolution
-      'reddoorroulette:RedDoorRoulette1',                 // Red Door Roulette — Evolution
+      'crazypachinko:CrazyPachinko001',                   // Crazy Pachinko — Evolution
+      'lightningdice:LightningDice001',                   // Lightning Dice — Evolution
       'baccarat:XXXtremeLB000001',                        // XXXtreme Lightning Baccarat — Evolution
       'blackjack:PowerInfiniteBJ1',                       // Power Infinite Blackjack — Evolution
-      'classicbetstackerbj:clabetstack00001',             // Bet Stacker Blackjack — Evolution
-      'bacbo:BacBo00000000001',                           // Bac Bo — Evolution
-      'baccarat:gwbaccarat000001',                        // Golden Wealth Baccarat — Evolution
       'rng-roulette:rng-rt-lightning',                    // First Person Lightning Roulette — Evolution
-      'rng-videopoker:FPVP000000000001',                  // First Person Video Poker — Evolution
       'rng-blackjack:rng-bj-standard0',                   // First Person Blackjack — Evolution
-      'rng-baccarat:rng-gwbaccarat00',                    // First Person Golden Wealth Baccarat — Evolution
-      'rng-roulette:rng-rt-xxxtreme1',                    // First Person XXXtreme Lightning Roulette — Evolution
     ]);
     const topGameOrder = [...topGameCodes];
 
