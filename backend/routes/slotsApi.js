@@ -691,6 +691,18 @@ router.get('/game-frame/:token', (req, res) => {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
   
+  // Replace nested iframe creation with direct navigation.
+  // Fundist HTML creates an iframe for providers like Thunderkick/Yggdrasil,
+  // but double-nesting breaks third-party cookies. By replacing appendChild
+  // with location.href, the game loads directly in our game-frame iframe.
+  let html = entry.html;
+  if (html.includes('createElement') && html.includes('appendChild')) {
+    html = html.replace(
+      /var\s+ifr\s*=\s*document\.createElement\('iframe'\);[\s\S]*?\.appendChild\(ifr\);/,
+      'window.location.href = resp.data;'
+    );
+  }
+
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -708,7 +720,7 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
-</head><body>${entry.html}</body></html>`;
+</head><body>${html}</body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
