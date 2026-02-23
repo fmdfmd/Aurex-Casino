@@ -165,9 +165,9 @@ router.post('/claim', auth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Пользователь не найден' });
     }
     
-    const earnings = parseFloat(userResult.rows[0]?.referral_earnings) || 0;
+    const prelimEarnings = parseFloat(userResult.rows[0]?.referral_earnings) || 0;
     
-    if (earnings < 100) {
+    if (prelimEarnings < 100) {
       return res.status(400).json({ 
         success: false, 
         message: 'Минимальная сумма для вывода: ₽100' 
@@ -175,21 +175,31 @@ router.post('/claim', auth, async (req, res) => {
     }
     
     const { withTransaction } = require('../utils/dbTransaction');
+    let claimedAmount = 0;
     await withTransaction(pool, async (client) => {
-      // Блокируем строку пользователя
-      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [req.user.id]);
+      const locked = await client.query(
+        'SELECT referral_earnings FROM users WHERE id = $1 FOR UPDATE',
+        [req.user.id]
+      );
+      claimedAmount = parseFloat(locked.rows[0]?.referral_earnings) || 0;
+      if (claimedAmount < 100) return;
       
       await client.query(
         'UPDATE users SET balance = balance + $1, referral_earnings = 0 WHERE id = $2',
-        [earnings, req.user.id]
+        [claimedAmount, req.user.id]
       );
       
       await client.query(
         `INSERT INTO transactions (user_id, type, amount, status, description)
          VALUES ($1, 'referral_bonus', $2, 'completed', 'Реферальное вознаграждение')`,
-        [req.user.id, earnings]
+        [req.user.id, claimedAmount]
       );
     });
+    
+    if (claimedAmount < 100) {
+      return res.status(400).json({ success: false, message: 'Минимальная сумма для вывода: ₽100' });
+    }
+    const earnings = claimedAmount;
     
     res.json({
       success: true,
@@ -253,16 +263,19 @@ async function processWeeklyReferralGGR(dbPool) {
     
     if (commission < 10) continue; // min 10 RUB
 
+    const referrerId = parseInt(row.referrer_id);
+    if (isNaN(referrerId)) continue;
+
     await withTransaction(dbPool, async (client) => {
-      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [row.referrer_id]);
+      await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [referrerId]);
       await client.query(
         'UPDATE users SET referral_earnings = referral_earnings + $1 WHERE id = $2',
-        [commission, row.referrer_id]
+        [commission, referrerId]
       );
       await client.query(
         `INSERT INTO transactions (user_id, type, amount, status, description)
          VALUES ($1, 'referral_commission', $2, 'completed', $3)`,
-        [row.referrer_id, commission, `GGR комиссия за неделю ${lastWeekStart.toISOString().slice(0,10)}`]
+        [referrerId, commission, `GGR комиссия за неделю ${lastWeekStart.toISOString().slice(0,10)}`]
       );
     });
 
