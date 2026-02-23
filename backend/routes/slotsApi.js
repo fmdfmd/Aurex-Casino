@@ -735,18 +735,22 @@ router.all('/ext-proxy', async (req, res) => {
   catch { return res.status(400).send('invalid url'); }
 
   try {
+    const fwdHeaders = {
+      'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+      'Accept': req.headers['accept'] || '*/*',
+      'Accept-Language': req.headers['accept-language'] || 'ru,en',
+      'Referer': parsedUrl.origin + '/',
+    };
+    if (req.headers['content-type']) fwdHeaders['Content-Type'] = req.headers['content-type'];
+    if (req.headers['cookie']) fwdHeaders['Cookie'] = req.headers['cookie'];
+
     const up = await axios({
       method: req.method === 'OPTIONS' ? 'GET' : req.method,
       url: target,
       data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
       timeout: 30000,
       responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-        'Accept': req.headers['accept'] || '*/*',
-        'Accept-Language': req.headers['accept-language'] || 'ru,en',
-        'Referer': parsedUrl.origin + '/',
-      },
+      headers: fwdHeaders,
       validateStatus: () => true,
       maxRedirects: 10,
     });
@@ -754,11 +758,18 @@ router.all('/ext-proxy', async (req, res) => {
     const ct = up.headers['content-type'] || '';
     if (ct) res.setHeader('Content-Type', ct);
     if (up.headers['cache-control']) res.setHeader('Cache-Control', up.headers['cache-control']);
+    // Forward Set-Cookie from upstream (game sessions)
+    const setCookies = up.headers['set-cookie'];
+    if (setCookies) res.setHeader('Set-Cookie', setCookies);
     res.removeHeader('X-Frame-Options');
     res.removeHeader('Content-Security-Policy');
 
-    if (ct.toLowerCase().includes('text/html')) {
-      let h = Buffer.from(up.data).toString('utf-8');
+    // Only rewrite actual HTML pages, not API responses that happen to have text/html
+    const body = Buffer.from(up.data).toString('utf-8');
+    const isRealHtml = ct.toLowerCase().includes('text/html') && body.trimStart().match(/^<!doctype|^<html/i);
+
+    if (isRealHtml) {
+      let h = body;
       const origin = parsedUrl.origin;
 
       // Rewrite absolute external URLs in HTML attributes
