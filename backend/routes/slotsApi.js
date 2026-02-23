@@ -1052,25 +1052,30 @@ router.get('/*', async (req, res, next) => {
   }
 
   const referer = req.headers.referer || '';
-  let gameOrigin = '';
+  let gameBaseDir = '';
 
-  // Extract game origin from Referer (ext-proxy?u=...) or game-frame
+  // Extract game base directory from Referer (ext-proxy?u=GAME_URL)
   const extMatch = referer.match(/ext-proxy\?u=([^&\s]+)/);
   if (extMatch) {
     try {
       const gameUrl = decodeURIComponent(extMatch[1]);
-      gameOrigin = new URL(gameUrl).origin;
+      gameBaseDir = gameUrl.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
     } catch {}
   }
 
-  if (!gameOrigin) {
+  if (!gameBaseDir) {
     return next();
   }
 
   const qs = req.originalUrl.includes('?')
     ? req.originalUrl.substring(req.originalUrl.indexOf('?'))
     : '';
-  const target = `${gameOrigin}/${subpath}${qs}`;
+  let target;
+  try {
+    target = new URL(subpath + qs, gameBaseDir).href;
+  } catch {
+    return next();
+  }
 
   try {
     const resp = await axios.get(target, {
