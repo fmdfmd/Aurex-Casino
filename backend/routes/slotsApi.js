@@ -676,6 +676,8 @@ body>iframe,body>div,body>object,body>embed{
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
+  res.removeHeader('X-Frame-Options');
+  res.removeHeader('Content-Security-Policy');
   res.send(page);
 });
 
