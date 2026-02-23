@@ -866,9 +866,11 @@ router.all('/ext-proxy', async (req, res) => {
         `})()<\\/script>';` +
         `window.Blob=function(p,o){` +
         `if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){` +
+        `console.warn('[AUREX-PROXY] Blob override: injecting interceptor into HTML blob, parts='+p.length);` +
         `p=[blobInj].concat(Array.from(p));}` +
         `return new OB(p,o);};` +
         `window.Blob.prototype=OB.prototype;` +
+        `console.warn('[AUREX-PROXY] Interceptors installed: XHR, fetch, iframe.src, script.src, setAttribute, MutationObserver, Blob');` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
