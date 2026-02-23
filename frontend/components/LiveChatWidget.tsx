@@ -121,7 +121,7 @@ export default function LiveChatWidget() {
   ];
 
   return (
-    <>
+    <div id="live-chat-widget">
       <motion.button
         onClick={() => setIsOpen(true)}
         className="fixed bottom-6 right-6 z-40 w-16 h-16 rounded-full bg-gradient-to-br from-aurex-gold-500 to-aurex-gold-600 shadow-aurex-gold flex items-center justify-center group"
@@ -277,6 +277,6 @@ export default function LiveChatWidget() {
           </motion.div>
         )}
       </AnimatePresence>
-    </>
+    </div>
   );
 }

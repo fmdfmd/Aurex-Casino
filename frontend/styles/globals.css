@@ -816,3 +816,7 @@ body {
   animation: fadeIn 0.3s ease-out forwards;
   will-change: opacity, transform;
 }
+
+body.game-active #live-chat-widget {
+  display: none !important;
+}

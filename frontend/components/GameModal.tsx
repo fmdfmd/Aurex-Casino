@@ -21,10 +21,15 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
   useEffect(() => {
     if (isOpen) {
       document.body.style.overflow = 'hidden';
+      document.body.classList.add('game-active');
     } else {
       document.body.style.overflow = '';
+      document.body.classList.remove('game-active');
     }
-    return () => { document.body.style.overflow = ''; };
+    return () => {
+      document.body.style.overflow = '';
+      document.body.classList.remove('game-active');
+    };
   }, [isOpen]);
 
   useEffect(() => {
