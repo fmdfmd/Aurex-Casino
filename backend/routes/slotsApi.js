@@ -777,10 +777,13 @@ router.all('/ext-proxy', async (req, res) => {
         (_, pre, q, p) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(origin + p)}${q}`
       );
 
-      // Inject XHR + fetch interceptor
+      // Inject XHR + fetch interceptor — also catches relative URLs (game API calls)
       const inj = `<script>(function(){` +
-        `var P='/api/slots/ext-proxy?u=',H=location.host;` +
-        `function px(u){if(typeof u!='string'||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}` +
+        `var P='/api/slots/ext-proxy?u=',H=location.host,O='${origin}';` +
+        `function px(u){if(typeof u!='string')return u;` +
+        `if(u.indexOf('://')>=0&&u.indexOf(H)<0)return P+encodeURIComponent(u);` +
+        `if(u.indexOf('://')<0&&u.charAt(0)==='/'&&u.indexOf('/api/slots/')!==0)return P+encodeURIComponent(O+u);` +
+        `return u;}` +
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
