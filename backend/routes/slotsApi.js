@@ -199,6 +199,9 @@ router.get('/games', async (req, res) => {
     const topGameCodes = new Set([
       // === TOP SLOTS — curated by real popularity ===
 
+      // Upgaming (872) — Plinko первый
+      'plinko',                                           // Plinko (Upgaming)
+
       // Push Gaming (911) — топ слоты
       'bigbamboo-01',                                     // Big Bamboo
       'jamminjars',                                       // Jammin' Jars
@@ -246,9 +249,6 @@ router.get('/games', async (req, res) => {
       'dragons_bonanza',                                  // Dragon's Bonanza
       'wolf_thunder',                                     // Wolf Thunder
       'towers',                                           // X Towers
-
-      // Spribe (895) — crash/instant (после слотов)
-      'plinko',                                           // Plinko
 
       // Yggdrasil (953)
       '7329',                                             // Double Dragons
