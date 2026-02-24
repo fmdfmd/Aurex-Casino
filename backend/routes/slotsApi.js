@@ -565,13 +565,16 @@ router.get('/catalog/status', async (req, res) => {
   }
 });
 
-// Trigger full catalog refresh (debug/ops)
+// Trigger full catalog refresh — clears RAM cache and re-fetches from Fundist
 router.post('/catalog/refresh', async (req, res) => {
   try {
-    fundistService.ensureFullListRefresh().catch(() => {});
-    return res.json({ success: true, data: { started: true } });
+    const catalog = await fundistService.invalidateCache();
+    const count = catalog?.games?.length || 0;
+    console.log(`[catalog/refresh] Cache cleared, loaded ${count} games`);
+    return res.json({ success: true, data: { games: count } });
   } catch (e) {
-    return res.status(500).json({ success: false, error: 'Failed to start catalog refresh' });
+    console.log(`[catalog/refresh] Error: ${e.message}`);
+    return res.status(500).json({ success: false, error: e.message });
   }
 });
 

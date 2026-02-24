@@ -162,6 +162,13 @@ class FundistApiService {
   // Catalog status
   // ---------------------------------------------------------------------------
 
+  async invalidateCache() {
+    this.cache.data = null;
+    this.cache.timestamp = 0;
+    console.log('[Fundist] Cache invalidated, fetching fresh catalog...');
+    return this.getGamesList();
+  }
+
   getCatalogStatus() {
     let file = null;
     try {
