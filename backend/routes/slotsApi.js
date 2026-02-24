@@ -893,17 +893,13 @@ router.get('/game-frame/:token', (req, res) => {
   const domains = [...new Set((html.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []))];
   console.log(`[game-frame] External domains: ${domains.join(', ')}`);
 
-  // --- wscenter providers (Thunderkick, Spinomenal, BGaming, Habanero, NetEnt, …) ---
+  // --- wscenter providers (Thunderkick, Spinomenal, BGaming, Habanero, NetEnt, Yggdrasil, …) ---
   const hasWscenter = html.includes('wscenter');
   if (hasWscenter) {
-    // Replace iframe creation with redirect through our ext-proxy
-    html = html.replace(
-      /var\s+ifr\s*=\s*document\.createElement\(['"]iframe['"]\);[\s\S]*?\.appendChild\(ifr\);/,
-      "window.location.replace('/api/slots/ext-proxy?u='+encodeURIComponent(resp.data));"
-    );
-    // Rewrite wscenter domain to our wildcard proxy (covers <script src>, XHR URLs, etc.)
+    // Proxy only the wscenter auth call (blocked by Russian ISPs).
+    // The game itself loads in an iframe from the provider's domain — no proxying needed.
     html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
-    console.log('[game-frame] Patched wscenter: domain rewrite + iframe → ext-proxy redirect');
+    console.log('[game-frame] Patched wscenter: domain rewrite to ws-proxy');
   }
 
   // Rewrite any remaining external <iframe src="https://…"> to go through ext-proxy
