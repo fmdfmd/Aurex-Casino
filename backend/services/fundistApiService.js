@@ -13,6 +13,7 @@ class FundistApiService {
     this.apiKey = config.slotsApi.apiKey;
     this.apiPassword = config.slotsApi.apiPassword;
     this.casinoIp = '0.0.0.0'; // As per Fundist docs for dynamic IPs
+    this.serverIp = null;
 
     // Cache
     this.cache = { data: null, timestamp: 0 };
@@ -27,6 +28,19 @@ class FundistApiService {
       path.join(__dirname, '../../games_full.json'),         // project root (alt)
       path.join(this.dataDir, 'games-import.json'),          // backend/data
     ];
+
+    this._fetchServerIp();
+  }
+
+  _fetchServerIp() {
+    axios.get('https://api.ipify.org?format=json', { timeout: 10000 })
+      .then(r => {
+        this.serverIp = r.data?.ip || null;
+        console.log(`[Fundist] Server outgoing IP: ${this.serverIp}`);
+      })
+      .catch(() => {
+        console.log('[Fundist] Could not detect server IP, using user IPs');
+      });
   }
 
   generateHash(paramsString) {
@@ -432,7 +446,7 @@ class FundistApiService {
         TID: tid,
         Hash: hash,
         Page: attempt.page,
-        UserIP: opts.ip || '0.0.0.0',
+        UserIP: this.serverIp || opts.ip || '0.0.0.0',
         Language: opts.language || 'ru',
         UserAutoCreate: '1',
         Currency: currency,
@@ -520,6 +534,8 @@ class FundistApiService {
     const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${login}/${password}/${systemId}/${this.apiPassword}`;
     const hash = this.generateHash(hashString);
 
+    const effectiveIp = this.serverIp || userIp;
+
     const params = new URLSearchParams({
       Login: login,
       Password: password,
@@ -527,7 +543,7 @@ class FundistApiService {
       TID: tid,
       Hash: hash,
       Page: String(pageCode),
-      UserIP: String(userIp),
+      UserIP: String(effectiveIp),
       Language: String(language),
       ...(demo ? { Demo: '1' } : {}),
       ...(demo
@@ -610,6 +626,8 @@ class FundistApiService {
     const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${login}/${password}/${systemId}/${this.apiPassword}`;
     const hash = this.generateHash(hashString);
 
+    const effectiveIp = this.serverIp || userIp;
+
     const params = new URLSearchParams({
       Login: login,
       Password: password,
@@ -617,7 +635,7 @@ class FundistApiService {
       TID: tid,
       Hash: hash,
       Page: String(pageCode),
-      UserIP: String(userIp),
+      UserIP: String(effectiveIp),
       Language: String(language),
       Demo: '1',
       ...(opts.referer ? { Referer: String(opts.referer) } : {}),
@@ -626,7 +644,7 @@ class FundistApiService {
 
     const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
 
-    console.log(`[demo] Launching: Page=${pageCode}, System=${systemId}, IP=${userIp}`);
+    console.log(`[demo] Launching: Page=${pageCode}, System=${systemId}, IP=${effectiveIp}`);
 
     let response;
     try {
