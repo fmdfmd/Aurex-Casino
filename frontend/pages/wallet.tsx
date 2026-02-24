@@ -82,6 +82,7 @@ export default function WalletPage() {
   const [showBankDropdown, setShowBankDropdown] = useState(false);
   const [depositBankCode, setDepositBankCode] = useState('');
   const [showDepositBankDropdown, setShowDepositBankDropdown] = useState(false);
+  const [nspkPhone, setNspkPhone] = useState('');
   const [nirvanaPaymentDetails, setNirvanaPaymentDetails] = useState<{
     receiver: string;
     bankName: string;
@@ -261,7 +262,8 @@ export default function WalletPage() {
         body: JSON.stringify({
           amount: depositAmount,
           paymentMethod: actualPaymentMethod,
-          currency: 'RUB'
+          currency: 'RUB',
+          ...(actualPaymentMethod === 'EXPAY_NSPK' && nspkPhone ? { nspkPhone: `7${nspkPhone}` } : {})
         })
       });
       const depositData = await depositRes.json();
@@ -844,10 +846,40 @@ export default function WalletPage() {
                         </motion.div>
                       )}
 
+                      {selectedMethod === 'EXPAY_NSPK' && !user?.phone && (
+                        <div className="mb-4">
+                          <label className="block text-sm text-aurex-platinum-400 mb-2">Номер телефона (для НСПК)</label>
+                          <div className="flex items-center bg-aurex-obsidian-800 border border-aurex-obsidian-600 rounded-xl overflow-hidden">
+                            <span className="px-3 text-aurex-platinum-400 text-sm">+7</span>
+                            <input
+                              type="tel"
+                              value={(() => {
+                                const d = nspkPhone;
+                                if (d.length === 0) return '';
+                                let masked = '(' + d.slice(0, 3);
+                                if (d.length >= 3) masked += ') ';
+                                masked += d.slice(3, 6);
+                                if (d.length >= 6) masked += '-';
+                                masked += d.slice(6, 8);
+                                if (d.length >= 8) masked += '-';
+                                masked += d.slice(8, 10);
+                                return masked;
+                              })()}
+                              onChange={e => {
+                                const raw = e.target.value.replace(/\D/g, '').slice(0, 10);
+                                setNspkPhone(raw);
+                              }}
+                              placeholder="(900) 123-45-67"
+                              className="flex-1 bg-transparent text-white px-3 py-3 outline-none"
+                            />
+                          </div>
+                        </div>
+                      )}
+
                       {/* Submit */}
                       <button
                         onClick={handleDeposit}
-                        disabled={!selectedMethod || depositAmount <= 0 || isProcessing}
+                        disabled={!selectedMethod || depositAmount <= 0 || isProcessing || (selectedMethod === 'EXPAY_NSPK' && !user?.phone && nspkPhone.length !== 10)}
                         className="w-full py-4 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:shadow-none flex items-center justify-center space-x-2"
                       >
                         {isProcessing ? (

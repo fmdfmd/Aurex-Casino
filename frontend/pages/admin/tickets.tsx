@@ -120,29 +120,66 @@ export default function AdminTicketsPage() {
     return matchesSearch && matchesStatus && matchesPriority;
   });
 
-  const handleStatusChange = (ticketId: string, newStatus: Ticket['status']) => {
-    setTickets(prev => prev.map(t => 
-      t.id === ticketId ? { ...t, status: newStatus, updatedAt: new Date().toISOString() } : t
-    ));
-    if (selectedTicket?.id === ticketId) {
-      setSelectedTicket(prev => prev ? { ...prev, status: newStatus } : null);
+  const handleStatusChange = async (ticketId: string, newStatus: Ticket['status']) => {
+    try {
+      const res = await fetch(`/api/tickets/admin/${ticketId}/status`, {
+        method: 'PATCH',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ status: newStatus })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(`Статус обновлён: ${newStatus}`);
+        fetchTickets();
+        if (selectedTicket?.id === ticketId) {
+          setSelectedTicket(prev => prev ? { ...prev, status: newStatus } : null);
+        }
+      } else {
+        toast.error(data.message || 'Ошибка обновления статуса');
+      }
+    } catch {
+      toast.error('Ошибка сервера');
     }
   };
 
-  const handleReply = () => {
+  const [replyLoading, setReplyLoading] = useState(false);
+
+  const handleReply = async () => {
     if (!replyMessage.trim() || !selectedTicket) return;
-    // In production, this would send to API
-    setTickets(prev => prev.map(t => 
-      t.id === selectedTicket.id 
-        ? { 
-            ...t, 
-            messages: [...(t.messages || []), { id: (t.messages?.length || 0) + 1, sender: 'support' as const, text: replyMessage, createdAt: new Date().toISOString() }], 
-            status: 'pending', 
-            updatedAt: new Date().toISOString() 
-          } 
-        : t
-    ));
-    setReplyMessage('');
+    setReplyLoading(true);
+    try {
+      const res = await fetch(`/api/tickets/admin/${selectedTicket.id}/reply`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ message: replyMessage })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Ответ отправлен');
+        setReplyMessage('');
+        fetchTickets();
+        // Обновляем сообщения в выбранном тикете
+        const updatedMessages = [...(selectedTicket.messages || []), {
+          id: Date.now(),
+          sender: 'support' as const,
+          text: replyMessage,
+          createdAt: new Date().toISOString()
+        }];
+        setSelectedTicket(prev => prev ? { ...prev, messages: updatedMessages, status: 'pending' as const } : null);
+      } else {
+        toast.error(data.message || 'Ошибка отправки');
+      }
+    } catch {
+      toast.error('Ошибка сервера');
+    } finally {
+      setReplyLoading(false);
+    }
   };
 
   const stats = {
@@ -166,8 +203,8 @@ export default function AdminTicketsPage() {
               <h1 className="text-2xl font-bold text-white">Тикеты поддержки</h1>
               <p className="text-aurex-platinum-400">Управление обращениями пользователей</p>
             </div>
-            <button className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-700 rounded-lg text-aurex-platinum-300 hover:text-white transition-colors">
-              <RefreshCw className="w-4 h-4" />
+            <button onClick={fetchTickets} className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-700 rounded-lg text-aurex-platinum-300 hover:text-white transition-colors">
+              <RefreshCw className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} />
               <span>Обновить</span>
             </button>
           </div>
@@ -296,10 +333,34 @@ export default function AdminTicketsPage() {
                         <div className="text-xs text-aurex-platinum-500">{selectedTicket.odid} • {selectedTicket.email}</div>
                       </div>
                     </div>
-                    <div className="text-sm text-aurex-platinum-400">{selectedTicket.messages?.[0]?.text || 'Нет сообщений'}</div>
-                    <div className="text-xs text-aurex-platinum-500 mt-2">
-                      Создан: {selectedTicket.createdAt}
+                    <div className="text-xs text-aurex-platinum-500">
+                      Создан: {selectedTicket.createdAt ? new Date(selectedTicket.createdAt).toLocaleString('ru-RU') : '—'}
                     </div>
+                  </div>
+
+                  {/* Messages */}
+                  <div className="p-4 border-b border-aurex-gold-500/10 max-h-[400px] overflow-y-auto space-y-3">
+                    {(selectedTicket.messages || []).length === 0 ? (
+                      <p className="text-sm text-aurex-platinum-500 text-center">Нет сообщений</p>
+                    ) : (
+                      (selectedTicket.messages || []).map((msg) => (
+                        <div key={msg.id} className={`flex ${msg.sender === 'support' ? 'justify-end' : 'justify-start'}`}>
+                          <div className={`max-w-[85%] px-3 py-2 rounded-xl text-sm ${
+                            msg.sender === 'support'
+                              ? 'bg-aurex-gold-500/20 text-aurex-gold-100'
+                              : 'bg-aurex-obsidian-700 text-aurex-platinum-300'
+                          }`}>
+                            <div className="text-xs font-medium mb-1 opacity-60">
+                              {msg.sender === 'support' ? 'Поддержка' : selectedTicket.username}
+                            </div>
+                            <p>{msg.text}</p>
+                            <div className="text-[10px] opacity-40 mt-1 text-right">
+                              {msg.createdAt ? new Date(msg.createdAt).toLocaleString('ru-RU') : ''}
+                            </div>
+                          </div>
+                        </div>
+                      ))
+                    )}
                   </div>
 
                   {/* Quick Actions */}
@@ -336,11 +397,11 @@ export default function AdminTicketsPage() {
                     />
                     <button
                       onClick={handleReply}
-                      disabled={!replyMessage.trim()}
+                      disabled={!replyMessage.trim() || replyLoading}
                       className="w-full py-2 bg-aurex-gold-500 text-aurex-obsidian-900 font-bold rounded-lg flex items-center justify-center space-x-2 disabled:opacity-50"
                     >
-                      <Send className="w-4 h-4" />
-                      <span>Отправить</span>
+                      {replyLoading ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                      <span>{replyLoading ? 'Отправка...' : 'Отправить'}</span>
                     </button>
                   </div>
                 </motion.div>

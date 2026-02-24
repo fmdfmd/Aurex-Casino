@@ -89,7 +89,7 @@ router.get('/history', auth, async (req, res) => {
 // Создать депозит (AVE PAY для 3000+, Nirvana Pay для 100-2999)
 router.post('/deposit', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB' } = req.body;
+    const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB', nspkPhone } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
@@ -212,7 +212,7 @@ router.post('/deposit', auth, async (req, res) => {
           userId: req.user.id,
           userIp: req.ip,
           userAgent: req.headers['user-agent'],
-          userPhone: req.user.phone || undefined,
+          userPhone: req.user.phone || nspkPhone || undefined,
           redirectUrl: 'https://aurex.casino/wallet'
         });
       } catch (expayErr) {
