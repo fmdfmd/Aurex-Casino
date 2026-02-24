@@ -48,6 +48,14 @@ module.exports = {
     returnUrl: process.env.AVEPAY_RETURN_URL || 'https://aurex.casino/wallet'
   },
 
+  // Expay Payment System
+  expay: {
+    apiUrl: process.env.EXPAY_API_URL || 'https://apiv2.expay.cash',
+    publicKey: process.env.EXPAY_PUBLIC_KEY || 't5u0ia4gxxrtalfmml3qhv3qs63174iuysm6fxiszfaf9g07s1vlvr2648ndvzjc',
+    privateKey: process.env.EXPAY_PRIVATE_KEY || '7t05s96sl4ithqxhvfxj4gkmu97d29gk44vmzfoptaoaom7ti5oeo5gzlnq18ey19uiaqdaha5s554bp5fmgnmx1xob6vin0ncm73f4xfn13z5anqh5qht23qvdnnsxw',
+    callbackUrl: process.env.EXPAY_CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/payments/expay/callback'
+  },
+
   // Nirvana Pay Payment System
   nirvanaPay: {
     apiUrl: process.env.NIRVANAPAY_API_URL || 'https://api.nirvanapay.pro',

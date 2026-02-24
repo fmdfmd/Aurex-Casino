@@ -4,10 +4,15 @@ const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
 const avePayService = require('../services/avePayService');
 const nirvanaPayService = require('../services/nirvanaPayService');
+const expayService = require('../services/expayService');
 const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 function isNirvanaMethod(method) {
   return method && method.startsWith('NIRVANA_');
+}
+
+function isExpayMethod(method) {
+  return method && method.startsWith('EXPAY_');
 }
 
 function getNirvanaToken(method) {
@@ -95,6 +100,7 @@ router.post('/deposit', auth, async (req, res) => {
     }
 
     const useNirvana = isNirvanaMethod(paymentMethod);
+    const useExpay = isExpayMethod(paymentMethod);
 
     const minDeposits = {
       'P2P_CARD': 5000, 'P2P_SBP': 3000,
@@ -104,14 +110,18 @@ router.post('/deposit', auth, async (req, res) => {
       'NIRVANA_ALFA': 1000, 'NIRVANA_ALFA_SBP': 1000,
       'NIRVANA_VTB': 1000, 'NIRVANA_VTB_SBP': 1000,
       'NIRVANA_TRANS_SBP': 500, 'NIRVANA_TRANS_C2C': 500,
-      'NIRVANA_MOBILE': 100
+      'NIRVANA_MOBILE': 100,
+      'EXPAY_SBER': 500, 'EXPAY_SBP': 500,
+      'EXPAY_CARD': 500, 'EXPAY_NSPK': 500
     };
     const maxDeposits = {
       'P2P_CARD': 300000, 'P2P_SBP': 300000,
       'NIRVANA_SBP': 100000, 'NIRVANA_C2C': 100000,
       'NIRVANA_NSPK': 150000,
       'NIRVANA_TRANS_SBP': 100000, 'NIRVANA_TRANS_C2C': 100000,
-      'NIRVANA_MOBILE': 100000
+      'NIRVANA_MOBILE': 100000,
+      'EXPAY_SBER': 300000, 'EXPAY_SBP': 300000,
+      'EXPAY_CARD': 300000, 'EXPAY_NSPK': 300000
     };
     const minDeposit = minDeposits[paymentMethod] || 100;
     const maxDeposit = maxDeposits[paymentMethod] || 300000;
@@ -184,6 +194,50 @@ router.post('/deposit', auth, async (req, res) => {
             recipientName: nirvanaResponse.recipientName
           },
           redirectUrl: null,
+          avePayId: null
+        }
+      });
+    }
+
+    if (useExpay) {
+      const subToken = expayService.getSubToken(paymentMethod);
+
+      let expayResponse;
+      try {
+        expayResponse = await expayService.createDeposit({
+          amount: parseFloat(amount),
+          transactionId: transaction.id,
+          subToken,
+          userId: req.user.id,
+          userIp: req.ip,
+          redirectUrl: 'https://aurex.casino/wallet'
+        });
+      } catch (expayErr) {
+        const reason = expayErr.response?.data?.description || expayErr.message;
+        console.error(`[Expay] Deposit failed for tx ${transaction.id}: ${reason}`);
+        await pool.query("UPDATE transactions SET status = 'failed' WHERE id = $1", [transaction.id]);
+        return res.status(400).json({ success: false, message: `Платёж не создан: ${reason}` });
+      }
+
+      if (expayResponse.trackerId) {
+        await pool.query(
+          "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+          [expayResponse.trackerId, transaction.id]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Перенаправляем на оплату',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: transaction.status,
+            createdAt: transaction.created_at
+          },
+          provider: 'expay',
+          redirectUrl: expayResponse.redirectUrl || null,
           avePayId: null
         }
       });
@@ -347,8 +401,8 @@ router.post('/withdraw', auth, async (req, res) => {
     const feeAmount = Math.round(amount * feePercent) / 100;
     const totalDeducted = amount + feeAmount;
 
-    const needsCard = paymentMethod === 'P2P_CARD' || paymentMethod === 'NIRVANA_C2C' || paymentMethod === 'NIRVANA_TRANS_C2C';
-    const needsPhone = paymentMethod === 'P2P_SBP' || ['NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP'].includes(paymentMethod);
+    const needsCard = paymentMethod === 'P2P_CARD' || paymentMethod === 'NIRVANA_C2C' || paymentMethod === 'NIRVANA_TRANS_C2C' || paymentMethod === 'EXPAY_SBER' || paymentMethod === 'EXPAY_CARD';
+    const needsPhone = paymentMethod === 'P2P_SBP' || ['NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP', 'EXPAY_SBP'].includes(paymentMethod);
 
     if (needsCard && !cardNumber) {
       return res.status(400).json({ success: false, message: 'Укажите номер карты' });
@@ -439,6 +493,57 @@ router.post('/withdraw', auth, async (req, res) => {
             createdAt: transaction.created_at
           },
           provider: 'nirvana',
+          fee: { percent: feePercent, amount: feeAmount },
+          netAmount: amount,
+          totalDeducted
+        }
+      });
+    }
+
+    if (isExpayMethod(paymentMethod)) {
+      const subToken = expayService.getSubToken(paymentMethod);
+      const isExpayCard = ['EXPAY_SBER', 'EXPAY_CARD'].includes(paymentMethod);
+      const receiver = isExpayCard ? (cardNumber || '').replace(/\s/g, '') : (phone ? `7${phone}` : '');
+
+      let expayResponse;
+      try {
+        expayResponse = await expayService.createWithdrawal({
+          amount: parseFloat(amount),
+          transactionId: transaction.id,
+          subToken,
+          receiver,
+          recipientName: '',
+          clientIp: req.ip
+        });
+      } catch (expayErr) {
+        const reason = expayErr.response?.data?.description || expayErr.message;
+        console.error(`[Expay] Withdrawal failed for tx ${transaction.id}: ${reason}`);
+        await pool.query(
+          'UPDATE users SET balance = balance + $1, total_withdrawn = total_withdrawn - $1 WHERE id = $2',
+          [totalDeducted, req.user.id]
+        );
+        await pool.query("UPDATE transactions SET status = 'failed' WHERE id = $1", [transaction.id]);
+        return res.status(400).json({ success: false, message: `Вывод не создан: ${reason}` });
+      }
+
+      if (expayResponse.trackerId) {
+        await pool.query(
+          "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+          [expayResponse.trackerId, transaction.id]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Заявка на вывод создана',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: transaction.status,
+            createdAt: transaction.created_at
+          },
+          provider: 'expay',
           fee: { percent: feePercent, amount: feeAmount },
           netAmount: amount,
           totalDeducted

@@ -209,16 +209,19 @@ Yggdrasil (953), iMoon (813)
 ```
 
 ### Кэширование каталога игр
-- **RAM:** In-memory кэш в `FundistApiService`
+- **RAM:** In-memory кэш в `FundistApiService` (TTL: 1 час)
 - **Диск:** `backend/data/fundist-full-list.json`
 - **Обновление:** фоновый refresh при обращении
+- **Принудительный сброс:** `FundistApiService.invalidateCache()` — обнуляет RAM-кэш и перезагружает каталог из Fundist API
+- **Endpoint:** `POST /api/slots/catalog/refresh` — вызывает `invalidateCache()`, возвращает кол-во игр
 - **Fallback:** если API недоступен — берёт с диска
 
 ### Каталог игр — Сортировка
-- **Curated list:** 80+ слотов + 30 live-игр в фиксированном порядке
-- **Первый слот:** Big Bamboo (Push Gaming)
-- **Тиры провайдеров:** Tier 1 (Pragmatic, Hacksaw, Push, Play'n GO, BGaming, NetEnt, Endorphina...) → Tier 2 → Tier 3 → Tier 4 (Live Casino)
-- **Файл:** `backend/routes/slotsApi.js` — `topGameCodes` и `providerTier`
+- **Управление:** через бэк-офис Fundist (www5.fundist.org → Sorting)
+- **Хардкод `topGameCodes` / `providerTier` удалён** — порядок игр полностью определяется бэк-офисом
+- **Live Casino:** провайдеры (Evolution, Pragmatic Live и др.) показываются после всех слотов — это единственная клиентская сортировка, оставшаяся в коде
+- **Применение:** после изменения порядка в бэк-офисе → `POST /api/slots/catalog/refresh` (сбрасывает RAM-кэш и перезагружает каталог)
+- **Файл:** `backend/routes/slotsApi.js`
 
 ### Отображение игр (GameModal)
 - **Метод:** iframe + `document.write` — HTML-фрагмент от Fundist записывается в iframe
@@ -380,13 +383,16 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/slots/games` | Каталог игр (из Fundist) |
 | `/api/slots/start-game` | Запуск игры (POST) |
 | `/api/slots/game-frame` | Хранение/отдача HTML игры |
+| `/api/slots/catalog/refresh` | Сброс кэша каталога (POST) |
+| `/api/slots/catalog/status` | Статус кэша каталога (GET) |
 | `/api/slots/img` | Прокси картинок игр |
 | `/api/callback/softgamings` | OneWallet callbacks |
 | `/api/config/*` | Конфигурация (VIP, провайдеры) |
 | `/api/users/*` | Профиль, настройки |
-| `/api/payments/*` | Депозиты, выводы, AVE PAY / Nirvana Pay |
+| `/api/payments/*` | Депозиты, выводы, AVE PAY / Nirvana Pay / Expay |
 | `/api/payments/avepay/callback` | AVE PAY webhook (POST) + health check (GET) + debug/test (admin) |
 | `/api/payments/nirvana/callback` | Nirvana Pay callback (GET) — статусы депозитов/выводов |
+| `/api/payments/expay/callback` | Expay callback (POST/GET) — статусы депозитов/выводов |
 | `/api/bonuses/*` | Бонусы |
 | `/api/cashback/*` | Кэшбэк |
 | `/api/loyalty/*` | VIP магазин |
@@ -415,6 +421,8 @@ java -jar OWClientTest_v2.14.jar \
 | `backend/middleware/auth.js` | JWT middleware (req.user с balance, currency) |
 | `backend/services/nirvanaPayService.js` | Nirvana Pay API (H2H + Payment Form), депозиты/выводы |
 | `backend/routes/nirvanaPayCallback.js` | Обработка GET-коллбеков от Nirvana Pay |
+| `backend/services/expayService.js` | Expay API (HMAC-SHA512), депозиты (payform) / выводы (P2P) |
+| `backend/routes/expayCallback.js` | Обработка POST/GET коллбеков от Expay |
 | `backend/constants/fundistMerchants.js` | Маппинг MerchantID → имя провайдера (60+) |
 
 ### Frontend
@@ -424,7 +432,7 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/components/GameModal.tsx` | Модал запуска игры (iframe + document.write) |
 | `frontend/components/GameCard.tsx` | Карточка игры (картинка, RTP, провайдер) |
 | `frontend/components/LiveChatWidget.tsx` | Виджет AI чата (Стефани) |
-| `frontend/pages/wallet.tsx` | Кошелёк: депозит/вывод через AVE PAY + Nirvana Pay (11 методов). Крипта скрыта |
+| `frontend/pages/wallet.tsx` | Кошелёк: депозит/вывод через AVE PAY + Nirvana Pay + Expay. Крипта скрыта |
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/store/settingsStore.ts` | Настройки (язык, валюта отображения) |
@@ -928,7 +936,97 @@ USDT: 0 (available), 0 (frozen)
 
 **Порядок отображения на фронтенде:**
 1. AVE PAY методы (СБП, Карта) — выше, т.к. комиссия ниже для больших сумм
-2. Nirvana Pay методы — ниже, но доступны от 50-100₽
+2. Expay методы (СБП, Карта, Сбербанк, НСПК) — от 500₽, payform redirect
+3. Nirvana Pay методы — от 50-100₽, H2H (реквизиты)
+
+---
+
+### Expay — ТРЕТИЙ ПРОВАЙДЕР (ИНТЕГРИРОВАН)
+
+**Статус:** Интегрирован. Депозиты через P2P payform (redirect), выводы через P2P API. HMAC-SHA512 подпись запросов.
+
+**API Credentials:**
+```
+Public Key:   t5u0ia4gxxrtalfmml3qhv3qs63174iuysm6fxiszfaf9g07s1vlvr2648ndvzjc
+Private Key:  7t05s96sl4ithqxhvfxj4gkmu97d29gk44vmzfoptaoaom7ti5oeo5gzlnq18ey19uiaqdaha5s554bp5fmgnmx1xob6vin0ncm73f4xfn13z5anqh5qht23qvdnnsxw
+```
+
+**API Base URL:** `https://apiv2.expay.cash`
+**Документация:** https://docs.expay.cash/
+
+**Авторизация:** HMAC-SHA512 подпись
+- Заголовки: `ApiPublic`, `Signature`, `Timestamp`
+- Signature = HMAC-SHA512(privateKey, string(Timestamp) + string(RequestBody))
+
+**Callback URL:** `https://aurex-casino-production.up.railway.app/api/payments/expay/callback`
+- Метод: POST и GET (Expay шлёт оба)
+- Trusted IPs: 68.183.213.224, 157.245.17.198, 165.227.159.246
+- Body: `{ "tracker_id": "...", "client_transaction_id": "..." }`
+
+**Доступные методы оплаты (RUB):**
+
+| ID метода | Название | Token | Sub-token | Депозит | Вывод | Мин. деп. | Макс. деп. |
+|---|---|---|---|---|---|---|---|
+| EXPAY_SBP | СБП | CARDRUBP2P | SBPRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
+| EXPAY_CARD | Карта | CARDRUBP2P | CARDRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
+| EXPAY_SBER | Сбербанк | CARDRUBP2P | SBERRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
+| EXPAY_NSPK | НСПК QR | CARDRUBP2P | NSPKRUB | да (payform) | нет | 500 ₽ | 300 000 ₽ |
+
+**Endpoints:**
+| Метод | URL | Описание |
+|---|---|---|
+| `POST` | `/api/transaction/create/in` | Создать депозит (payform redirect) |
+| `POST` | `/api/transaction/create/out` | Создать вывод (P2P) |
+| `POST` | `/api/transaction/get` | Статус транзакции (по tracker_id или client_transaction_id) |
+| `POST` | `/api/token/balance` | Баланс по токену |
+
+**Депозиты (payform flow):**
+```
+1. Backend создаёт transaction (pending) в PostgreSQL
+2. POST https://apiv2.expay.cash/api/transaction/create/in
+   refer_type: "p2p_payform", token: "CARDRUBP2P", sub_token: "SBERRUB"/"SBPRUB"/etc.
+3. Expay возвращает alter_refer (URL формы оплаты)
+4. Frontend делает redirect на payform URL (как AVE PAY)
+5. Пользователь оплачивает на странице Expay
+6. Expay → POST/GET /api/payments/expay/callback
+7. Backend запрашивает статус через /api/transaction/get
+8. SUCCESS → зачисление баланса + бонус
+```
+
+**Выводы (P2P API):**
+```
+1. Backend создаёт transaction (pending), списывает баланс
+2. POST https://apiv2.expay.cash/api/transaction/create/out
+   token: "CARDRUBP2P", sub_token: "SBERRUB", receiver: "4111111111111111"
+3. Expay обрабатывает выплату
+4. Expay → POST/GET callback
+5. SUCCESS → завершение, ERROR → возврат средств
+```
+
+**Статусы транзакций:**
+| Статус | Описание |
+|---|---|
+| ACCEPTED | Транзакция принята |
+| SUCCESS | Транзакция завершена успешно |
+| ERROR | Транзакция отменена/истекла |
+
+**Баланс (проверено 10.02.2026):**
+```
+CARDRUBP2P: 0 (value)
+```
+
+**Переменные Railway:**
+- `EXPAY_PUBLIC_KEY` — `t5u0ia4gxxrtalfmml3qhv3qs63174iuysm6fxiszfaf9g07s1vlvr2648ndvzjc`
+- `EXPAY_PRIVATE_KEY` — `7t05s96sl4ithqxhvfxj4gkmu97d29gk44vmzfoptaoaom7ti5oeo5gzlnq18ey19uiaqdaha5s554bp5fmgnmx1xob6vin0ncm73f4xfn13z5anqh5qht23qvdnnsxw`
+- `EXPAY_API_URL` — `https://apiv2.expay.cash` (дефолт)
+- `EXPAY_CALLBACK_URL` — `https://aurex-casino-production.up.railway.app/api/payments/expay/callback` (дефолт)
+
+**Файлы интеграции:**
+- `backend/services/expayService.js` — HMAC-SHA512 подпись, createDeposit (payform), createWithdrawal, getTransactionInfo, getBalance
+- `backend/routes/expayCallback.js` — обработка POST/GET коллбеков от Expay
+- `backend/routes/payments.js` — маршрутизация депозитов/выводов между AVE PAY, Nirvana и Expay
+- `backend/routes/config.js` — конфигурация методов оплаты (fiat массив с тремя провайдерами)
+- `backend/config/config.js` — ключи и URL Expay
 
 ---
 
@@ -1023,7 +1121,7 @@ USDT: 0 (available), 0 (frozen)
 - [x] Fundist API интеграция (Game/FullList, User/AuthHTML)
 - [x] OneWallet протокол (ping, balance, debit, credit, rollback)
 - [x] Каталог игр с картинками (11,000+ игр)
-- [x] Курируемая сортировка слотов и live (80+ слотов, 30 live)
+- [x] Сортировка игр через бэк-офис Fundist (topGameCodes удалён из кода)
 - [x] Провайдеры маппинг (60+ MerchantID → имена)
 - [x] Бонусная система (приветственный пакет, кэшбэк, промокоды)
 - [x] VIP система (5 уровней)
@@ -1052,7 +1150,8 @@ USDT: 0 (available), 0 (frozen)
 - [x] Реферальная программа — поддержка реферальных кодов при Google/Telegram регистрации (через cookie)
 - [x] Реферальная программа — секция для блогеров/стримеров с контактом @pavel_aurex
 - [x] Реферальная программа — race-safe claim (FOR UPDATE), parseInt для referrer_id
-- [x] Сортировка игр — Plinko (Upgaming) первый, Aviator/Mines убраны из топа, Thunderkick 12 хитов добавлены
+- [x] Сортировка игр перенесена в бэк-офис Fundist (хардкод topGameCodes / providerTier удалён)
+- [x] POST /api/slots/catalog/refresh — принудительный сброс кэша каталога (invalidateCache)
 - [x] Фильтрация дублей Plinko — оставлен только от Upgaming, остальные провайдеры отфильтрованы
 - [x] cookie-parser подключён к backend (для реферальных cookie при OAuth)
 - [x] Nirvana Pay — полная интеграция (Payment Form API для депозитов, H2H API для выводов)
@@ -1061,15 +1160,17 @@ USDT: 0 (available), 0 (frozen)
 - [x] Иконки банков — официальные SVG (Сбер, ВТБ, Альфа с logo-teka.com), НСПК (JPG), Карта (PNG с Visa/MC/MIR)
 - [x] Кошелёк — object-contain для корректного отображения широких банковских логотипов
 - [x] Кошелёк — dropdown банка только для P2P_SBP, не для банк-специфичных методов
+- [x] Expay — полная интеграция (HMAC-SHA512, P2P payform для депозитов, P2P API для выводов)
+- [x] Expay — 4 метода оплаты для России (СБП, Карта, Сбербанк, НСПК QR)
+- [x] Expay — callback обработчик (POST/GET /api/payments/expay/callback)
 
 ### В процессе
-- [x] Переход на продакшн Fundist — **ЛАЙВ! 73 провайдера активны** (22.02.2026)
-- [ ] Ожидание активации провайдеров от SoftGamings (в процессе, ~7 шт):
+- [x] Переход на продакшн Fundist — **ЛАЙВ! 76 провайдеров активны** (24.02.2026, включая Kiron 974, InOut 816, Endorphina 973)
+- [ ] Ожидание активации провайдеров от SoftGamings (в процессе, ~6 шт):
   - PragmaticPlay (960) — ~555 игр
   - PragmaticPlayLive (913) — ~22 игры
   - HacksawGaming (850) — ~215 игр
   - Play'n GO (944) — ~385 игр
-  - Endorphina (973) — ~178 игр
   - EvoOSS (892) — ~332 игры (NetEnt/RedTiger bundle)
   - + ещё 1 провайдер
 - [ ] Починить uCaller (новый аккаунт) или перейти на SMS (SMS.ru/SMSC.ru/Messaggio)
@@ -1156,12 +1257,12 @@ USDT: 0 (available), 0 (frozen)
 
 ---
 
-### Сортировка игр (топ-100)
-- **Файл:** `backend/routes/slotsApi.js` → `topGameCodes`
-- **Порядок:** Plinko (Upgaming) → Push Gaming (9 игр) → Thunderkick (12 игр) → BGaming (7) → NetEnt/RedTiger (3) → PG Soft → Belatra → Yggdrasil → Spinomenal → Live Casino (Evolution 16 игр)
-- **Убрано из топа:** Aviator, Mines (Spribe) — уходят в общий список
+### Сортировка игр
+- **Управление:** бэк-офис Fundist (www5.fundist.org → Sorting)
+- **Хардкод `topGameCodes` / `providerTier` удалён** из `backend/routes/slotsApi.js` (24.02.2026)
+- **После изменения порядка:** `POST /api/slots/catalog/refresh` для применения
 - **Фильтрация:** дубли Plinko от других провайдеров (Belatra, BetSoft) отфильтрованы на фронте
 
 ---
 
-*Последнее обновление: 10 февраля 2026 — Nirvana Pay интегрирован (11 методов, депозиты + выводы), иконки банков обновлены, UI кошелька улучшен*
+*Последнее обновление: 10 февраля 2026 — Интегрирован Expay (третий платёжный провайдер), HMAC-SHA512 подпись, 4 метода RUB (СБП, Карта, Сбербанк, НСПК QR), payform redirect для депозитов, P2P API для выводов*
