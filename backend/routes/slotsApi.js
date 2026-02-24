@@ -677,46 +677,7 @@ router.post('/game-frame', optionalAuth, async (req, res) => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Proxy layer — Russian ISPs block wscenter.xyz and many game-provider domains.
-// We proxy ALL external game traffic through our Railway server so the user's
-// browser never contacts blocked hosts directly.
-// ---------------------------------------------------------------------------
-
-// 1. check-proxy: legacy XHR interceptor target (wscenter)
-router.get('/check-proxy', async (req, res) => {
-  const target = req.query.u;
-  if (!target || !target.startsWith('https://')) {
-    return res.status(400).json({ error: 'bad url' });
-  }
-  try {
-    const resp = await axios.get(target, { timeout: 10000, responseType: 'text' });
-    const ct = resp.headers['content-type'] || 'application/json';
-    res.setHeader('Content-Type', ct);
-    res.send(resp.data);
-  } catch (e) {
-    console.log(`[check-proxy] Failed: ${e.message}`);
-    res.status(502).json({ error: 'upstream error' });
-  }
-});
-
-// 2. ws-proxy/*: wildcard proxy for check*.wscenter.xyz (scripts, XHR, etc.)
-router.get('/ws-proxy/*', async (req, res) => {
-  const subpath = req.params[0] || '';
-  const qIdx = req.originalUrl.indexOf('?');
-  const qs = qIdx !== -1 ? req.originalUrl.substring(qIdx) : '';
-  const target = `https://check5.wscenter.xyz/${subpath}${qs}`;
-  try {
-    const resp = await axios.get(target, { timeout: 15000, responseType: 'arraybuffer' });
-    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
-    res.send(resp.data);
-  } catch (e) {
-    console.log(`[ws-proxy] Failed ${target}: ${e.message}`);
-    res.status(502).send('proxy error');
-  }
-});
-
-// Service Worker — self-unregistering (clears stale proxy-sw from user browsers)
+// Service Worker cleanup — self-unregistering (clears stale proxy-sw from user browsers)
 router.get('/proxy-sw.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Cache-Control', 'no-cache');
@@ -724,145 +685,10 @@ router.get('/proxy-sw.js', (req, res) => {
   res.send("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>self.registration.unregister());");
 });
 
-// 3. ext-proxy: generic external-content proxy.
-//    For HTML responses it rewrites src/href to route through itself
-//    and injects XHR/fetch interceptors so dynamic requests also go through us.
-router.all('/ext-proxy', async (req, res) => {
-  const target = req.query.u;
-  if (!target) return res.status(400).send('missing u');
-
-  let parsedUrl;
-  try { parsedUrl = new URL(target); }
-  catch { return res.status(400).send('invalid url'); }
-
-  try {
-    const fwdHeaders = {
-      'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-      'Accept': req.headers['accept'] || '*/*',
-      'Accept-Language': req.headers['accept-language'] || 'ru,en',
-      'Referer': parsedUrl.origin + '/',
-    };
-    if (req.headers['content-type']) fwdHeaders['Content-Type'] = req.headers['content-type'];
-    if (req.headers['cookie']) fwdHeaders['Cookie'] = req.headers['cookie'];
-
-    const up = await axios({
-      method: req.method === 'OPTIONS' ? 'GET' : req.method,
-      url: target,
-      data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
-      timeout: 30000,
-      responseType: 'arraybuffer',
-      headers: fwdHeaders,
-      validateStatus: () => true,
-      maxRedirects: 10,
-    });
-
-    const ct = up.headers['content-type'] || '';
-    if (ct) res.setHeader('Content-Type', ct);
-    if (up.headers['cache-control']) res.setHeader('Cache-Control', up.headers['cache-control']);
-    // Forward Set-Cookie from upstream (game sessions)
-    const setCookies = up.headers['set-cookie'];
-    if (setCookies) res.setHeader('Set-Cookie', setCookies);
-    res.removeHeader('X-Frame-Options');
-    res.removeHeader('Content-Security-Policy');
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
-
-    // Only rewrite actual HTML pages, not API responses that happen to have text/html
-    const body = Buffer.from(up.data).toString('utf-8');
-    const isRealHtml = ct.toLowerCase().includes('text/html') && body.trimStart().match(/^<!doctype|^<html/i);
-
-    if (isRealHtml) {
-      let h = body;
-      const origin = parsedUrl.origin;
-
-      const baseDir = target.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
-
-      // Rewrite absolute external URLs in HTML attributes
-      h = h.replace(
-        /((?:src|href|action|poster)\s*=\s*)(["'])(https?:\/\/[^"'\s>]+)\2/gi,
-        (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(u)}${q}`
-      );
-      // Protocol-relative URLs
-      h = h.replace(
-        /((?:src|href)\s*=\s*)(["'])(\/\/[^"'\s>]+)\2/gi,
-        (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent('https:' + u)}${q}`
-      );
-      // Root-relative URLs → absolute through proxy
-      h = h.replace(
-        /((?:src|href)\s*=\s*)(["'])(\/(?!\/|api\/slots\/)[^"'\s>]*)\2/gi,
-        (_, pre, q, p) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(origin + p)}${q}`
-      );
-      // Path-relative URLs (no leading slash, no protocol) → resolve against game base dir
-      h = h.replace(
-        /((?:src|href)\s*=\s*)(["'])(?!https?:|\/\/|\/|#|data:|javascript:|mailto:|about:|blob:|\{)([^"'\s>]+)\2/gi,
-        (_, pre, q, rel) => {
-          try {
-            const abs = new URL(rel, baseDir).href;
-            return `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(abs)}${q}`;
-          } catch { return `${pre}${q}${rel}${q}`; }
-        }
-      );
-
-      // Minimal fallback interceptor for browsers without Service Worker support
-      const escapedBaseDir = baseDir.replace(/'/g, "\\'");
-      const serverHost = req.get('host') || 'aurex.casino';
-      const inj = `<script>(function(){` +
-        `var P='/api/slots/ext-proxy?u=',H=location.host||'${serverHost}',O='${origin}',B='${escapedBaseDir}';` +
-        `function px(u){if(typeof u!='string')return u;` +
-        `if(u.indexOf('/api/slots/')>=0)return u;` +
-        `if(u.indexOf('://')>=0&&u.indexOf(H)<0)return P+encodeURIComponent(u);` +
-        `if(u.indexOf('://')<0&&u.charAt(0)==='/'&&u.indexOf('/api/slots/')!==0)return P+encodeURIComponent(O+u);` +
-        `if(u.indexOf('://')<0&&u.charAt(0)!=='/'&&u.indexOf('data:')!==0&&u.indexOf('blob:')!==0)` +
-        `{try{return P+encodeURIComponent(new URL(u,B).href);}catch(e){}}` +
-        `return u;}` +
-        `var xo=XMLHttpRequest.prototype.open;` +
-        `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
-        `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-        `})()<\/script>`;
-
-      if (h.includes('<head')) {
-        h = h.replace(/<head[^>]*>/i, m => m + inj);
-      } else {
-        h = inj + h;
-      }
-
-      res.setHeader('Content-Type', 'text/html; charset=utf-8');
-      res.send(h);
-    } else if (ct.toLowerCase().includes('text/css')) {
-      let css = body;
-      const cssBase = target.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
-      css = css.replace(
-        /url\(\s*(["']?)(https?:\/\/[^"')]+)\1\s*\)/gi,
-        (_, q, u) => `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent(u)}${q})`
-      );
-      css = css.replace(
-        /url\(\s*(["']?)(\/\/[^"')]+)\1\s*\)/gi,
-        (_, q, u) => `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent('https:' + u)}${q})`
-      );
-      css = css.replace(
-        /url\(\s*(["']?)(?!https?:|\/\/|data:|blob:|\/api\/slots\/)([^"')]+)\1\s*\)/gi,
-        (_, q, rel) => {
-          try {
-            const abs = new URL(rel.trim(), cssBase).href;
-            return `url(${q}/api/slots/ext-proxy?u=${encodeURIComponent(abs)}${q})`;
-          } catch { return `url(${q}${rel}${q})`; }
-        }
-      );
-      res.setHeader('Content-Type', 'text/css; charset=utf-8');
-      res.send(css);
-    } else {
-      res.status(up.status).send(up.data);
-    }
-  } catch (e) {
-    console.log(`[ext-proxy] Error: ${target} — ${e.message}`);
-    res.status(502).send('proxy error');
-  }
-});
 
 // ---------------------------------------------------------------------------
 // game-frame — serves the Fundist HTML as a full page inside our iframe.
-// All external domains are rewritten so the user's browser talks only to us.
+// No proxying — games load directly from provider servers as Fundist intended.
 // ---------------------------------------------------------------------------
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
@@ -871,82 +697,9 @@ router.get('/game-frame/:token', (req, res) => {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
 
-  let html = entry.html;
+  const html = entry.html;
+  const b64 = Buffer.from(html).toString('base64');
 
-  // Log external domains for diagnostics
-  const domains = [...new Set((html.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []))];
-  console.log(`[game-frame] External domains: ${domains.join(', ')}`);
-
-  // --- wscenter providers (Thunderkick, Spinomenal, BGaming, Habanero, NetEnt, Yggdrasil, …) ---
-  const hasWscenter = html.includes('wscenter');
-  if (hasWscenter) {
-    // Proxy only the wscenter auth call (blocked by Russian ISPs).
-    // The game itself loads in an iframe from the provider's domain — no proxying needed.
-    html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
-    console.log('[game-frame] Patched wscenter: domain rewrite to ws-proxy');
-  }
-
-  // wscenter games only need the domain rewrite (done above) — serve directly
-  // without interceptors/Service Worker that break game loading.
-  // Must also unregister any stale Service Worker cached from earlier visits.
-  if (hasWscenter) {
-    const b64ws = Buffer.from(html).toString('base64');
-    const page = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-iframe,object,embed,div.game-container,.game-frame{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-body>iframe,body>div,body>object,body>embed{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-</style>
-</head><body>
-<script>
-(function(){
-  var b64='${b64ws}';
-  function go(){document.open();document.write(atob(b64));document.close();}
-  if('serviceWorker' in navigator){
-    navigator.serviceWorker.getRegistrations().then(function(regs){
-      Promise.all(regs.map(function(r){return r.unregister();}))
-        .then(go).catch(go);
-    }).catch(go);
-  }else{go();}
-})();
-</script>
-</body></html>`;
-
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Cache-Control', 'no-store');
-    res.removeHeader('X-Frame-Options');
-    res.removeHeader('Content-Security-Policy');
-    return res.send(page);
-  }
-
-  // Non-wscenter games: full proxy layer (interceptors + Service Worker)
-  html = html.replace(
-    /(<iframe[^>]+src\s*=\s*)(["'])(https?:\/\/[^"']+)\2/gi,
-    (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
-  );
-
-  const gfHost = req.get('host') || 'aurex.casino';
-  const interceptor = `<script>(function(){
-var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
-function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
-var xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
-if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-})()</script>`;
-
-  const htmlWithFallback = interceptor + html;
-  const b64 = Buffer.from(htmlWithFallback).toString('base64');
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -968,19 +721,13 @@ body>iframe,body>div,body>object,body>embed{
 <script>
 (function(){
   var b64='${b64}';
-  function loadGame(){document.open();document.write(atob(b64));document.close();}
+  function go(){document.open();document.write(atob(b64));document.close();}
   if('serviceWorker' in navigator){
-    navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'})
-      .then(function(reg){
-        if(navigator.serviceWorker.controller){loadGame();return;}
-        var done=false;
-        navigator.serviceWorker.addEventListener('controllerchange',function(){if(!done){done=true;loadGame();}});
-        var w=reg.installing||reg.waiting;
-        if(w)w.addEventListener('statechange',function(){if(w.state==='activated'&&!done){done=true;loadGame();}});
-        setTimeout(function(){if(!done){done=true;loadGame();}},3000);
-      })
-      .catch(function(){loadGame();});
-  }else{loadGame();}
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      Promise.all(regs.map(function(r){return r.unregister();}))
+        .then(go).catch(go);
+    }).catch(go);
+  }else{go();}
 })();
 </script>
 </body></html>`;
@@ -1111,68 +858,6 @@ router.get('/bonus-status', auth, async (req, res) => {
   } catch (error) {
     console.error('[bonus-status] Error:', error.message);
     res.json({ success: true, data: { balance: 0, bonus_balance: 0, active_wagers: [] } });
-  }
-});
-
-// ---------------------------------------------------------------------------
-// Catch-all: proxy unmatched GET requests that are likely game assets loaded
-// via relative URLs from proxied game HTML. The Referer header contains the
-// ext-proxy URL with the game origin encoded in the `u` parameter.
-// ---------------------------------------------------------------------------
-router.get('/*', async (req, res, next) => {
-  // Only intercept paths that look like static assets (not API routes we handle)
-  const subpath = req.params[0] || '';
-  if (!subpath || subpath.startsWith('game') || subpath.startsWith('check-proxy') ||
-      subpath.startsWith('ws-proxy') || subpath.startsWith('ext-proxy') ||
-      subpath.startsWith('freerounds') || subpath.startsWith('bonus') ||
-      subpath.startsWith('img') || subpath.startsWith('start') ||
-      subpath.startsWith('catalog') || subpath.startsWith('cdn')) {
-    return next();
-  }
-
-  const referer = req.headers.referer || '';
-  let gameBaseDir = '';
-
-  // Extract game base directory from Referer (ext-proxy?u=GAME_URL)
-  const extMatch = referer.match(/ext-proxy\?u=([^&\s]+)/);
-  if (extMatch) {
-    try {
-      const gameUrl = decodeURIComponent(extMatch[1]);
-      gameBaseDir = gameUrl.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
-    } catch {}
-  }
-
-  if (!gameBaseDir) {
-    return next();
-  }
-
-  const qs = req.originalUrl.includes('?')
-    ? req.originalUrl.substring(req.originalUrl.indexOf('?'))
-    : '';
-  let target;
-  try {
-    target = new URL(subpath + qs, gameBaseDir).href;
-  } catch {
-    return next();
-  }
-
-  try {
-    const resp = await axios.get(target, {
-      timeout: 15000,
-      responseType: 'arraybuffer',
-      headers: {
-        'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
-        'Accept': req.headers['accept'] || '*/*',
-        'Referer': new URL(gameBaseDir).origin + '/',
-      },
-      validateStatus: () => true,
-    });
-    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
-    if (resp.headers['cache-control']) res.setHeader('Cache-Control', resp.headers['cache-control']);
-    res.status(resp.status).send(resp.data);
-  } catch (e) {
-    console.log(`[cdn-catch-all] Failed ${target}: ${e.message}`);
-    next();
   }
 });
 
