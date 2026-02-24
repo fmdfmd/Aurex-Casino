@@ -730,12 +730,26 @@ router.get('/ws-proxy/*', async (req, res) => {
     // For UserAuth responses — rewrite game URLs so the iframe loads through ext-proxy
     if (subpath.includes('UserAuth')) {
       let body = Buffer.from(resp.data).toString('utf-8');
-      console.log(`[ws-proxy] UserAuth raw: ${body.slice(0, 300)}`);
-      body = body.replace(
-        /https?:\/\/(?!check\d*\.wscenter\.xyz)[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}[^"'\s}\])\\]*/g,
-        (url) => `/api/slots/ext-proxy?u=${encodeURIComponent(url)}`
-      );
-      console.log(`[ws-proxy] UserAuth rewritten: ${body.slice(0, 300)}`);
+      console.log(`[ws-proxy] UserAuth raw: ${body.slice(0, 400)}`);
+      try {
+        const parsed = JSON.parse(body);
+        if (parsed.data && typeof parsed.data === 'string' && parsed.data.startsWith('http')) {
+          const origUrl = parsed.data;
+          parsed.data = '/api/slots/ext-proxy?u=' + encodeURIComponent(origUrl);
+          body = JSON.stringify(parsed);
+          console.log(`[ws-proxy] UserAuth rewritten: ${origUrl} → ext-proxy`);
+        }
+      } catch (e) {
+        console.log(`[ws-proxy] UserAuth not JSON, trying regex`);
+        body = body.replace(
+          /https?:(?:\\\/\\\/|\/\/)[^\s"'\\})\]]+/g,
+          (url) => {
+            const clean = url.replace(/\\\//g, '/');
+            if (clean.includes('wscenter')) return url;
+            return '/api/slots/ext-proxy?u=' + encodeURIComponent(clean);
+          }
+        );
+      }
       res.send(body);
     } else {
       res.send(resp.data);
