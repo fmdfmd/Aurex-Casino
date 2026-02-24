@@ -3,7 +3,20 @@ const router = express.Router();
 const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
 const avePayService = require('../services/avePayService');
+const nirvanaPayService = require('../services/nirvanaPayService');
 const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
+
+function isNirvanaMethod(method) {
+  return method && method.startsWith('NIRVANA_');
+}
+
+function getNirvanaToken(method) {
+  const map = {
+    'NIRVANA_SBP': 'СБП',
+    'NIRVANA_C2C': 'Межбанк'
+  };
+  return map[method] || 'СБП';
+}
 
 // Получить историю транзакций пользователя
 router.get('/history', auth, async (req, res) => {
@@ -58,7 +71,7 @@ router.get('/history', auth, async (req, res) => {
   }
 });
 
-// Создать депозит через AVE PAY
+// Создать депозит (AVE PAY для 3000+, Nirvana Pay для 100-2999)
 router.post('/deposit', auth, async (req, res) => {
   try {
     const { amount, paymentMethod = 'P2P_CARD', currency = 'RUB' } = req.body;
@@ -67,14 +80,16 @@ router.post('/deposit', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
-    const minDeposits = { 'P2P_CARD': 5000, 'P2P_SBP': 3000 };
-    const maxDeposits = { 'P2P_CARD': 300000, 'P2P_SBP': 300000 };
-    const minDeposit = minDeposits[paymentMethod] || 3000;
-    const maxDeposit = maxDeposits[paymentMethod] || 300000;
-
     if (paymentMethod === 'CRYPTO' || paymentMethod?.startsWith('CRYPTO_')) {
       return res.status(400).json({ success: false, message: 'Криптовалюта временно недоступна' });
     }
+
+    const useNirvana = isNirvanaMethod(paymentMethod);
+
+    const minDeposits = { 'P2P_CARD': 5000, 'P2P_SBP': 3000, 'NIRVANA_SBP': 100, 'NIRVANA_C2C': 100 };
+    const maxDeposits = { 'P2P_CARD': 300000, 'P2P_SBP': 300000, 'NIRVANA_SBP': 100000, 'NIRVANA_C2C': 100000 };
+    const minDeposit = minDeposits[paymentMethod] || 100;
+    const maxDeposit = maxDeposits[paymentMethod] || 300000;
 
     if (amount < minDeposit) {
       return res.status(400).json({ success: false, message: `Минимальная сумма депозита: ${minDeposit.toLocaleString('ru-RU')} ₽` });
@@ -93,24 +108,67 @@ router.post('/deposit', auth, async (req, res) => {
     
     const transaction = result.rows[0];
 
-    // Собираем данные клиента для AVE PAY
+    if (useNirvana) {
+      const token = getNirvanaToken(paymentMethod);
+      const nirvanaResponse = await nirvanaPayService.createDeposit({
+        amount: parseFloat(amount),
+        transactionId: transaction.id,
+        token,
+        currency,
+        userIp: req.ip,
+        userAgent: req.headers['user-agent'],
+        userEmail: req.user.email || undefined,
+        userId: req.user.id
+      });
+
+      if (nirvanaResponse.trackerID) {
+        await pool.query(
+          "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+          [nirvanaResponse.trackerID, transaction.id]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Переведите средства по указанным реквизитам',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: transaction.status,
+            createdAt: transaction.created_at
+          },
+          provider: 'nirvana',
+          paymentDetails: {
+            receiver: nirvanaResponse.receiver,
+            bankName: nirvanaResponse.bankName,
+            recipientName: nirvanaResponse.recipientName,
+            amount: parseFloat(amount)
+          },
+          redirectUrl: null,
+          avePayId: null
+        }
+      });
+    }
+
+    // AVE PAY flow (existing)
     const customer = {};
     if (req.user.email) customer.email = req.user.email;
     if (req.user.phone) customer.phone = req.user.phone;
+
+    const avePayMethod = paymentMethod;
     
     const avePayResponse = await avePayService.createDeposit({
       amount: parseFloat(amount),
       currency,
       transactionId: transaction.id,
-      paymentMethod,
+      paymentMethod: avePayMethod,
       userId: req.user.id,
       customer: Object.keys(customer).length > 0 ? customer : undefined
     });
 
-    // AVE PAY wraps data in { status, result: { id, redirectUrl, ... } }
     const paymentResult = avePayResponse?.result || avePayResponse;
 
-    // Сохраняем AVE PAY payment ID
     if (paymentResult?.id) {
       await pool.query(
         "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
@@ -128,14 +186,15 @@ router.post('/deposit', auth, async (req, res) => {
           status: transaction.status,
           createdAt: transaction.created_at
         },
+        provider: 'avepay',
         redirectUrl: paymentResult?.redirectUrl || null,
         avePayId: paymentResult?.id || null
       }
     });
   } catch (error) {
     console.error('Create deposit error:', error);
-    const avePayError = error.response?.data?.message || error.message;
-    res.status(500).json({ success: false, message: `Ошибка создания платежа: ${avePayError}` });
+    const providerError = error.response?.data?.message || error.response?.data?.reason || error.message;
+    res.status(500).json({ success: false, message: `Ошибка создания платежа: ${providerError}` });
   }
 });
 
@@ -306,6 +365,46 @@ router.post('/withdraw', auth, async (req, res) => {
       return txResult.rows[0];
     });
 
+    if (isNirvanaMethod(paymentMethod)) {
+      const token = getNirvanaToken(paymentMethod);
+      const receiver = paymentMethod === 'NIRVANA_C2C' ? cardNumber : (phone ? `7${phone}` : '');
+
+      const nirvanaResponse = await nirvanaPayService.createWithdrawal({
+        amount: parseFloat(amount),
+        transactionId: transaction.id,
+        token,
+        currency,
+        receiver,
+        bankName: token,
+        recipientName: ''
+      });
+
+      if (nirvanaResponse.trackerID) {
+        await pool.query(
+          "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+          [nirvanaResponse.trackerID, transaction.id]
+        );
+      }
+
+      return res.json({
+        success: true,
+        message: 'Заявка на вывод создана',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: transaction.status,
+            createdAt: transaction.created_at
+          },
+          provider: 'nirvana',
+          fee: { percent: feePercent, amount: feeAmount },
+          netAmount: amount,
+          totalDeducted
+        }
+      });
+    }
+
+    // AVE PAY withdrawal flow (existing)
     const customer = {};
     if (req.user.email) customer.email = req.user.email;
 
@@ -339,6 +438,7 @@ router.post('/withdraw', auth, async (req, res) => {
           status: transaction.status,
           createdAt: transaction.created_at
         },
+        provider: 'avepay',
         avePayId: paymentResult?.id || null,
         fee: { percent: feePercent, amount: feeAmount },
         netAmount: amount,

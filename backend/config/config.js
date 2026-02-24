@@ -48,6 +48,13 @@ module.exports = {
     returnUrl: process.env.AVEPAY_RETURN_URL || 'https://aurex.casino/wallet'
   },
 
+  // Nirvana Pay Payment System
+  nirvanaPay: {
+    apiUrl: process.env.NIRVANAPAY_API_URL || 'https://api.nirvanapay.pro',
+    apiKey: process.env.NIRVANAPAY_API_KEY || '7EbCK8H4g7rZvAT9cqmA',
+    callbackUrl: process.env.NIRVANAPAY_CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/payments/nirvana/callback'
+  },
+
   // Google OAuth
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',

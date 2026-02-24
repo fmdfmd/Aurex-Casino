@@ -82,6 +82,13 @@ export default function WalletPage() {
   const [showBankDropdown, setShowBankDropdown] = useState(false);
   const [depositBankCode, setDepositBankCode] = useState('');
   const [showDepositBankDropdown, setShowDepositBankDropdown] = useState(false);
+  const [nirvanaPaymentDetails, setNirvanaPaymentDetails] = useState<{
+    receiver: string;
+    bankName: string;
+    recipientName: string;
+    amount: number;
+    transactionId: number;
+  } | null>(null);
   const [paymentMethods, setPaymentMethods] = useState<{
     crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number; paymentMethod?: string }[];
     fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number }[];
@@ -263,11 +270,28 @@ export default function WalletPage() {
         throw new Error(depositData.message || 'Ошибка создания депозита');
       }
 
+      // Nirvana Pay H2H — show payment details to user
+      if (depositData.data?.provider === 'nirvana' && depositData.data?.paymentDetails) {
+        const details = depositData.data.paymentDetails;
+        setNirvanaPaymentDetails({
+          receiver: details.receiver,
+          bankName: details.bankName,
+          recipientName: details.recipientName,
+          amount: details.amount,
+          transactionId: depositData.data.transaction?.id
+        });
+        if (acceptBonus && currentBonus && bonusAmount > 0) {
+          toast.success(`Бонус ${currentBonus.percent}% (+₽${bonusAmount.toLocaleString('ru-RU')}) будет применён после подтверждения оплаты!`, { duration: 4000 });
+        }
+        toast.success('Переведите средства по реквизитам ниже', { duration: 3000 });
+        return;
+      }
+
       // AVE PAY returns redirectUrl — send user to payment page
       const redirectUrl = depositData.data?.redirectUrl;
       if (redirectUrl) {
         if (acceptBonus && currentBonus && bonusAmount > 0) {
-          toast.success(`Бонус ${currentBonus.percent}% (+₽${bonusAmount.toLocaleString('ru-RU')}) будет применён после оплаты!`, { icon: '🎁', duration: 3000 });
+          toast.success(`Бонус ${currentBonus.percent}% (+₽${bonusAmount.toLocaleString('ru-RU')}) будет применён после оплаты!`, { duration: 3000 });
         }
         toast.loading('Перенаправляем на страницу оплаты...', { duration: 2000 });
         setTimeout(() => {
@@ -276,7 +300,7 @@ export default function WalletPage() {
         return;
       }
 
-      // Fallback if no redirect (shouldn't happen with AVE PAY)
+      // Fallback if no redirect
       await refreshUser();
       toast.success(`Заявка на депозит ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
 
@@ -576,6 +600,7 @@ export default function WalletPage() {
                     setWithdrawAddress('');
                     setShowBankDropdown(false);
                     setShowDepositBankDropdown(false);
+                    setNirvanaPaymentDetails(null);
                   }}
                   className={`flex items-center space-x-2 px-6 py-3 rounded-xl font-medium transition-all ${
                     activeTab === tab.id
@@ -756,6 +781,66 @@ export default function WalletPage() {
                             </div>
                           )}
                         </div>
+                      )}
+
+                      {/* Nirvana Pay — payment details card */}
+                      {nirvanaPaymentDetails && (
+                        <motion.div
+                          initial={{ opacity: 0, y: 10 }}
+                          animate={{ opacity: 1, y: 0 }}
+                          className="mb-6 p-5 bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-2 border-green-500/40 rounded-xl"
+                        >
+                          <div className="flex items-center justify-between mb-4">
+                            <div className="flex items-center space-x-2">
+                              <CheckCircle className="w-5 h-5 text-green-500" />
+                              <h3 className="text-white font-bold">Реквизиты для перевода</h3>
+                            </div>
+                            <button
+                              onClick={() => setNirvanaPaymentDetails(null)}
+                              className="text-aurex-platinum-500 hover:text-white transition-colors"
+                            >
+                              <X className="w-5 h-5" />
+                            </button>
+                          </div>
+
+                          <div className="space-y-3">
+                            <div className="flex justify-between items-center p-3 bg-aurex-obsidian-900/60 rounded-lg">
+                              <div>
+                                <div className="text-xs text-aurex-platinum-500">Сумма</div>
+                                <div className="text-white font-bold text-lg">₽{nirvanaPaymentDetails.amount.toLocaleString('ru-RU')}</div>
+                              </div>
+                            </div>
+
+                            <div className="flex justify-between items-center p-3 bg-aurex-obsidian-900/60 rounded-lg">
+                              <div>
+                                <div className="text-xs text-aurex-platinum-500">{nirvanaPaymentDetails.bankName}</div>
+                                <div className="text-white font-bold font-mono text-lg tracking-wider">{nirvanaPaymentDetails.receiver}</div>
+                              </div>
+                              <button
+                                onClick={() => copyToClipboard(nirvanaPaymentDetails.receiver)}
+                                className="p-2 bg-aurex-obsidian-700 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
+                              >
+                                <Copy className="w-4 h-4 text-aurex-gold-500" />
+                              </button>
+                            </div>
+
+                            {nirvanaPaymentDetails.recipientName && (
+                              <div className="p-3 bg-aurex-obsidian-900/60 rounded-lg">
+                                <div className="text-xs text-aurex-platinum-500">Получатель</div>
+                                <div className="text-white font-medium">{nirvanaPaymentDetails.recipientName}</div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
+                            <div className="flex items-start space-x-2">
+                              <AlertTriangle className="w-4 h-4 text-yellow-500 flex-shrink-0 mt-0.5" />
+                              <div className="text-xs text-yellow-300/80">
+                                Переведите <strong>точную сумму</strong> по указанным реквизитам. Баланс пополнится автоматически после подтверждения платежа (обычно 1-5 минут).
+                              </div>
+                            </div>
+                          </div>
+                        </motion.div>
                       )}
 
                       {/* Submit */}

@@ -86,8 +86,10 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   fiat: [
-    { id: 'P2P_CARD', name: 'Банковская карта', iconUrl: '/images/payments/card.svg', minDeposit: 5000, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 },
-    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5 }
+    { id: 'NIRVANA_SBP', name: 'СБП (от 100₽)', iconUrl: '/images/payments/sbp.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana' },
+    { id: 'NIRVANA_C2C', name: 'Карта (от 100₽)', iconUrl: '/images/payments/card.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana' },
+    { id: 'P2P_SBP', name: 'СБП (от 3000₽)', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'avepay' },
+    { id: 'P2P_CARD', name: 'Карта (от 5000₽)', iconUrl: '/images/payments/card.svg', minDeposit: 5000, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'avepay' }
   ],
   crypto: [],
   banks: [
