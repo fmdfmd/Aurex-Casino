@@ -161,6 +161,7 @@ const ACTIVATED_PROVIDERS = new Set([
   '854',  // Betconstruct
   '816',  // InOut
   '974',  // Kiron
+  '973',  // Endorphina
   // --- Pending activation (add here when SoftGamings confirms) ---
   // '960',  // PragmaticPlay
   // '913',  // PragmaticPlayLive
@@ -193,8 +194,45 @@ router.get('/games', async (req, res) => {
 
     const merchants = apiData.merchants || {};
 
-    // Game sorting is managed entirely in the Fundist backoffice (www5.fundist.org → Sorting).
-    // After changing sort order there, call POST /api/slots/catalog/refresh to apply.
+    // Provider tiers: higher tier → appears earlier in the catalog.
+    // Within each tier, providers are interleaved round-robin so no provider
+    // dominates long stretches of the feed (like top casinos do).
+    const PROVIDER_TIER = {
+      '911': 1,  // Push Gaming
+      '901': 1,  // BGaming
+      '973': 1,  // Endorphina
+      '920': 1,  // Thunderkick
+      '939': 1,  // PG Soft
+      '895': 1,  // Spribe
+      '953': 1,  // Yggdrasil
+      '349': 2, '940': 2,  // Evoplay
+      '872': 2,  // Upgaming
+      '924': 2,  // 3 Oaks Gaming
+      '956': 2,  // Belatra
+      '959': 2,  // Spinomenal
+      '976': 2, '865': 2,  // Habanero
+      '955': 2,  // GameArt
+      '879': 2,  // Gamzix
+      '941': 2,  // Wazdan
+      '874': 2,  // Kalamba
+      '805': 2,  // Peter & Sons
+      '899': 2,  // Mascot Gaming
+      '338': 2,  // BigTimeGaming
+      '870': 3,  // Microgaming
+      '949': 3,  // Platipus
+      '991': 3,  // BetSoft
+      '923': 3,  // CQ9
+      '927': 3,  // Fugaso
+      '919': 3,  // Spadegaming
+      '869': 3,  // SmartSoft
+      '849': 3,  // TurboGames
+      '422': 3, '987': 3,  // TomHorn
+      '930': 3,  // Genii
+      '885': 3,  // CT Interactive
+      '926': 4,  // Igrosoft
+      '307': 4,  // Novomatic
+      '867': 4,  // Netgame
+    };
 
     // Live casino providers — shown after all slot providers
     const liveProviderIds = new Set([
@@ -309,14 +347,54 @@ router.get('/games', async (req, res) => {
         });
       });
 
-      // Deduplicate: keep the first occurrence (best sortScore after sorting)
-      processedGames.sort((a, b) => a.sortScore - b.sortScore);
+      // Deduplicate
       const seenIds = new Set();
       processedGames = processedGames.filter(g => {
         if (seenIds.has(g.id)) return false;
         seenIds.add(g.id);
         return true;
       });
+
+      // Split into slots and live, then interleave slot providers round-robin
+      const slotGames = processedGames.filter(g => !liveProviderIds.has(g.systemId));
+      const liveGames = processedGames.filter(g => liveProviderIds.has(g.systemId));
+
+      // Group slot games by provider
+      const byProvider = new Map();
+      for (const g of slotGames) {
+        if (!byProvider.has(g.systemId)) byProvider.set(g.systemId, []);
+        byProvider.get(g.systemId).push(g);
+      }
+
+      // Sort provider groups by tier (lower tier number = higher priority)
+      const providerOrder = [...byProvider.keys()].sort((a, b) => {
+        const ta = PROVIDER_TIER[a] || 5;
+        const tb = PROVIDER_TIER[b] || 5;
+        if (ta !== tb) return ta - tb;
+        return (byProvider.get(b)?.length || 0) - (byProvider.get(a)?.length || 0);
+      });
+
+      // Round-robin interleave: pick 1 game from each provider per round
+      const interleaved = [];
+      const cursors = new Map();
+      providerOrder.forEach(pid => cursors.set(pid, 0));
+
+      let remaining = slotGames.length;
+      while (remaining > 0) {
+        for (const pid of providerOrder) {
+          const games = byProvider.get(pid);
+          const idx = cursors.get(pid);
+          if (idx < games.length) {
+            interleaved.push(games[idx]);
+            cursors.set(pid, idx + 1);
+            remaining--;
+          }
+        }
+      }
+
+      // Live games sorted by Fundist order, appended after slots
+      liveGames.sort((a, b) => a.sortScore - b.sortScore);
+      processedGames = [...interleaved, ...liveGames];
 
       // Log category distribution
       const catDist = {};
