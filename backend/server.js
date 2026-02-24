@@ -8,6 +8,7 @@ const rateLimit = require('express-rate-limit');
 // MongoDB removed - using PostgreSQL only
 const socketIo = require('socket.io');
 const http = require('http');
+const WebSocketLib = require('ws');
 require('dotenv').config();
 
 // Import routes
@@ -236,6 +237,92 @@ async function runProductionSetup() {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// WebSocket proxy — Russian ISPs block direct WS connections to game providers.
+// Intercepts upgrade requests to /api/slots/ws-game-proxy?target=wss://...
+// and proxies them through our Railway server.
+// ---------------------------------------------------------------------------
+const wsProxyServer = new WebSocketLib.Server({ noServer: true });
+
+server.on('upgrade', (request, socket, head) => {
+  let pathname;
+  try {
+    pathname = new URL(request.url, `http://${request.headers.host}`).pathname;
+  } catch { pathname = request.url?.split('?')[0] || ''; }
+
+  if (pathname !== '/api/slots/ws-game-proxy') return;
+
+  wsProxyServer.handleUpgrade(request, socket, head, (clientWs) => {
+    let target;
+    try {
+      const u = new URL(request.url, `http://${request.headers.host}`);
+      target = u.searchParams.get('target');
+    } catch { /* handled below */ }
+
+    if (!target || !target.startsWith('ws')) {
+      clientWs.close(1008, 'Missing or invalid target');
+      return;
+    }
+
+    console.log(`[ws-proxy] Opening → ${target}`);
+
+    let targetOrigin;
+    try { targetOrigin = new URL(target).origin; } catch { targetOrigin = ''; }
+
+    const upstream = new WebSocketLib(target, {
+      headers: {
+        'User-Agent': request.headers['user-agent'] || 'Mozilla/5.0',
+        'Origin': targetOrigin,
+      },
+      rejectUnauthorized: false,
+    });
+
+    upstream.on('open', () => {
+      console.log(`[ws-proxy] Connected to ${target}`);
+    });
+
+    upstream.on('message', (data, isBinary) => {
+      if (clientWs.readyState === WebSocketLib.OPEN) {
+        clientWs.send(data, { binary: isBinary });
+      }
+    });
+
+    upstream.on('close', (code, reason) => {
+      if (clientWs.readyState === WebSocketLib.OPEN ||
+          clientWs.readyState === WebSocketLib.CONNECTING) {
+        clientWs.close(code || 1000, reason || '');
+      }
+    });
+
+    upstream.on('error', (err) => {
+      console.log(`[ws-proxy] Upstream error: ${err.message}`);
+      if (clientWs.readyState === WebSocketLib.OPEN) {
+        clientWs.close(1011, 'Upstream error');
+      }
+    });
+
+    clientWs.on('message', (data, isBinary) => {
+      if (upstream.readyState === WebSocketLib.OPEN) {
+        upstream.send(data, { binary: isBinary });
+      }
+    });
+
+    clientWs.on('close', () => {
+      if (upstream.readyState === WebSocketLib.OPEN ||
+          upstream.readyState === WebSocketLib.CONNECTING) {
+        upstream.close();
+      }
+    });
+
+    clientWs.on('error', (err) => {
+      console.log(`[ws-proxy] Client error: ${err.message}`);
+      if (upstream.readyState === WebSocketLib.OPEN) {
+        upstream.close();
+      }
+    });
+  });
+});
 
 server.listen(PORT, () => {
   console.log(`🚀 AUREX Empire server running on port ${PORT}`);

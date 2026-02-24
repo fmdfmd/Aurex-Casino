@@ -833,7 +833,7 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
-      // Minimal fallback interceptor for browsers without Service Worker support
+      // Fallback interceptor (XHR + fetch + WebSocket) for game proxying
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
       const inj = `<script>(function(){` +
@@ -848,6 +848,17 @@ router.all('/ext-proxy', async (req, res) => {
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
+        `var _WS=window.WebSocket;` +
+        `window.WebSocket=function(u,p){` +
+        `if(u&&typeof u==='string'){try{var pu=new URL(u);` +
+        `if(pu.host!==H){var nu=(location.protocol==='https:'?'wss://':'ws://')+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);` +
+        `return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}` +
+        `return p!==undefined?new _WS(u,p):new _WS(u);};` +
+        `window.WebSocket.prototype=_WS.prototype;` +
+        `window.WebSocket.CONNECTING=_WS.CONNECTING;` +
+        `window.WebSocket.OPEN=_WS.OPEN;` +
+        `window.WebSocket.CLOSING=_WS.CLOSING;` +
+        `window.WebSocket.CLOSED=_WS.CLOSED;` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -925,7 +936,7 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
+  // Fallback interceptor (XHR + fetch + WebSocket) for game proxying
   const gfHost = req.get('host') || 'aurex.casino';
   const interceptor = `<script>(function(){
 var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
@@ -933,6 +944,17 @@ function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf(':/
 var xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
 if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
+var _WS=window.WebSocket;
+window.WebSocket=function(u,p){
+if(u&&typeof u==='string'){try{var pu=new URL(u);
+if(pu.host!==location.host){var nu=(location.protocol==='https:'?'wss://':'ws://')+location.host+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);
+return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}
+return p!==undefined?new _WS(u,p):new _WS(u);};
+window.WebSocket.prototype=_WS.prototype;
+window.WebSocket.CONNECTING=_WS.CONNECTING;
+window.WebSocket.OPEN=_WS.OPEN;
+window.WebSocket.CLOSING=_WS.CLOSING;
+window.WebSocket.CLOSED=_WS.CLOSED;
 })()</script>`;
 
   const htmlWithFallback = interceptor + html;
