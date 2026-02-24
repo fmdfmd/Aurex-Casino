@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 21 февраля 2026**
+> **Последнее обновление: 10 февраля 2026**
 
 ---
 
@@ -384,8 +384,9 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/callback/softgamings` | OneWallet callbacks |
 | `/api/config/*` | Конфигурация (VIP, провайдеры) |
 | `/api/users/*` | Профиль, настройки |
-| `/api/payments/*` | Депозиты, выводы, AVE PAY вебхуки |
+| `/api/payments/*` | Депозиты, выводы, AVE PAY / Nirvana Pay |
 | `/api/payments/avepay/callback` | AVE PAY webhook (POST) + health check (GET) + debug/test (admin) |
+| `/api/payments/nirvana/callback` | Nirvana Pay callback (GET) — статусы депозитов/выводов |
 | `/api/bonuses/*` | Бонусы |
 | `/api/cashback/*` | Кэшбэк |
 | `/api/loyalty/*` | VIP магазин |
@@ -412,6 +413,8 @@ java -jar OWClientTest_v2.14.jar \
 | `backend/routes/chat.js` | AI чат (OpenRouter → Claude 3.5 Sonnet) |
 | `backend/routes/otp.js` | Верификация телефона (uCaller) |
 | `backend/middleware/auth.js` | JWT middleware (req.user с balance, currency) |
+| `backend/services/nirvanaPayService.js` | Nirvana Pay API (H2H + Payment Form), депозиты/выводы |
+| `backend/routes/nirvanaPayCallback.js` | Обработка GET-коллбеков от Nirvana Pay |
 | `backend/constants/fundistMerchants.js` | Маппинг MerchantID → имя провайдера (60+) |
 
 ### Frontend
@@ -421,7 +424,7 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/components/GameModal.tsx` | Модал запуска игры (iframe + document.write) |
 | `frontend/components/GameCard.tsx` | Карточка игры (картинка, RTP, провайдер) |
 | `frontend/components/LiveChatWidget.tsx` | Виджет AI чата (Стефани) |
-| `frontend/pages/wallet.tsx` | Кошелёк: депозит (Card/SBP), вывод (карта/телефон+банк). Крипта скрыта (неактивна у провайдера) |
+| `frontend/pages/wallet.tsx` | Кошелёк: депозит/вывод через AVE PAY + Nirvana Pay (11 методов). Крипта скрыта |
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/store/settingsStore.ts` | Настройки (язык, валюта отображения) |
@@ -798,6 +801,137 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 8. Если DECLINED → возврат средств на баланс пользователя
 ```
 
+### Nirvana Pay — ВТОРОЙ ПРОВАЙДЕР (ИНТЕГРИРОВАН)
+
+**Статус:** Интегрирован. Депозиты и выводы через H2H API. Payment Form API (f.nirvanapay.pro) НЕ активирована для текущего аккаунта. 11 платёжных методов для России. **Лимиты на аккаунте = 0 — нужно настроить в ЛК Nirvana Pay!**
+
+**API Credentials:**
+```
+Public Key:   00cb61a2-3b3f-4b70-b2df-efe1487e15fe
+Private Key:  ad9174c6-db56-476f-ad82-4a200f3ea14e
+```
+- Авторизация: заголовки `ApiPublic` + `ApiPrivate` (разные ключи!)
+- Старый ключ `7EbCK8H4g7rZvAT9cqmA` — **НЕ работает**, заменён
+
+**API Endpoints:**
+| API | URL | Назначение | Статус |
+|---|---|---|---|
+| H2H API | `https://api.nirvanapay.pro` | Депозиты + выводы + статус | **РАБОТАЕТ** |
+| Payment Form API | `https://f.nirvanapay.pro/api/v2/order` | Депозиты (redirect) | **НЕ АКТИВИРОВАНА** (incorrect keys) |
+
+**Документация:**
+- Payment Form: https://f.nirvanapay.pro/read/documentation
+- H2H API: https://gitlab.com/NirvanaPayPlatform/doc
+
+**Callback URL:** `https://aurex-casino-production.up.railway.app/api/payments/nirvana/callback`
+- Метод: `GET` (Nirvana шлёт GET-запрос при изменении статуса)
+- Параметр `txId` передаётся в URL при создании ордера
+
+**Доступные методы оплаты:**
+
+| ID метода | Название | Депозит | Вывод | Мин. деп. | Макс. деп. | Комиссия деп. | Комиссия выв. |
+|---|---|---|---|---|---|---|---|
+| NIRVANA_SBP | СБП | да | да | 100 ₽ | 100 000 ₽ | 13-22% | 5% |
+| NIRVANA_C2C | Карта C2C | да | да | 100 ₽ | 100 000 ₽ | 13-22% | 5% |
+| NIRVANA_NSPK | НСПК QR | да | нет | 50 ₽ | 150 000 ₽ | 20% | — |
+| NIRVANA_SBER | Сбербанк | да | да | 1 000 ₽ | 50 000 ₽ | 13% | 5% |
+| NIRVANA_ALFA | Альфа-Банк | да | да | 1 000 ₽ | 50 000 ₽ | 13% | 5% |
+| NIRVANA_VTB | ВТБ | да | да | 1 000 ₽ | 50 000 ₽ | 13% | 5% |
+| NIRVANA_SBER_SBP | Сбер СБП | да | да | 100 ₽ | 100 000 ₽ | 13% | 5% |
+| NIRVANA_ALFA_SBP | Альфа СБП | да | да | 100 ₽ | 100 000 ₽ | 13% | 5% |
+| NIRVANA_VTB_SBP | ВТБ СБП | да | да | 100 ₽ | 100 000 ₽ | 13% | 5% |
+
+**Token маппинг (для H2H API):**
+| Метод | token |
+|---|---|
+| NIRVANA_SBP | СБП |
+| NIRVANA_C2C | Межбанк |
+| NIRVANA_NSPK | НСПК |
+| NIRVANA_SBER | Сбербанк |
+| NIRVANA_SBER_SBP | СБЕР СБП |
+| NIRVANA_ALFA | Альфабанк |
+| NIRVANA_ALFA_SBP | Альфа СБП |
+| NIRVANA_VTB | ВТБ |
+| NIRVANA_VTB_SBP | ВТБ СБП |
+| NIRVANA_TRANS_SBP | ТрансСБП |
+| NIRVANA_TRANS_C2C | ТрансМежбанк |
+
+**Все доступные токены по странам:**
+```
+Россия (RUB):  Межбанк, СБП, ТрансМежбанк, ТрансСБП, НСПК, Яндекс Чаевые, ВТБ, ВТБ СБП, Альфабанк, Альфа СБП, Сбербанк, СБЕР СБП
+Узбекистан (UZS): Humo UZS, UZ Card, HumoVisa, HumoMastercard, UzcardVisa, UzcardMastercard
+Казахстан (KZT): ForteBank, Altyn Bank, Halyk Bank
+Азербайджан (AZN): AZN, Mpay, LeoBank, M10, Kapital Bank, ABB
+Турция (TRY): Enpara, Garanti, TRY, Ecom TRY, Payfix, iBan, Ininal, Ziraat Bank, Kuveyt, Papara
+Таджикистан (TJS): Алиф Банк, Спитамен Банк, Душанбе Сити Банк
+Абхазия (ARUB): Сбербанк Абхазии, А-мобаил
+```
+
+**Депозиты (H2H API — текущий flow):**
+```
+1. Backend создаёт transaction (pending) в PostgreSQL
+2. POST https://api.nirvanapay.pro/create/in
+   Headers: ApiPublic + ApiPrivate
+   Body: { clientID, amount, token, currency, callbackUrl, userInfo }
+3. Nirvana возвращает receiver (карта/телефон), bankName, recipientName
+4. Frontend показывает реквизиты пользователю с кнопкой копирования
+5. Пользователь переводит вручную
+6. Nirvana → GET /api/payments/nirvana/callback?txId=XX&type=deposit
+7. Backend проверяет статус через getStatus(clientID)
+8. SUCCESS → зачисление баланса + бонус
+```
+
+**Выводы (H2H API):**
+```
+1. Backend создаёт transaction (pending), списывает баланс
+2. POST https://api.nirvanapay.pro/create/out
+   Headers: ApiPublic + ApiPrivate
+   Body: { clientID, amount, token, currency, receiver, extra: { bankName, recipientName }, callbackUrl }
+   receiver = номер карты (для C2C/внутрибанк) или телефон (для СБП)
+3. Nirvana обрабатывает выплату
+4. Nirvana → GET /api/payments/nirvana/callback?txId=XX&type=withdrawal
+5. Backend проверяет статус → SUCCESS/ERROR
+```
+
+**Баланс мерчанта (проверено 24.02.2026):**
+```
+USDT: 0 (available), 0 (frozen)
+```
+
+**Переменные Railway:**
+- `NIRVANAPAY_PUBLIC_KEY` — `00cb61a2-3b3f-4b70-b2df-efe1487e15fe` (захардкожен в config.js как дефолт)
+- `NIRVANAPAY_PRIVATE_KEY` — `ad9174c6-db56-476f-ad82-4a200f3ea14e` (захардкожен в config.js как дефолт)
+- `NIRVANAPAY_API_URL` — `https://api.nirvanapay.pro` (дефолт)
+- `NIRVANAPAY_CALLBACK_URL` — `https://aurex-casino-production.up.railway.app/api/payments/nirvana/callback` (дефолт)
+
+**Известные проблемы (24.02.2026):**
+1. **Лимиты = 0** — H2H API отвечает `"максимальный лимит по клиенту [0]"`. Нужно настроить в ЛК Nirvana
+2. **Payment Form API не работает** — ключи не принимаются, нужно запросить активацию у Nirvana
+3. **Баланс 0 USDT** — нужно пополнить для выводов
+
+**Файлы интеграции:**
+- `backend/services/nirvanaPayService.js` — API клиенты (apiClient + formClient), createDepositH2H, createDepositForm, createWithdrawal, getStatus, getOrderStatus, getToken
+- `backend/routes/nirvanaPayCallback.js` — обработка GET-коллбеков от Nirvana
+- `backend/routes/payments.js` — маршрутизация депозитов/выводов между AVE PAY и Nirvana
+- `backend/routes/config.js` — конфигурация методов оплаты (fiat массив с обоими провайдерами)
+
+**Иконки платёжных методов:**
+| Файл | Источник |
+|---|---|
+| `/images/payments/sbp.svg` | Кастомный SVG |
+| `/images/payments/card.png` | Visa/MC/MIR (от пользователя) |
+| `/images/payments/nspk.jpg` | Официальный лого НСПК (от пользователя) |
+| `/images/payments/sber.svg` | Официальный SVG Сбербанка (logo-teka.com) |
+| `/images/payments/alfa.svg` | Официальный SVG Альфа-Банка (logo-teka.com) |
+| `/images/payments/vtb.svg` | Официальный SVG ВТБ (logo-teka.com) |
+| `/images/payments/tbank.svg` | Кастомный SVG Т-Банк |
+
+**Порядок отображения на фронтенде:**
+1. AVE PAY методы (СБП, Карта) — выше, т.к. комиссия ниже для больших сумм
+2. Nirvana Pay методы — ниже, но доступны от 50-100₽
+
+---
+
 ### SoftGamings (Moneygrator) — резерв
 - Setup: EUR 3,000
 - Комиссия: EUR 0.01/транзакция
@@ -921,6 +1055,12 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 - [x] Сортировка игр — Plinko (Upgaming) первый, Aviator/Mines убраны из топа, Thunderkick 12 хитов добавлены
 - [x] Фильтрация дублей Plinko — оставлен только от Upgaming, остальные провайдеры отфильтрованы
 - [x] cookie-parser подключён к backend (для реферальных cookie при OAuth)
+- [x] Nirvana Pay — полная интеграция (Payment Form API для депозитов, H2H API для выводов)
+- [x] Nirvana Pay — 11 методов оплаты для России (СБП, C2C, НСПК QR, Сбербанк, Альфа, ВТБ + банк-СБП варианты)
+- [x] Nirvana Pay — callback обработчик (GET /api/payments/nirvana/callback)
+- [x] Иконки банков — официальные SVG (Сбер, ВТБ, Альфа с logo-teka.com), НСПК (JPG), Карта (PNG с Visa/MC/MIR)
+- [x] Кошелёк — object-contain для корректного отображения широких банковских логотипов
+- [x] Кошелёк — dropdown банка только для P2P_SBP, не для банк-специфичных методов
 
 ### В процессе
 - [x] Переход на продакшн Fundist — **ЛАЙВ! 73 провайдера активны** (22.02.2026)
@@ -1024,4 +1164,4 @@ SBP (прямой), SBERPAY, BINANCE_PAY, MOBILE_COMMERCE, CRYPTO, BASIC_CARD, A
 
 ---
 
-*Последнее обновление: 11 января 2026 — реферальная система переделана на GGR, кэшбэк автоматизирован, сортировка игр обновлена*
+*Последнее обновление: 10 февраля 2026 — Nirvana Pay интегрирован (11 методов, депозиты + выводы), иконки банков обновлены, UI кошелька улучшен*

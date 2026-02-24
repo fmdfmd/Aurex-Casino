@@ -2,7 +2,94 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { adminAuth } = require('../middleware/auth');
+const crypto = require('crypto');
 const router = express.Router();
+
+// --- Admin PIN protection ---
+const ADMIN_PIN = process.env.ADMIN_PIN || null;
+const pinAttempts = new Map(); // IP -> { count, lastAttempt }
+const PIN_MAX_ATTEMPTS = 5;
+const PIN_BLOCK_MINUTES = 15;
+const adminTokens = new Map(); // token -> { userId, createdAt }
+
+function cleanupPinAttempts() {
+  const now = Date.now();
+  for (const [ip, data] of pinAttempts) {
+    if (now - data.lastAttempt > PIN_BLOCK_MINUTES * 60 * 1000) {
+      pinAttempts.delete(ip);
+    }
+  }
+}
+setInterval(cleanupPinAttempts, 5 * 60 * 1000);
+
+function cleanupAdminTokens() {
+  const now = Date.now();
+  for (const [token, data] of adminTokens) {
+    if (now - data.createdAt > 8 * 60 * 60 * 1000) {
+      adminTokens.delete(token);
+    }
+  }
+}
+setInterval(cleanupAdminTokens, 30 * 60 * 1000);
+
+router.post('/verify-pin', adminAuth, async (req, res) => {
+  if (!ADMIN_PIN) {
+    return res.json({ success: true, adminToken: 'no-pin-configured', message: 'PIN не настроен' });
+  }
+
+  const clientIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for'] || req.ip;
+
+  const attempts = pinAttempts.get(clientIp);
+  if (attempts && attempts.count >= PIN_MAX_ATTEMPTS) {
+    const elapsed = Date.now() - attempts.lastAttempt;
+    if (elapsed < PIN_BLOCK_MINUTES * 60 * 1000) {
+      const remaining = Math.ceil((PIN_BLOCK_MINUTES * 60 * 1000 - elapsed) / 60000);
+      console.log(`[ADMIN-PIN] BLOCKED IP ${clientIp} — too many attempts`);
+      return res.status(429).json({ success: false, message: `Слишком много попыток. Подождите ${remaining} мин.` });
+    }
+    pinAttempts.delete(clientIp);
+  }
+
+  const { pin } = req.body;
+  if (!pin || pin !== ADMIN_PIN) {
+    const current = pinAttempts.get(clientIp) || { count: 0, lastAttempt: 0 };
+    current.count++;
+    current.lastAttempt = Date.now();
+    pinAttempts.set(clientIp, current);
+    console.log(`[ADMIN-PIN] FAILED attempt from ${clientIp} by user ${req.user.id} (${current.count}/${PIN_MAX_ATTEMPTS})`);
+    return res.status(403).json({
+      success: false,
+      message: 'Неверный PIN-код',
+      attemptsLeft: PIN_MAX_ATTEMPTS - current.count
+    });
+  }
+
+  pinAttempts.delete(clientIp);
+
+  const adminToken = crypto.randomBytes(32).toString('hex');
+  adminTokens.set(adminToken, { userId: req.user.id, createdAt: Date.now() });
+
+  console.log(`[ADMIN-PIN] SUCCESS from ${clientIp} by user ${req.user.id} (${req.user.username})`);
+
+  res.json({ success: true, adminToken, message: 'Доступ разрешён' });
+});
+
+router.get('/check-pin', adminAuth, (req, res) => {
+  if (!ADMIN_PIN) {
+    return res.json({ success: true, pinRequired: false });
+  }
+
+  const adminToken = req.headers['x-admin-token'];
+  if (adminToken && adminTokens.has(adminToken)) {
+    const tokenData = adminTokens.get(adminToken);
+    if (tokenData.userId === req.user.id && Date.now() - tokenData.createdAt < 8 * 60 * 60 * 1000) {
+      return res.json({ success: true, pinRequired: false, verified: true });
+    }
+    adminTokens.delete(adminToken);
+  }
+
+  res.json({ success: true, pinRequired: true });
+});
 
 // Dashboard statistics
 router.get('/dashboard', adminAuth, async (req, res) => {
@@ -44,9 +131,11 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       FROM game_sessions
     `);
 
+    // Top games
     const topGamesResult = await pool.query(`
       SELECT 
         game_id,
+        game_name,
         provider,
         COUNT(*) as sessions,
         COALESCE(SUM(bet_amount - win_amount), 0) as revenue,
@@ -54,7 +143,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
         COALESCE(SUM(win_amount), 0) as total_win
       FROM game_sessions
       WHERE started_at >= CURRENT_DATE - INTERVAL '30 days'
-      GROUP BY game_id, provider
+      GROUP BY game_id, game_name, provider
       ORDER BY revenue DESC
       LIMIT 10
     `);
@@ -89,7 +178,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
         },
         topGames: topGamesResult.rows.map(g => ({
           gameId: g.game_id,
-          gameName: g.game_id,
+          gameName: g.game_name,
           provider: g.provider,
           sessions: parseInt(g.sessions),
           revenue: parseFloat(g.revenue),

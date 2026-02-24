@@ -1,4 +1,4 @@
-import { ReactNode, useState } from 'react';
+import { ReactNode, useState, useEffect } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
 import { motion } from 'framer-motion';
@@ -21,9 +21,12 @@ import {
   FileCheck,
   Tag,
   Trophy,
-  Wallet
+  Wallet,
+  Lock,
+  KeyRound
 } from 'lucide-react';
 import Image from 'next/image';
+import toast from 'react-hot-toast';
 import { useAuthStore } from '../store/authStore';
 
 interface AdminLayoutProps {
@@ -32,8 +35,66 @@ interface AdminLayoutProps {
 
 export default function AdminLayout({ children }: AdminLayoutProps) {
   const router = useRouter();
-  const { user, logout } = useAuthStore();
+  const { user, logout, token } = useAuthStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [pinRequired, setPinRequired] = useState<boolean | null>(null);
+  const [pinInput, setPinInput] = useState('');
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinError, setPinError] = useState('');
+  const [attemptsLeft, setAttemptsLeft] = useState(5);
+
+  useEffect(() => {
+    checkPinStatus();
+  }, [token]);
+
+  const checkPinStatus = async () => {
+    if (!token) return;
+    try {
+      const adminToken = sessionStorage.getItem('aurex_admin_token');
+      const res = await fetch('/api/admin/check-pin', {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(adminToken ? { 'X-Admin-Token': adminToken } : {})
+        }
+      });
+      const data = await res.json();
+      if (data.success) {
+        setPinRequired(data.pinRequired);
+      }
+    } catch {
+      setPinRequired(false);
+    }
+  };
+
+  const handlePinSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPinLoading(true);
+    setPinError('');
+    try {
+      const res = await fetch('/api/admin/verify-pin', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ pin: pinInput })
+      });
+      const data = await res.json();
+      if (data.success) {
+        sessionStorage.setItem('aurex_admin_token', data.adminToken);
+        setPinRequired(false);
+        toast.success('Доступ разрешён');
+      } else {
+        setPinError(data.message || 'Неверный PIN');
+        setAttemptsLeft(data.attemptsLeft ?? attemptsLeft - 1);
+        setPinInput('');
+      }
+    } catch {
+      setPinError('Ошибка сервера');
+    } finally {
+      setPinLoading(false);
+    }
+  };
 
   const navigationItems = [
     { href: '/admin', label: 'Панель управления', icon: LayoutDashboard },
@@ -55,7 +116,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     router.push('/');
   };
 
-  // Проверка прав администратора
   if (!user?.isAdmin && user?.role !== 'admin') {
     return (
       <div className="min-h-screen bg-dark-300 flex items-center justify-center">
@@ -64,6 +124,71 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
           <p className="text-gray-400 mb-4">У вас нет прав администратора</p>
           <Link href="/" className="text-aurex-gold-500 hover:underline">Вернуться на главную</Link>
         </div>
+      </div>
+    );
+  }
+
+  if (pinRequired === null) {
+    return (
+      <div className="min-h-screen bg-dark-300 flex items-center justify-center">
+        <div className="animate-pulse text-aurex-platinum-400">Проверка доступа...</div>
+      </div>
+    );
+  }
+
+  if (pinRequired) {
+    return (
+      <div className="min-h-screen bg-dark-300 flex items-center justify-center px-4">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.95 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="max-w-sm w-full"
+        >
+          <div className="bg-aurex-obsidian-800 border border-aurex-gold-500/30 rounded-2xl p-8">
+            <div className="text-center mb-6">
+              <div className="w-16 h-16 mx-auto mb-4 bg-aurex-gold-500/10 rounded-2xl flex items-center justify-center">
+                <KeyRound className="w-8 h-8 text-aurex-gold-500" />
+              </div>
+              <h2 className="text-xl font-bold text-white">Empire Control</h2>
+              <p className="text-aurex-platinum-400 text-sm mt-1">Введите PIN-код администратора</p>
+            </div>
+
+            <form onSubmit={handlePinSubmit} className="space-y-4">
+              <input
+                type="password"
+                value={pinInput}
+                onChange={(e) => setPinInput(e.target.value)}
+                placeholder="PIN-код"
+                maxLength={20}
+                autoFocus
+                className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-obsidian-700 rounded-xl text-white text-center text-2xl tracking-[0.5em] placeholder:text-aurex-platinum-600 placeholder:tracking-normal placeholder:text-base focus:border-aurex-gold-500 focus:outline-none transition-colors"
+              />
+
+              {pinError && (
+                <div className="text-red-400 text-sm text-center">
+                  {pinError}
+                  {attemptsLeft > 0 && attemptsLeft < 5 && (
+                    <span className="block text-xs mt-1">Осталось попыток: {attemptsLeft}</span>
+                  )}
+                </div>
+              )}
+
+              <button
+                type="submit"
+                disabled={pinLoading || !pinInput}
+                className="w-full py-3 bg-aurex-gold-500 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all disabled:opacity-50"
+              >
+                {pinLoading ? 'Проверка...' : 'Войти'}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <Link href="/" className="text-sm text-aurex-platinum-500 hover:text-aurex-gold-500 transition-colors">
+                Вернуться на сайт
+              </Link>
+            </div>
+          </div>
+        </motion.div>
       </div>
     );
   }
