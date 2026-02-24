@@ -229,7 +229,8 @@ class NirvanaPayService {
       'NIRVANA_VTB': 'ВТБ',
       'NIRVANA_VTB_SBP': 'ВТБ СБП',
       'NIRVANA_TRANS_SBP': 'ТрансСБП',
-      'NIRVANA_TRANS_C2C': 'ТрансМежбанк'
+      'NIRVANA_TRANS_C2C': 'ТрансМежбанк',
+      'NIRVANA_MOBILE': 'Мобильная Коммерция'
     };
     return map[paymentMethod] || 'СБП';
   }

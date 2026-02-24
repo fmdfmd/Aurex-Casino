@@ -22,7 +22,8 @@ function getNirvanaToken(method) {
     'NIRVANA_VTB': 'ВТБ',
     'NIRVANA_VTB_SBP': 'ВТБ СБП',
     'NIRVANA_TRANS_SBP': 'ТрансСБП',
-    'NIRVANA_TRANS_C2C': 'ТрансМежбанк'
+    'NIRVANA_TRANS_C2C': 'ТрансМежбанк',
+    'NIRVANA_MOBILE': 'Мобильная Коммерция'
   };
   return map[method] || 'СБП';
 }
@@ -102,16 +103,15 @@ router.post('/deposit', auth, async (req, res) => {
       'NIRVANA_SBER': 1000, 'NIRVANA_SBER_SBP': 1000,
       'NIRVANA_ALFA': 1000, 'NIRVANA_ALFA_SBP': 1000,
       'NIRVANA_VTB': 1000, 'NIRVANA_VTB_SBP': 1000,
-      'NIRVANA_TRANS_SBP': 500, 'NIRVANA_TRANS_C2C': 500
+      'NIRVANA_TRANS_SBP': 500, 'NIRVANA_TRANS_C2C': 500,
+      'NIRVANA_MOBILE': 100
     };
     const maxDeposits = {
       'P2P_CARD': 300000, 'P2P_SBP': 300000,
       'NIRVANA_SBP': 100000, 'NIRVANA_C2C': 100000,
       'NIRVANA_NSPK': 150000,
-      'NIRVANA_SBER': 50000, 'NIRVANA_SBER_SBP': 50000,
-      'NIRVANA_ALFA': 50000, 'NIRVANA_ALFA_SBP': 50000,
-      'NIRVANA_VTB': 50000, 'NIRVANA_VTB_SBP': 50000,
-      'NIRVANA_TRANS_SBP': 100000, 'NIRVANA_TRANS_C2C': 100000
+      'NIRVANA_TRANS_SBP': 100000, 'NIRVANA_TRANS_C2C': 100000,
+      'NIRVANA_MOBILE': 100000
     };
     const minDeposit = minDeposits[paymentMethod] || 100;
     const maxDeposit = maxDeposits[paymentMethod] || 300000;
