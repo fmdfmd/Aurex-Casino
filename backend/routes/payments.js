@@ -136,17 +136,31 @@ router.post('/deposit', auth, async (req, res) => {
     if (useNirvana) {
       const token = getNirvanaToken(paymentMethod);
 
-      // H2H API — returns receiver details (card/phone) for user to send payment manually
-      const nirvanaResponse = await nirvanaPayService.createDepositH2H({
-        amount: parseFloat(amount),
-        transactionId: transaction.id,
-        token,
-        currency,
-        userIp: req.ip,
-        userAgent: req.headers['user-agent'],
-        userEmail: req.user.email || undefined,
-        userId: req.user.id
-      });
+      let nirvanaResponse;
+      try {
+        nirvanaResponse = await nirvanaPayService.createDepositH2H({
+          amount: parseFloat(amount),
+          transactionId: transaction.id,
+          token,
+          currency,
+          userIp: req.ip,
+          userAgent: req.headers['user-agent'],
+          userEmail: req.user.email || undefined,
+          userId: req.user.id
+        });
+      } catch (nirvanaErr) {
+        const reason = nirvanaErr.response?.data?.reason || nirvanaErr.message;
+        console.error(`[NirvanaPay] Deposit failed for tx ${transaction.id}: ${reason}`);
+        await pool.query("UPDATE transactions SET status = 'failed' WHERE id = $1", [transaction.id]);
+
+        if (reason && reason.includes('ликвидность')) {
+          return res.status(400).json({ success: false, message: 'Метод временно недоступен. Попробуйте другой способ оплаты.' });
+        }
+        if (reason && reason.includes('лимит')) {
+          return res.status(400).json({ success: false, message: 'Сумма выходит за пределы лимита. Измените сумму или способ оплаты.' });
+        }
+        return res.status(400).json({ success: false, message: `Платёж не создан: ${reason}` });
+      }
 
       await pool.query(
         "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
@@ -216,9 +230,9 @@ router.post('/deposit', auth, async (req, res) => {
       }
     });
   } catch (error) {
-    console.error('Create deposit error:', error);
     const providerError = error.response?.data?.message || error.response?.data?.reason || error.message;
-    res.status(500).json({ success: false, message: `Ошибка создания платежа: ${providerError}` });
+    console.error('Create deposit error:', providerError);
+    res.status(500).json({ success: false, message: 'Ошибка создания платежа. Попробуйте другой метод.' });
   }
 });
 
