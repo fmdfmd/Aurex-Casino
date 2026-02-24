@@ -222,6 +222,74 @@ app.use('*', (req, res) => {
   res.status(404).json({ error: 'Route not found' });
 });
 
+// WebSocket proxy for game providers (Thunderkick etc.) whose game clients
+// open WebSocket connections directly — Service Workers can't intercept those.
+const WebSocketLib = require('ws');
+
+server.on('upgrade', (req, socket, head) => {
+  const url = new URL(req.url, `http://${req.headers.host}`);
+
+  // Only handle our proxy path; let socket.io handle its own upgrades
+  if (!url.pathname.startsWith('/api/slots/ws-game-proxy')) {
+    return;
+  }
+
+  const target = url.searchParams.get('target');
+  if (!target || (!target.startsWith('wss://') && !target.startsWith('ws://'))) {
+    socket.write('HTTP/1.1 400 Bad Request\r\n\r\n');
+    socket.destroy();
+    return;
+  }
+
+  console.log(`[ws-proxy] Connecting to ${target}`);
+
+  const upstream = new WebSocketLib(target, {
+    headers: {
+      'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0',
+      'Origin': new URL(target).origin,
+    },
+    handshakeTimeout: 15000,
+  });
+
+  upstream.on('open', () => {
+    const wss = new WebSocketLib.Server({ noServer: true });
+    wss.handleUpgrade(req, socket, head, (client) => {
+      console.log(`[ws-proxy] Connected: ${target}`);
+
+      client.on('message', (data, isBinary) => {
+        if (upstream.readyState === WebSocketLib.OPEN) {
+          upstream.send(data, { binary: isBinary });
+        }
+      });
+
+      upstream.on('message', (data, isBinary) => {
+        if (client.readyState === WebSocketLib.OPEN) {
+          client.send(data, { binary: isBinary });
+        }
+      });
+
+      client.on('close', (code, reason) => {
+        upstream.close(code <= 4999 ? code : 1000, reason);
+      });
+
+      upstream.on('close', (code, reason) => {
+        if (client.readyState === WebSocketLib.OPEN) {
+          client.close(code <= 4999 ? code : 1000, reason);
+        }
+      });
+
+      client.on('error', () => upstream.close());
+      upstream.on('error', () => { if (client.readyState === WebSocketLib.OPEN) client.close(); });
+    });
+  });
+
+  upstream.on('error', (err) => {
+    console.log(`[ws-proxy] Upstream error: ${err.message}`);
+    socket.write('HTTP/1.1 502 Bad Gateway\r\n\r\n');
+    socket.destroy();
+  });
+});
+
 const PORT = process.env.PORT || 6000;
 
 // Auto-run migrations in production (async, doesn't block server start)
