@@ -1021,6 +1021,7 @@ export default function WalletPage() {
                               </div>
                             </div>
 
+                            {selectedMethod === 'P2P_SBP' && (
                             <div>
                               <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
                                 <Building2 className="w-4 h-4" />
@@ -1083,6 +1084,7 @@ export default function WalletPage() {
                                 </AnimatePresence>
                               </div>
                             </div>
+                            )}
                           </motion.div>
                         )}
 
