@@ -704,80 +704,113 @@ router.get('/ws-proxy/*', async (req, res) => {
 
 // ---------------------------------------------------------------------------
 // Thunderkick reverse proxy — ISP blocks game-p*.thunderkick.com.
-// We proxy all game traffic and rewrite domain refs in HTML/JS so the game's
-// own API calls (e.g. /gamelauncher/api/info/) also route through us.
+// Uses native https streaming (not axios) so chunked/long-poll responses
+// work correctly, and unparsed POST bodies are piped as-is.
 // ---------------------------------------------------------------------------
 const TK_DOMAIN_RE = /(https?:)?\/\/game-p\d+\.thunderkick\.com/g;
 const TK_TARGET_HOST = 'game-p1.thunderkick.com';
 
-router.all('/game-proxy/tk/*', async (req, res) => {
+router.all('/game-proxy/tk/*', (req, res) => {
   const subpath = req.params[0] || '';
   const qIdx = req.originalUrl.indexOf('?');
   const qs = qIdx !== -1 ? req.originalUrl.substring(qIdx) : '';
-  const target = `https://${TK_TARGET_HOST}/${subpath}${qs}`;
+  const urlPath = '/' + subpath + qs;
 
-  try {
-    const fwdHeaders = {};
-    for (const h of ['accept', 'accept-language', 'content-type', 'cookie', 'user-agent']) {
-      if (req.headers[h]) fwdHeaders[h] = req.headers[h];
-    }
-    fwdHeaders['host'] = TK_TARGET_HOST;
-    fwdHeaders['origin'] = `https://${TK_TARGET_HOST}`;
-    fwdHeaders['referer'] = `https://${TK_TARGET_HOST}/`;
-
-    // Reconstruct body for POST (Express may have already parsed it)
-    let body;
-    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body != null) {
-      if (Buffer.isBuffer(req.body)) {
-        body = req.body;
-      } else if (typeof req.body === 'object') {
-        const ct = (req.headers['content-type'] || '');
-        if (ct.includes('json')) {
-          body = JSON.stringify(req.body);
-        } else {
-          body = new URLSearchParams(req.body).toString();
-        }
-      } else {
-        body = req.body;
-      }
-    }
-
-    const resp = await axios({
-      method: req.method.toLowerCase(),
-      url: target,
-      data: body,
-      headers: fwdHeaders,
-      responseType: 'arraybuffer',
-      decompress: true,
-      timeout: 30000,
-      maxRedirects: 5,
-      validateStatus: () => true
-    });
-
-    res.status(resp.status);
-
-    const skip = new Set([
-      'transfer-encoding', 'connection', 'content-encoding', 'content-length',
-      'content-security-policy', 'x-frame-options', 'strict-transport-security'
-    ]);
-    for (const [k, v] of Object.entries(resp.headers)) {
-      if (!skip.has(k.toLowerCase())) {
-        try { res.setHeader(k, v); } catch {}
-      }
-    }
-
-    const ct = (resp.headers['content-type'] || '').toLowerCase();
-    if (ct.includes('html') || ct.includes('javascript') || ct.includes('json') || ct.includes('text/')) {
-      let text = resp.data.toString('utf-8');
-      text = text.replace(TK_DOMAIN_RE, '/api/slots/game-proxy/tk');
-      res.send(text);
-    } else {
-      res.send(resp.data);
-    }
-  } catch (e) {
-    console.error(`[game-proxy/tk] ${req.method} /${subpath}: ${e.message}`);
-    if (!res.headersSent) res.status(502).send('proxy error');
+  // Forward all headers except hop-by-hop and origin-related
+  const skipReq = new Set([
+    'host', 'origin', 'referer', 'connection',
+    'accept-encoding', // ask upstream for uncompressed so we can rewrite text
+  ]);
+  const fwd = {};
+  for (const [k, v] of Object.entries(req.headers)) {
+    if (!skipReq.has(k.toLowerCase())) fwd[k] = v;
   }
+  fwd['host'] = TK_TARGET_HOST;
+  fwd['origin'] = 'https://' + TK_TARGET_HOST;
+  fwd['referer'] = 'https://' + TK_TARGET_HOST + '/';
+
+  const proxyReq = https.request({
+    hostname: TK_TARGET_HOST,
+    port: 443,
+    path: urlPath,
+    method: req.method,
+    headers: fwd,
+    timeout: 30000,
+  }, (proxyRes) => {
+    const ct = (proxyRes.headers['content-type'] || '').toLowerCase();
+    const isText = ct.includes('html') || ct.includes('javascript') || ct.includes('json') || ct.includes('text/');
+
+    // Build response headers — skip hop-by-hop + security headers we control
+    const skipRes = new Set([
+      'transfer-encoding', 'connection',
+      'content-security-policy', 'x-frame-options', 'strict-transport-security',
+    ]);
+    if (isText) { skipRes.add('content-length'); skipRes.add('content-encoding'); }
+
+    const resH = {};
+    for (const [k, v] of Object.entries(proxyRes.headers)) {
+      if (!skipRes.has(k.toLowerCase())) resH[k] = v;
+    }
+
+    // Rewrite redirect Location headers
+    if (proxyRes.headers.location) {
+      let loc = proxyRes.headers.location;
+      if (loc.startsWith('/')) {
+        loc = '/api/slots/game-proxy/tk' + loc;
+      } else {
+        loc = loc.replace(TK_DOMAIN_RE, '/api/slots/game-proxy/tk');
+      }
+      resH['location'] = loc;
+    }
+
+    if (isText) {
+      const chunks = [];
+      proxyRes.on('data', c => chunks.push(c));
+      proxyRes.on('end', () => {
+        let text = Buffer.concat(chunks).toString('utf-8');
+        text = text.replace(TK_DOMAIN_RE, '/api/slots/game-proxy/tk');
+        res.writeHead(proxyRes.statusCode, resH);
+        res.end(text);
+      });
+      proxyRes.on('error', () => {
+        if (!res.headersSent) res.status(502).end('proxy error');
+      });
+    } else {
+      // Stream binary (images, wasm, fonts, game data) directly
+      res.writeHead(proxyRes.statusCode, resH);
+      proxyRes.pipe(res);
+    }
+  });
+
+  proxyReq.on('timeout', () => {
+    proxyReq.destroy();
+    if (!res.headersSent) res.status(504).end('proxy timeout');
+  });
+  proxyReq.on('error', (e) => {
+    console.error('[game-proxy/tk] ' + req.method + ' ' + urlPath + ': ' + e.message);
+    if (!res.headersSent) res.status(502).end('proxy error');
+  });
+
+  // Forward request body — handle both Express-parsed and raw streams
+  if (['POST', 'PUT', 'PATCH'].includes(req.method)) {
+    if (req.body != null && typeof req.body === 'object' && !Buffer.isBuffer(req.body)) {
+      const ct = (req.headers['content-type'] || '');
+      if (ct.includes('json')) {
+        proxyReq.end(JSON.stringify(req.body));
+      } else {
+        proxyReq.end(new URLSearchParams(req.body).toString());
+      }
+    } else if (Buffer.isBuffer(req.body)) {
+      proxyReq.end(req.body);
+    } else {
+      // Body not parsed by Express — pipe raw stream
+      req.pipe(proxyReq);
+    }
+  } else {
+    proxyReq.end();
+  }
+
+  res.on('close', () => { try { proxyReq.destroy(); } catch {} });
 });
 
 // ---------------------------------------------------------------------------
