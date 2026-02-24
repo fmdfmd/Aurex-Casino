@@ -936,7 +936,7 @@ if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='st
 })()</script>`;
 
   const htmlWithFallback = interceptor + html;
-  const escapedHtml = htmlWithFallback.replace(/`/g, '\\`').replace(/\$/g, '\\$');
+  const b64 = Buffer.from(htmlWithFallback).toString('base64');
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -957,21 +957,20 @@ body>iframe,body>div,body>object,body>embed{
 </head><body>
 <script>
 (function(){
-  var gameHtml = \`${escapedHtml}\`;
-  function loadGame() { document.body.innerHTML = gameHtml; }
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/api/slots/proxy-sw.js', {scope:'/api/slots/'})
-      .then(function(reg) {
-        if (navigator.serviceWorker.controller) { loadGame(); return; }
-        navigator.serviceWorker.addEventListener('controllerchange', function() { loadGame(); });
-        var w = reg.installing || reg.waiting;
-        if (w) w.addEventListener('statechange', function() {
-          if (w.state === 'activated' && !navigator.serviceWorker.controller) loadGame();
-        });
-        setTimeout(loadGame, 3000);
+  var b64='${b64}';
+  function loadGame(){document.open();document.write(atob(b64));document.close();}
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'})
+      .then(function(reg){
+        if(navigator.serviceWorker.controller){loadGame();return;}
+        var done=false;
+        navigator.serviceWorker.addEventListener('controllerchange',function(){if(!done){done=true;loadGame();}});
+        var w=reg.installing||reg.waiting;
+        if(w)w.addEventListener('statechange',function(){if(w.state==='activated'&&!done){done=true;loadGame();}});
+        setTimeout(function(){if(!done){done=true;loadGame();}},3000);
       })
-      .catch(function() { loadGame(); });
-  } else { loadGame(); }
+      .catch(function(){loadGame();});
+  }else{loadGame();}
 })();
 </script>
 </body></html>`;
