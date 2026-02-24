@@ -13,7 +13,6 @@ class FundistApiService {
     this.apiKey = config.slotsApi.apiKey;
     this.apiPassword = config.slotsApi.apiPassword;
     this.casinoIp = '0.0.0.0'; // As per Fundist docs for dynamic IPs
-    this.serverIp = null;
 
     // Cache
     this.cache = { data: null, timestamp: 0 };
@@ -28,19 +27,6 @@ class FundistApiService {
       path.join(__dirname, '../../games_full.json'),         // project root (alt)
       path.join(this.dataDir, 'games-import.json'),          // backend/data
     ];
-
-    this._fetchServerIp();
-  }
-
-  _fetchServerIp() {
-    axios.get('https://api.ipify.org?format=json', { timeout: 10000 })
-      .then(r => {
-        this.serverIp = r.data?.ip || null;
-        console.log(`[Fundist] Server outgoing IP: ${this.serverIp}`);
-      })
-      .catch(() => {
-        console.log('[Fundist] Could not detect server IP, using user IPs');
-      });
   }
 
   generateHash(paramsString) {
@@ -188,15 +174,11 @@ class FundistApiService {
   _normalizeFullList(raw) {
     // Case 1: Game/FullList format { categories, games, merchants, ... }
     if (raw && !Array.isArray(raw) && Array.isArray(raw.games)) {
-      const result = {
+      return {
         categories: raw.categories || [],
         games: raw.games,
         merchants: raw.merchants || {},
       };
-      if (raw.merchantsCurrencies) {
-        this._buildMerchantCurrencyMap(raw.merchantsCurrencies);
-      }
-      return result;
     }
 
     // Case 2: Game/List format — plain JSON array of game objects
@@ -219,29 +201,6 @@ class FundistApiService {
     }
 
     return { categories: [], games: [], merchants: {} };
-  }
-
-  _buildMerchantCurrencyMap(merchantsCurrencies) {
-    this._merchantCurrencies = new Map();
-    for (const entry of merchantsCurrencies) {
-      const mid = String(entry.IDMerchant || '');
-      if (!mid) continue;
-      const currencies = Array.isArray(entry.Currencies) ? entry.Currencies : [];
-      const defaultCurrency = entry.DefaultCurrency || null;
-      const existing = this._merchantCurrencies.get(mid);
-      if (!existing || (currencies.length > 0 && (!existing.currencies || existing.currencies.length === 0))) {
-        this._merchantCurrencies.set(mid, { currencies, defaultCurrency });
-      }
-    }
-    console.log(`[Fundist] Built merchant currency map: ${this._merchantCurrencies.size} providers`);
-  }
-
-  getGameCurrency(merchantId, userCurrency = 'RUB') {
-    if (!this._merchantCurrencies) return userCurrency;
-    const info = this._merchantCurrencies.get(String(merchantId));
-    if (!info || !info.currencies || info.currencies.length === 0) return userCurrency;
-    if (info.currencies.includes(userCurrency)) return userCurrency;
-    return info.defaultCurrency || info.currencies[0] || userCurrency;
   }
 
   // ---------------------------------------------------------------------------
@@ -446,7 +405,7 @@ class FundistApiService {
         TID: tid,
         Hash: hash,
         Page: attempt.page,
-        UserIP: this.serverIp || opts.ip || '0.0.0.0',
+        UserIP: opts.ip || '0.0.0.0',
         Language: opts.language || 'ru',
         UserAutoCreate: '1',
         Currency: currency,
@@ -534,8 +493,6 @@ class FundistApiService {
     const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${login}/${password}/${systemId}/${this.apiPassword}`;
     const hash = this.generateHash(hashString);
 
-    const effectiveIp = this.serverIp || userIp;
-
     const params = new URLSearchParams({
       Login: login,
       Password: password,
@@ -543,7 +500,7 @@ class FundistApiService {
       TID: tid,
       Hash: hash,
       Page: String(pageCode),
-      UserIP: String(effectiveIp),
+      UserIP: String(userIp),
       Language: String(language),
       ...(demo ? { Demo: '1' } : {}),
       ...(demo
@@ -626,8 +583,6 @@ class FundistApiService {
     const hashString = `User/AuthHTML/${this.casinoIp}/${tid}/${this.apiKey}/${login}/${password}/${systemId}/${this.apiPassword}`;
     const hash = this.generateHash(hashString);
 
-    const effectiveIp = this.serverIp || userIp;
-
     const params = new URLSearchParams({
       Login: login,
       Password: password,
@@ -635,7 +590,7 @@ class FundistApiService {
       TID: tid,
       Hash: hash,
       Page: String(pageCode),
-      UserIP: String(effectiveIp),
+      UserIP: String(userIp),
       Language: String(language),
       Demo: '1',
       ...(opts.referer ? { Referer: String(opts.referer) } : {}),
@@ -644,7 +599,7 @@ class FundistApiService {
 
     const url = `${this.baseUrl}/System/Api/${this.apiKey}/User/AuthHTML/?&${params.toString()}`;
 
-    console.log(`[demo] Launching: Page=${pageCode}, System=${systemId}, IP=${effectiveIp}`);
+    console.log(`[demo] Launching: Page=${pageCode}, System=${systemId}, IP=${userIp}`);
 
     let response;
     try {

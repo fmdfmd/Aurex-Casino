@@ -644,17 +644,13 @@ router.post('/start-game', optionalAuth, async (req, res) => {
       );
     } else {
       const userId = req.user.id;
-      const userCurrency = req.user.currency || req.body.currency || 'RUB';
-      const gameCurrency = fundistService.getGameCurrency(resolvedSystemId, userCurrency);
-      if (gameCurrency !== userCurrency) {
-        console.log(`[start-game] Currency conversion: user=${userCurrency}, provider=${gameCurrency} (systemId=${resolvedSystemId})`);
-      }
+      const currency = req.user.currency || req.body.currency || 'RUB';
       const extParam = `aurex_${userId}_${Date.now()}`;
       gameData = await fundistService.startGameSession(
         userId,
         effectiveGameCode,
         resolvedSystemId,
-        gameCurrency,
+        currency,
         userIp,
         language,
         { extParam, referer, demo: false, isMobile }
@@ -837,9 +833,9 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
+      // Minimal fallback interceptor for browsers without Service Worker support
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
-      const wsP = serverHost.includes('localhost') ? 'ws' : 'wss';
       const inj = `<script>(function(){` +
         `var P='/api/slots/ext-proxy?u=',H=location.host||'${serverHost}',O='${origin}',B='${escapedBaseDir}';` +
         `function px(u){if(typeof u!='string')return u;` +
@@ -852,22 +848,6 @@ router.all('/ext-proxy', async (req, res) => {
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-        `var NWS=window.WebSocket;` +
-        `window.WebSocket=function(u,p){` +
-        `if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
-        `var pu='${wsP}://'+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);` +
-        `return p?new NWS(pu,p):new NWS(pu);}` +
-        `return p?new NWS(u,p):new NWS(u);};` +
-        `window.WebSocket.prototype=NWS.prototype;` +
-        `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
-        `window.WebSocket.CLOSING=NWS.CLOSING;window.WebSocket.CLOSED=NWS.CLOSED;` +
-        `var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
-        `if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
-        `set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}` +
-        `var oSA=Element.prototype.setAttribute;` +
-        `Element.prototype.setAttribute=function(n,v){` +
-        `if((n==='src'&&this.tagName==='IFRAME')||(n==='src'&&this.tagName==='SCRIPT'))` +
-        `{return oSA.call(this,n,px(v));}return oSA.call(this,n,v);};` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -945,35 +925,14 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Fallback interceptor (XHR + fetch + WebSocket)
+  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
   const gfHost = req.get('host') || 'aurex.casino';
-  const wsProto = gfHost.includes('localhost') ? 'ws' : 'wss';
   const interceptor = `<script>(function(){
 var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
 function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
 var xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
 if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-var NWS=window.WebSocket;
-window.WebSocket=function(u,p){
-  if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){
-    var pu='${wsProto}://'+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);
-    return p?new NWS(pu,p):new NWS(pu);
-  }
-  return p?new NWS(u,p):new NWS(u);
-};
-window.WebSocket.prototype=NWS.prototype;
-window.WebSocket.CONNECTING=NWS.CONNECTING;
-window.WebSocket.OPEN=NWS.OPEN;
-window.WebSocket.CLOSING=NWS.CLOSING;
-window.WebSocket.CLOSED=NWS.CLOSED;
-var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
-if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{
-  set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}
-var oSA=Element.prototype.setAttribute;
-Element.prototype.setAttribute=function(n,v){
-  if((n==='src'&&this.tagName==='IFRAME')||(n==='src'&&this.tagName==='SCRIPT'))
-  {return oSA.call(this,n,px(v));}return oSA.call(this,n,v);};
 })()</script>`;
 
   const htmlWithFallback = interceptor + html;

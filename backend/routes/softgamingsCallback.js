@@ -7,7 +7,6 @@ const { updateVipLevel } = require('../config/vipLevels');
 const config = require('../config/config');
 const { generateHmac, validateHmac } = require('../utils/oneWalletHmac');
 const { trackDepositBonusWager } = require('../config/bonusConfig');
-const { convert } = require('../utils/exchangeRates');
 
 // HMAC Secret from SoftGamings / Fundist OneWallet
 // IMPORTANT: Per OneWallet spec, HMAC key = SHA256(secret) binary.
@@ -29,14 +28,10 @@ const numericTid = (tid) => {
 
 // Helper: Build idempotent cached response with CURRENT balance and correct tid
 // Per OW spec: "balance field must contain current value" even for cached responses
-const buildCachedResponse = async (client, userId, tid, cachedResp, reqCurrency) => {
-  const balRes = await client.query('SELECT balance, bonus_balance, currency FROM users WHERE id = $1', [userId]);
-  const row = balRes.rows[0];
-  const curBal = parseFloat(row?.balance || 0) + parseFloat(row?.bonus_balance || 0);
-  const dbCurrency = String(row?.currency || 'RUB');
-  const callbackCurrency = String(reqCurrency || dbCurrency);
-  const reportBal = (dbCurrency !== callbackCurrency) ? convert(curBal, dbCurrency, callbackCurrency) : curBal;
-  const resp = { ...cachedResp, tid: numericTid(tid), balance: formatAmount(reportBal) };
+const buildCachedResponse = async (client, userId, tid, cachedResp) => {
+  const balRes = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
+  const curBal = parseFloat(balRes.rows[0]?.balance || 0) + parseFloat(balRes.rows[0]?.bonus_balance || 0);
+  const resp = { ...cachedResp, tid: numericTid(tid), balance: formatAmount(curBal) };
   delete resp.hmac;
   resp.hmac = generateHmac(resp, HMAC_SECRET);
   return resp;
@@ -218,15 +213,16 @@ const handleBalance = async (req, res) => {
     
     const user = result.rows[0];
     
+    if (currency && user.currency && String(user.currency) !== String(currency)) {
+      console.warn(`⚠️ OneWallet balance: currency mismatch for user ${userid}: Fundist=${currency}, DB=${user.currency}`);
+      return sendOwError(res, 'Currency mismatch', '0.00');
+    }
+
+    // Return main + bonus balance (Fundist sees total; wager is our internal logic)
     const totalBalance = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
-    const dbCurrency = String(user.currency || 'RUB');
-    const reqCurrency = String(currency || dbCurrency);
-    const reportBalance = (dbCurrency !== reqCurrency)
-      ? convert(totalBalance, dbCurrency, reqCurrency)
-      : totalBalance;
 
     return sendOk(res, {
-      balance: formatAmount(reportBalance)
+      balance: formatAmount(totalBalance)
     });
   } catch (error) {
     console.error('Balance Error:', error);
@@ -268,7 +264,7 @@ const handleDebit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json, req.body.currency), done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -283,7 +279,7 @@ const handleDebit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json, req.body.currency), done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -300,25 +296,21 @@ const handleDebit = async (req, res) => {
       const bonusBal = parseFloat(user.bonus_balance || 0);
       const totalAvailable = mainBal + bonusBal;
 
-      const dbCurrency = String(user.currency || 'RUB');
-      const reqCurrency = String(req.body.currency || dbCurrency);
-      const needsConversion = dbCurrency !== reqCurrency;
-      const debitInDb = needsConversion ? convert(debitAmount, reqCurrency, dbCurrency) : debitAmount;
-
-      if (totalAvailable < debitInDb) {
-        const reportBal = needsConversion ? convert(totalAvailable, dbCurrency, reqCurrency) : totalAvailable;
-        const errorResponse = buildOwErrorResponse('INSUFFICIENT_FUNDS', formatAmount(reportBal));
+      if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
+        console.warn(`⚠️ OneWallet debit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}`);
+        const curBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        return { responseJson: buildOwErrorResponse('Currency mismatch', curBal), done: true };
+      }
+      
+      if (totalAvailable < debitAmount) {
+        const errorResponse = buildOwErrorResponse('INSUFFICIENT_FUNDS', formatAmount(totalAvailable));
         await saveResponse(client, tid, errorResponse);
         return { responseJson: errorResponse, done: true };
       }
 
-      if (needsConversion) {
-        console.log(`[debit] Converting ${debitAmount} ${reqCurrency} → ${debitInDb.toFixed(2)} ${dbCurrency}`);
-      }
-
-      // Deduct from main balance first, then bonus_balance (all in DB currency)
-      let fromMain = Math.min(debitInDb, mainBal);
-      let fromBonus = debitInDb - fromMain;
+      // Deduct from main balance first, then bonus_balance
+      let fromMain = Math.min(debitAmount, mainBal);
+      let fromBonus = debitAmount - fromMain;
 
       const updateRes = await client.query(
         `UPDATE users
@@ -327,14 +319,14 @@ const handleDebit = async (req, res) => {
              total_wagered = total_wagered + $3
          WHERE id = $4
          RETURNING balance, bonus_balance`,
-        [fromMain, fromBonus, debitInDb, userId]
+        [fromMain, fromBonus, debitAmount, userId]
       );
       const newMainBal = parseFloat(updateRes.rows[0].balance);
       const newBonusBal = parseFloat(updateRes.rows[0].bonus_balance);
       const newTotalBalance = newMainBal + newBonusBal;
 
-      // Track wager progress for active freerounds bonuses (in DB currency)
-      if (debitInDb > 0) {
+      // Track wager progress for active freerounds bonuses
+      if (debitAmount > 0) {
         try {
           const activeWagers = await client.query(
             `SELECT id, wager_required, wager_completed, win_amount 
@@ -346,7 +338,7 @@ const handleDebit = async (req, res) => {
           for (const bonus of activeWagers.rows) {
             const remaining = parseFloat(bonus.wager_required) - parseFloat(bonus.wager_completed);
             if (remaining <= 0) continue;
-            const contribution = Math.min(debitInDb, remaining);
+            const contribution = Math.min(debitAmount, remaining);
             await client.query(
               `UPDATE freerounds_bonuses 
                SET wager_completed = wager_completed + $1, updated_at = NOW() 
@@ -354,8 +346,11 @@ const handleDebit = async (req, res) => {
               [contribution, bonus.id]
             );
             const newCompleted = parseFloat(bonus.wager_completed) + contribution;
+            // Check if wager is now met
             if (newCompleted >= parseFloat(bonus.wager_required)) {
+              // Move remaining bonus balance to main balance and mark completed
               const bonusWin = parseFloat(bonus.win_amount);
+              // The win_amount was added to bonus_balance; transfer what's left
               const transferAmount = Math.min(bonusWin, newBonusBal);
               if (transferAmount > 0) {
                 await client.query(
@@ -374,10 +369,11 @@ const handleDebit = async (req, res) => {
           console.error('[wager] Error tracking freerounds wager:', wagerErr.message);
         }
 
-        await trackDepositBonusWager(client, userId, debitInDb);
+        // Track deposit bonus wager progress
+        await trackDepositBonusWager(client, userId, debitAmount);
       }
 
-      // Create/Update Game Session (store in DB currency)
+      // Create/Update Game Session
       let sessionId = null;
       const sessionRes = await client.query(
         "SELECT id, session_id FROM game_sessions WHERE session_id = $1", 
@@ -388,34 +384,34 @@ const handleDebit = async (req, res) => {
         sessionId = sessionRes.rows[0].id;
         await client.query(
           'UPDATE game_sessions SET bet_amount = bet_amount + $1 WHERE id = $2',
-          [debitInDb, sessionId]
+          [debitAmount, sessionId]
         );
       } else {
         const newSession = await client.query(
           `INSERT INTO game_sessions (user_id, game_id, session_id, provider, currency, status, bet_amount, win_amount)
            VALUES ($1, $2, $3, 'softgamings', $4, 'active', $5, 0) RETURNING id`,
-          [userId, req.body.i_gamedesc, i_gameid, dbCurrency, debitInDb]
+          [userId, req.body.i_gamedesc, i_gameid, req.body.currency, debitAmount]
         );
         sessionId = newSession.rows[0].id;
       }
 
-      // Record Transaction (in DB currency for consistency)
+      // Record Transaction
       await client.query(
         `INSERT INTO transactions 
         (user_id, type, amount, currency, status, description, round_id, payment_details)
         VALUES ($1, 'bet', $2, $3, 'completed', $4, $5, $6)`,
         [
           userId, 
-          -debitInDb, 
-          dbCurrency, 
+          -debitAmount, 
+          req.body.currency, 
           `Bet in ${req.body.i_gamedesc}`, 
           i_actionid,
-          JSON.stringify({ tid: tid.toString(), game_id: i_gameid, originalAmount: debitAmount, originalCurrency: reqCurrency })
+          JSON.stringify({ tid: tid.toString(), game_id: i_gameid })
         ]
       );
 
-      // VIP Points (based on DB currency amount)
-      const loyaltyPoints = Math.floor(debitInDb / 100);
+      // VIP Points
+      const loyaltyPoints = Math.floor(debitAmount / 100);
       if (loyaltyPoints > 0) {
         await client.query('UPDATE users SET vip_points = COALESCE(vip_points, 0) + $1 WHERE id = $2', [loyaltyPoints, userId]);
       }
@@ -423,12 +419,11 @@ const handleDebit = async (req, res) => {
       // Re-read balance after potential wager transfer
       const finalBal = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
       const finalTotal = parseFloat(finalBal.rows[0].balance) + parseFloat(finalBal.rows[0].bonus_balance);
-      const reportBalance = needsConversion ? convert(finalTotal, dbCurrency, reqCurrency) : finalTotal;
 
       const okResponse = {
         status: 'OK',
         tid: numericTid(tid),
-        balance: formatAmount(reportBalance)
+        balance: formatAmount(finalTotal)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
@@ -440,6 +435,7 @@ const handleDebit = async (req, res) => {
 
     if (result?.timeout) return res.sendStatus(408);
     if (result?.responseJson) return res.status(200).json(result.responseJson);
+    // Fallback (should not happen)
     return sendOk(res, { tid: numericTid(tid), balance: formatAmount(0) });
 
   } catch (error) {
@@ -501,7 +497,7 @@ const handleCredit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json, req.body.currency), done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -516,7 +512,7 @@ const handleCredit = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByAction.response_json) {
-          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json, req.body.currency), done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByAction.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -528,13 +524,10 @@ const handleCredit = async (req, res) => {
       if (userResult.rows.length === 0) throw { code: 404, msg: 'User not found' };
       const user = userResult.rows[0];
 
-      const dbCurrency = String(user.currency || 'RUB');
-      const reqCurrency = String(req.body.currency || dbCurrency);
-      const needsConversion = dbCurrency !== reqCurrency;
-      const creditInDb = needsConversion ? convert(creditAmount, reqCurrency, dbCurrency) : creditAmount;
-
-      if (needsConversion && creditAmount > 0) {
-        console.log(`[credit] Converting ${creditAmount} ${reqCurrency} → ${creditInDb.toFixed(2)} ${dbCurrency}`);
+      if (req.body.currency && user.currency && String(user.currency) !== String(req.body.currency)) {
+        console.warn(`⚠️ OneWallet credit: currency mismatch for user ${userid}: Fundist=${req.body.currency}, DB=${user.currency}`);
+        const curBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
+        return { responseJson: buildOwErrorResponse('Currency mismatch', curBal), done: true };
       }
 
       // Detect freeround win: Method 2 (fallback when game_extra is not available)
@@ -590,14 +583,16 @@ const handleCredit = async (req, res) => {
 
       let newBalance;
       if (hasWager && freeroundBonus) {
+        // Freeround win WITH wager — add to bonus_balance instead of main balance
         const updateRes = await client.query(
           'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2 RETURNING balance, bonus_balance',
-          [creditInDb, userId]
+          [creditAmount, userId]
         );
         newBalance = updateRes.rows[0].balance;
         const newBonusBalance = updateRes.rows[0].bonus_balance;
 
-        const wagerRequired = creditInDb * freeroundBonus.wager_multiplier;
+        // Update freerounds_bonuses record
+        const wagerRequired = creditAmount * freeroundBonus.wager_multiplier;
         await client.query(
           `UPDATE freerounds_bonuses 
            SET win_amount = win_amount + $1, 
@@ -605,58 +600,62 @@ const handleCredit = async (req, res) => {
                status = CASE WHEN status = 'active' THEN 'wagering' ELSE status END,
                updated_at = NOW()
            WHERE id = $3`,
-          [creditInDb, wagerRequired, freeroundBonus.id]
+          [creditAmount, wagerRequired, freeroundBonus.id]
         );
 
-        console.log(`🎰 Freeround win: ${creditInDb.toFixed(2)} ${dbCurrency} → bonus_balance (wager x${freeroundBonus.wager_multiplier}, need ${wagerRequired.toFixed(2)})`);
+        console.log(`🎰 Freeround win: ${creditAmount} → bonus_balance (wager x${freeroundBonus.wager_multiplier}, need ${wagerRequired})`);
 
+        // Return balance = main + bonus (Fundist sees total, wager is our internal logic)
         const totalBalance = parseFloat(newBalance) + parseFloat(newBonusBalance);
-        const reportBalance = needsConversion ? convert(totalBalance, dbCurrency, reqCurrency) : totalBalance;
         
+        // Record Transaction as freeround_win
         await client.query(
           `INSERT INTO transactions 
           (user_id, type, amount, currency, status, description, round_id, payment_details)
           VALUES ($1, 'freeround_win', $2, $3, 'completed', $4, $5, $6)`,
           [
-            userId, creditInDb, dbCurrency,
+            userId, creditAmount, req.body.currency,
             `Freeround win (wager x${freeroundBonus.wager_multiplier})`,
             i_actionid,
-            JSON.stringify({ tid: tid.toString(), game_id: i_gameid, freeround_tid: freeroundTid, wager_multiplier: freeroundBonus.wager_multiplier, originalAmount: creditAmount, originalCurrency: reqCurrency })
+            JSON.stringify({ tid: tid.toString(), game_id: i_gameid, freeround_tid: freeroundTid, wager_multiplier: freeroundBonus.wager_multiplier })
           ]
         );
 
         const okResponse = {
           status: 'OK',
           tid: numericTid(tid),
-          balance: formatAmount(reportBalance)
+          balance: formatAmount(totalBalance)
         };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
       }
 
-      // Normal credit — add to main balance (in DB currency)
+      // Normal credit (no wager, or freeround without wager) — add to main balance
       const updateRes = await client.query(
         'UPDATE users SET balance = balance + $1 WHERE id = $2 RETURNING balance, bonus_balance',
-        [creditInDb, userId]
+        [creditAmount, userId]
       );
       newBalance = updateRes.rows[0].balance;
       const bonusBal = parseFloat(updateRes.rows[0].bonus_balance || 0);
 
+      // If this is a freeround win without wager, update the bonus record too
       if (freeroundTid) {
         await client.query(
           `UPDATE freerounds_bonuses 
            SET win_amount = win_amount + $1, status = 'completed', completed_at = NOW(), updated_at = NOW()
            WHERE fundist_tid = $2 AND user_id = $3`,
-          [creditInDb, freeroundTid, userId]
+          [creditAmount, freeroundTid, userId]
         ).catch(() => {});
       }
 
+      // Update Game Session
       await client.query(
         "UPDATE game_sessions SET win_amount = win_amount + $1 WHERE session_id = $2",
-        [creditInDb, i_gameid]
+        [creditAmount, i_gameid]
       );
 
+      // Record Transaction
       const txType = freeroundTid ? 'freeround_win' : 'win';
       const txDesc = freeroundTid ? `Freeround win in ${req.body.i_gamedesc}` : `Win in ${req.body.i_gamedesc}`;
       await client.query(
@@ -664,18 +663,18 @@ const handleCredit = async (req, res) => {
         (user_id, type, amount, currency, status, description, round_id, payment_details)
         VALUES ($1, $2, $3, $4, 'completed', $5, $6, $7)`,
         [
-          userId, txType, creditInDb, dbCurrency, txDesc, i_actionid,
-          JSON.stringify({ tid: tid.toString(), game_id: i_gameid, originalAmount: creditAmount, originalCurrency: reqCurrency, ...(freeroundTid ? { freeround_tid: freeroundTid } : {}) })
+          userId, txType, creditAmount, req.body.currency, txDesc, i_actionid,
+          JSON.stringify({ tid: tid.toString(), game_id: i_gameid, ...(freeroundTid ? { freeround_tid: freeroundTid } : {}) })
         ]
       );
 
+      // Return total balance (main + bonus) to Fundist
       const totalBalance = parseFloat(newBalance) + bonusBal;
-      const reportBalance = needsConversion ? convert(totalBalance, dbCurrency, reqCurrency) : totalBalance;
 
       const okResponse = {
         status: 'OK',
         tid: numericTid(tid),
-        balance: formatAmount(reportBalance)
+        balance: formatAmount(totalBalance)
       };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
@@ -719,7 +718,7 @@ const handleRollback = async (req, res) => {
           return { responseJson: buildOwErrorResponse('Transaction parameter mismatch', curBal), done: true };
         }
         if (existingByTid.response_json) {
-          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json, req.body.currency), done: true };
+          return { responseJson: await buildCachedResponse(client, userId, tid, existingByTid.response_json), done: true };
         }
         return { timeout: true, done: true };
       }
@@ -755,15 +754,11 @@ const handleRollback = async (req, res) => {
         targetReq = r.rows[0]?.request_json || null;
       }
 
-      const dbCurrency = String(user.currency || 'RUB');
-      const reqCurrency = String(req.body.currency || dbCurrency);
-      const needsConversion = dbCurrency !== reqCurrency;
-
+      // Default: no-op if target not found
       if (!targetReq) {
         console.warn(`⚠️ Rollback/Cancel: target not found for user=${userid}, i_actionid=${req.body.i_actionid}, i_rollback=${i_rollback}, i_gameid=${i_gameid}`);
         const totalBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
-        const reportBal = needsConversion ? convert(totalBal, dbCurrency, reqCurrency) : totalBal;
-        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(reportBal) };
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(totalBal) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
@@ -772,20 +767,19 @@ const handleRollback = async (req, res) => {
       const rollbackAmount = parseFloat(targetReq.amount ?? amount ?? 0);
       if (!Number.isFinite(rollbackAmount) || rollbackAmount <= 0) {
         const totalBal = parseFloat(user.balance || 0) + parseFloat(user.bonus_balance || 0);
-        const reportBal = needsConversion ? convert(totalBal, dbCurrency, reqCurrency) : totalBal;
-        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(reportBal) };
+        const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(totalBal) };
         okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
         await saveResponse(client, tid, okResponse);
         return { responseJson: okResponse, done: true };
       }
 
-      const rollbackInDb = needsConversion ? convert(rollbackAmount, reqCurrency, dbCurrency) : rollbackAmount;
+      // Reverse balance effect based on original type
       const originalType = String(targetReq.type || '').toLowerCase();
       let newBalance = user.balance;
       if (originalType === 'debit') {
         const updateRes = await client.query(
           'UPDATE users SET balance = balance + $1, total_wagered = GREATEST(total_wagered - $1, 0) WHERE id = $2 RETURNING balance',
-          [rollbackInDb, userId]
+          [rollbackAmount, userId]
         );
         newBalance = updateRes.rows[0].balance;
         await client.query(
@@ -793,17 +787,18 @@ const handleRollback = async (req, res) => {
            VALUES ($1, 'rollback', $2, $3, 'completed', $4, $5, $6)`,
           [
             userId,
-            rollbackInDb,
-            dbCurrency,
+            rollbackAmount,
+            req.body.currency,
             `Rollback for ${String(i_rollback || '')}`.trim(),
             req.body.i_actionid,
-            JSON.stringify({ tid: String(tid), related_tid: String(i_rollback || ''), originalAmount: rollbackAmount, originalCurrency: reqCurrency })
+            JSON.stringify({ tid: String(tid), related_tid: String(i_rollback || '') })
           ]
         );
       } else if (originalType === 'credit') {
+        // Reverse credit (rare). Ensure non-negative by relying on DB constraint; if would go negative, reject.
         const updateRes = await client.query(
           'UPDATE users SET balance = balance - $1 WHERE id = $2 RETURNING balance',
-          [rollbackInDb, userId]
+          [rollbackAmount, userId]
         );
         newBalance = updateRes.rows[0].balance;
         await client.query(
@@ -811,30 +806,31 @@ const handleRollback = async (req, res) => {
            VALUES ($1, 'rollback', $2, $3, 'completed', $4, $5, $6)`,
           [
             userId,
-            -rollbackInDb,
-            dbCurrency,
+            -rollbackAmount,
+            req.body.currency,
             `Rollback credit for ${String(i_rollback || '')}`.trim(),
             req.body.i_actionid,
-            JSON.stringify({ tid: String(tid), related_tid: String(i_rollback || ''), originalAmount: rollbackAmount, originalCurrency: reqCurrency })
+            JSON.stringify({ tid: String(tid), related_tid: String(i_rollback || '') })
           ]
         );
       }
 
+      // Update Session (best-effort)
       if (i_gameid) {
         await client.query(
           "UPDATE game_sessions SET bet_amount = GREATEST(bet_amount - $1, 0) WHERE session_id = $2",
-          [rollbackInDb, i_gameid]
+          [rollbackAmount, i_gameid]
         );
       }
 
+      // Re-fetch to get accurate total (main + bonus)
       const finalBal = await client.query('SELECT balance, bonus_balance FROM users WHERE id = $1', [userId]);
       const finalTotal = parseFloat(finalBal.rows[0].balance) + parseFloat(finalBal.rows[0].bonus_balance || 0);
-      const reportBalance = needsConversion ? convert(finalTotal, dbCurrency, reqCurrency) : finalTotal;
 
-      const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(reportBalance) };
+      const okResponse = { status: 'OK', tid: numericTid(tid), balance: formatAmount(finalTotal) };
       okResponse.hmac = generateHmac(okResponse, HMAC_SECRET);
       await saveResponse(client, tid, okResponse);
-      console.log(`✅ Rollback/Cancel OK: user=${userid}, type=${originalType}, amount=${rollbackInDb.toFixed(2)} ${dbCurrency}, newBalance=${finalTotal}`);
+      console.log(`✅ Rollback/Cancel OK: user=${userid}, type=${originalType}, amount=${rollbackAmount}, newBalance=${finalTotal}`);
       return { responseJson: okResponse, done: true };
     });
 
