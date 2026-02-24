@@ -355,18 +355,71 @@ router.get('/games', async (req, res) => {
         return true;
       });
 
-      // Split into slots and live, then interleave slot providers round-robin
+      // Split into slots and live
       const slotGames = processedGames.filter(g => !liveProviderIds.has(g.systemId));
       const liveGames = processedGames.filter(g => liveProviderIds.has(g.systemId));
 
-      // Group slot games by provider
+      // --- Pinned top games (hand-picked, shown first) ---
+      const PINNED_FIRST = [
+        { name: 'Diver', provider: 'InOut' },
+        { name: 'Lucky mines', provider: 'InOut' },
+        { name: 'Chicken Road', provider: 'InOut' },
+        { name: 'Mines', provider: 'InOut' },
+      ];
+      const PINNED_PROVIDERS = [
+        ['Endorphina', ['Book of Vlad Dice', 'Power Balls', 'Mr. Jingle Bells', 'Jolly Santa', 'Xmas Burst', 'Lucky Streak 1000', 'Panda Strike', 'Vikings Way']],
+        ['BGaming', ['Blazing Fire Pots Hold & Spin', 'UFO Pyramids', 'Always Up!', 'Yommi Rush', 'Wild Tiger 2', 'Lady Lucky Gun', 'Dragon Queen MEGAWAYS', 'Mystery Garden']],
+        ['3 Oaks Gaming', ['777 Fruity Coins', '3 Jewel Crowns', '3 African Drums', 'Lava Coins', 'China Festival', '3 Coin Volcanoes', 'Hot Fire Fruits', '3 Pots of Egypt']],
+        ['Habanero', ["Genie's Showtime", 'Mystic Shaman', 'Mystic Rings', 'Shamrock Quest', 'Baba Yaga', 'Jump! 2', 'Haunted Harbor', 'Glory Of Rome']],
+        ['Evoplay', ['Velvet Gems', 'Adrenaline Rush', 'Plinko Blast', 'Oath Of Steel', 'Hot Slice', 'Young Buffalo Song', 'Chosen by the Gods', 'Tree of Light']],
+        ['Belatra', ['Goose Boom Bang!', 'Blast the Bass', 'Make it Gold', 'Winter Thunder', "Cafe 50's", 'Tortuga CodeX', 'Lucky Bandits', 'X Towers']],
+        ['Fugaso', ['Olympus Coin Link', 'Trinity Pharaoh Link', 'Trinity Diamond Link', 'Mexican Mania', 'Power Coin', 'Trump It Coin Link', 'Zeus Power Link', 'Hercules Power Wild']],
+        ['PG Soft', ['Skylight Wonders', 'Pharaoh Royals', 'Galaxy Miner', 'Incan Wonders', 'Fortune Snake', "Geisha's Revenge", 'Chocolate Deluxe', 'Rio Fantasia']],
+        ['Popiplay', ['Oktobearfest', 'Detective Donut Kickback', 'Wild Piggy Bank', 'Emotions', 'Bison Horizon Hold and Win', 'RoxDogs', 'Zoodiac', 'Ruby Royal']],
+        ['Peter & Sons', ['DCirque']],
+      ];
+
+      const findGame = (list, name, prov) => {
+        const nl = name.toLowerCase();
+        const pl = prov.toLowerCase();
+        return list.find(g =>
+          (g.name || '').toLowerCase() === nl && (g.provider || '').toLowerCase().includes(pl)
+        ) || list.find(g =>
+          (g.name || '').toLowerCase().includes(nl) && (g.provider || '').toLowerCase().includes(pl)
+        ) || list.find(g => (g.name || '').toLowerCase().includes(nl));
+      };
+
+      const pinnedIds = new Set();
+      const pinnedSection = [];
+
+      for (const { name, provider } of PINNED_FIRST) {
+        const g = findGame(slotGames, name, provider);
+        if (g && !pinnedIds.has(g.id)) { pinnedSection.push(g); pinnedIds.add(g.id); }
+      }
+
+      const provQueues = PINNED_PROVIDERS.map(([prov, names]) =>
+        names.map(n => findGame(slotGames, n, prov)).filter(g => g && !pinnedIds.has(g.id))
+      );
+      const maxQ = Math.max(...provQueues.map(q => q.length), 0);
+      for (let i = 0; i < maxQ; i++) {
+        for (const q of provQueues) {
+          if (i < q.length && !pinnedIds.has(q[i].id)) {
+            pinnedSection.push(q[i]);
+            pinnedIds.add(q[i].id);
+          }
+        }
+      }
+      console.log(`[games] Pinned top: ${pinnedSection.length} games`);
+
+      // --- Remaining slots: interleave by provider tier (round-robin) ---
+      const remainingSlots = slotGames.filter(g => !pinnedIds.has(g.id));
+
       const byProvider = new Map();
-      for (const g of slotGames) {
+      for (const g of remainingSlots) {
         if (!byProvider.has(g.systemId)) byProvider.set(g.systemId, []);
         byProvider.get(g.systemId).push(g);
       }
 
-      // Sort provider groups by tier (lower tier number = higher priority)
       const providerOrder = [...byProvider.keys()].sort((a, b) => {
         const ta = PROVIDER_TIER[a] || 5;
         const tb = PROVIDER_TIER[b] || 5;
@@ -374,12 +427,11 @@ router.get('/games', async (req, res) => {
         return (byProvider.get(b)?.length || 0) - (byProvider.get(a)?.length || 0);
       });
 
-      // Round-robin interleave: pick 1 game from each provider per round
       const interleaved = [];
       const cursors = new Map();
       providerOrder.forEach(pid => cursors.set(pid, 0));
 
-      let remaining = slotGames.length;
+      let remaining = remainingSlots.length;
       while (remaining > 0) {
         for (const pid of providerOrder) {
           const games = byProvider.get(pid);
@@ -392,9 +444,8 @@ router.get('/games', async (req, res) => {
         }
       }
 
-      // Live games sorted by Fundist order, appended after slots
       liveGames.sort((a, b) => a.sortScore - b.sortScore);
-      processedGames = [...interleaved, ...liveGames];
+      processedGames = [...pinnedSection, ...interleaved, ...liveGames];
 
       // Log category distribution
       const catDist = {};
