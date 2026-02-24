@@ -76,14 +76,14 @@ export default function GameCard({ game, onPlay, onFavorite, isFavorite = false 
     <div className="game-card bg-dark-100 rounded-lg overflow-hidden group cursor-pointer border border-gray-800 hover:border-casino-gold transition-all duration-300"
          onClick={handlePlay}>
       {/* Game Image */}
-      <div className={`relative aspect-[3/4] bg-gradient-to-br ${gradient}`}>
+      <div className={`relative aspect-[4/5] bg-gradient-to-br ${gradient}`}>
         {!imageError && imageUrl ? (
           <div className="relative w-full h-full">
             <Image
               src={imageUrl}
               alt={game.name}
               fill
-              className="object-cover object-top transition-transform duration-300 group-hover:scale-105"
+              className="object-cover object-center transition-transform duration-300 group-hover:scale-105"
               onError={() => setImageError(true)}
               loading="lazy"
               unoptimized

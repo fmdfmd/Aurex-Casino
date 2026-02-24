@@ -28,7 +28,7 @@ import toast from 'react-hot-toast';
 interface Promocode {
   id: string;
   code: string;
-  type: 'fixed' | 'percent' | 'freespins';
+  type: 'balance' | 'bonus' | 'freespins' | 'deposit_bonus';
   value: number;
   minDeposit: number;
   maxUses: number;
@@ -51,7 +51,7 @@ export default function AdminPromocodesPage() {
   // Form state
   const [formData, setFormData] = useState({
     code: '',
-    type: 'fixed' as 'fixed' | 'percent' | 'freespins',
+    type: 'balance' as 'balance' | 'bonus' | 'freespins' | 'deposit_bonus',
     value: '',
     minDeposit: '0',
     maxUses: '',
@@ -105,7 +105,7 @@ export default function AdminPromocodesPage() {
       type: formData.type,
       value: parseFloat(formData.value),
       minDeposit: parseFloat(formData.minDeposit) || 0,
-      maxUses: parseInt(formData.maxUses) || 0,
+      usageLimit: parseInt(formData.maxUses) || 100,
       expiresAt: formData.expiresAt || null,
       description: formData.description
     };
@@ -209,7 +209,7 @@ export default function AdminPromocodesPage() {
     setEditingPromo(null);
     setFormData({
       code: '',
-      type: 'fixed',
+      type: 'balance' as 'balance' | 'bonus' | 'freespins' | 'deposit_bonus',
       value: '',
       minDeposit: '0',
       maxUses: '',
@@ -239,27 +239,30 @@ export default function AdminPromocodesPage() {
 
   const getTypeIcon = (type: string) => {
     switch (type) {
-      case 'fixed': return <DollarSign className="w-4 h-4" />;
-      case 'percent': return <Percent className="w-4 h-4" />;
+      case 'balance': return <DollarSign className="w-4 h-4" />;
+      case 'bonus': return <Gift className="w-4 h-4" />;
       case 'freespins': return <Zap className="w-4 h-4" />;
+      case 'deposit_bonus': return <Percent className="w-4 h-4" />;
       default: return <Gift className="w-4 h-4" />;
     }
   };
 
   const getTypeLabel = (type: string) => {
     switch (type) {
-      case 'fixed': return 'Фикс. сумма';
-      case 'percent': return 'Процент';
+      case 'balance': return 'На баланс';
+      case 'bonus': return 'Бонусный';
       case 'freespins': return 'Фриспины';
+      case 'deposit_bonus': return '% к депозиту';
       default: return type;
     }
   };
 
   const getValueDisplay = (promo: Promocode) => {
     switch (promo.type) {
-      case 'fixed': return `₽${promo.value.toLocaleString('ru-RU')}`;
-      case 'percent': return `${promo.value}%`;
+      case 'balance': return `₽${promo.value.toLocaleString('ru-RU')}`;
+      case 'bonus': return `₽${promo.value.toLocaleString('ru-RU')} (бонус)`;
       case 'freespins': return `${promo.value} FS`;
+      case 'deposit_bonus': return `${promo.value}%`;
       default: return promo.value;
     }
   };
@@ -425,8 +428,9 @@ export default function AdminPromocodesPage() {
                           <td className="px-6 py-4">
                             <div className="flex items-center space-x-2">
                               <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                                promo.type === 'fixed' ? 'bg-green-500/20 text-green-500' :
-                                promo.type === 'percent' ? 'bg-blue-500/20 text-blue-500' :
+                                promo.type === 'balance' ? 'bg-green-500/20 text-green-500' :
+                                promo.type === 'bonus' ? 'bg-aurex-gold-500/20 text-aurex-gold-500' :
+                                promo.type === 'deposit_bonus' ? 'bg-blue-500/20 text-blue-500' :
                                 'bg-purple-500/20 text-purple-500'
                               }`}>
                                 {getTypeIcon(promo.type)}
@@ -568,15 +572,16 @@ export default function AdminPromocodesPage() {
                     {/* Type */}
                     <div>
                       <label className="block text-sm text-aurex-platinum-400 mb-2">Тип бонуса</label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                         {[
-                          { value: 'fixed', label: 'Сумма', icon: <DollarSign className="w-4 h-4" /> },
-                          { value: 'percent', label: 'Процент', icon: <Percent className="w-4 h-4" /> },
+                          { value: 'balance', label: 'На баланс', icon: <DollarSign className="w-4 h-4" /> },
+                          { value: 'bonus', label: 'Бонусный', icon: <Gift className="w-4 h-4" /> },
+                          { value: 'deposit_bonus', label: '% к депозиту', icon: <Percent className="w-4 h-4" /> },
                           { value: 'freespins', label: 'Фриспины', icon: <Zap className="w-4 h-4" /> }
                         ].map((type) => (
                           <button
                             key={type.value}
-                            onClick={() => setFormData(prev => ({ ...prev, type: type.value as 'fixed' | 'percent' | 'freespins' }))}
+                            onClick={() => setFormData(prev => ({ ...prev, type: type.value as 'balance' | 'bonus' | 'freespins' | 'deposit_bonus' }))}
                             className={`flex items-center justify-center space-x-2 py-3 rounded-xl font-medium transition-all ${
                               formData.type === type.value
                                 ? 'bg-aurex-gold-500 text-aurex-obsidian-900'
@@ -593,13 +598,13 @@ export default function AdminPromocodesPage() {
                     {/* Value */}
                     <div>
                       <label className="block text-sm text-aurex-platinum-400 mb-2">
-                        {formData.type === 'fixed' ? 'Сумма (₽) *' : formData.type === 'percent' ? 'Процент (%) *' : 'Количество фриспинов *'}
+                        {formData.type === 'balance' ? 'Сумма (₽) *' : formData.type === 'bonus' ? 'Сумма бонуса (₽) *' : formData.type === 'deposit_bonus' ? 'Процент (%) *' : 'Количество фриспинов *'}
                       </label>
                       <input
                         type="number"
                         value={formData.value}
                         onChange={(e) => setFormData(prev => ({ ...prev, value: e.target.value }))}
-                        placeholder={formData.type === 'percent' ? '100' : '500'}
+                        placeholder={formData.type === 'deposit_bonus' ? '100' : formData.type === 'freespins' ? '50' : '1000'}
                         min="0"
                         className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white focus:border-aurex-gold-500/50 focus:outline-none"
                       />

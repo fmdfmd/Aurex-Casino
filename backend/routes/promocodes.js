@@ -57,53 +57,9 @@ router.post('/activate', auth, async (req, res) => {
       );
       
       let creditedAmount = 0;
+      const promoType = promo.type;
       
-      if (promo.type === 'bonus') {
-        if (promo.value_type === 'fixed') {
-          creditedAmount = parseFloat(promo.value);
-        } else if (promo.value_type === 'percent') {
-          // Процент от баланса — для промокодов процент не имеет смысла без депозита
-          // Зачислим как фиксированную сумму value
-          creditedAmount = parseFloat(promo.value);
-        }
-        
-        if (creditedAmount > 0) {
-          if (promo.max_bonus && creditedAmount > parseFloat(promo.max_bonus)) {
-            creditedAmount = parseFloat(promo.max_bonus);
-          }
-          await client.query(
-            'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
-            [creditedAmount, req.user.id]
-          );
-          
-          // Создаём запись бонуса с вейджером
-          const wagerMultiplier = promo.wager || 20;
-          const wagerRequired = creditedAmount * wagerMultiplier;
-          await client.query(
-            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-             VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
-            [req.user.id, `promo_${promo.code}`, creditedAmount, wagerRequired]
-          );
-        }
-      } else if (promo.type === 'freespins') {
-        // Добавляем фриспины
-        const spinsCount = parseInt(promo.value) || 0;
-        if (spinsCount > 0) {
-          await client.query(
-            'UPDATE users SET freespins = freespins + $1 WHERE id = $2',
-            [spinsCount, req.user.id]
-          );
-        }
-        creditedAmount = spinsCount;
-      } else if (promo.type === 'deposit_bonus') {
-        // Процент к следующему депозиту — сохраняем в used_bonuses
-        await client.query(
-          `UPDATE users SET used_bonuses = used_bonuses || $1 WHERE id = $2`,
-          [JSON.stringify({ promoBonus: { percent: parseFloat(promo.value), maxBonus: promo.max_bonus ? parseFloat(promo.max_bonus) : null, wager: promo.wager || 20, code: promo.code } }), req.user.id]
-        );
-        creditedAmount = parseFloat(promo.value);
-      } else if (promo.type === 'balance') {
-        // Прямо на основной баланс
+      if (promoType === 'fixed' || promoType === 'balance') {
         creditedAmount = parseFloat(promo.value);
         if (promo.max_bonus && creditedAmount > parseFloat(promo.max_bonus)) {
           creditedAmount = parseFloat(promo.max_bonus);
@@ -113,7 +69,11 @@ router.post('/activate', auth, async (req, res) => {
             'UPDATE users SET balance = balance + $1 WHERE id = $2',
             [creditedAmount, req.user.id]
           );
-          // Создаём вейджер если задан
+          await client.query(
+            `INSERT INTO transactions (user_id, type, amount, status, description)
+             VALUES ($1, 'promo_bonus', $2, 'completed', $3)`,
+            [req.user.id, creditedAmount, `Промокод ${promo.code}`]
+          );
           const balanceWager = promo.wager || 0;
           if (balanceWager > 0) {
             await client.query(
@@ -123,6 +83,43 @@ router.post('/activate', auth, async (req, res) => {
             );
           }
         }
+      } else if (promoType === 'bonus') {
+        creditedAmount = parseFloat(promo.value);
+        if (promo.max_bonus && creditedAmount > parseFloat(promo.max_bonus)) {
+          creditedAmount = parseFloat(promo.max_bonus);
+        }
+        if (creditedAmount > 0) {
+          await client.query(
+            'UPDATE users SET bonus_balance = bonus_balance + $1 WHERE id = $2',
+            [creditedAmount, req.user.id]
+          );
+          await client.query(
+            `INSERT INTO transactions (user_id, type, amount, status, description)
+             VALUES ($1, 'promo_bonus', $2, 'completed', $3)`,
+            [req.user.id, creditedAmount, `Промокод ${promo.code} (бонус)`]
+          );
+          const wagerMultiplier = promo.wager || 20;
+          await client.query(
+            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+             VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
+            [req.user.id, `promo_${promo.code}`, creditedAmount, creditedAmount * wagerMultiplier]
+          );
+        }
+      } else if (promoType === 'percent' || promoType === 'deposit_bonus') {
+        await client.query(
+          `UPDATE users SET used_bonuses = used_bonuses || $1 WHERE id = $2`,
+          [JSON.stringify({ promoBonus: { percent: parseFloat(promo.value), maxBonus: promo.max_bonus ? parseFloat(promo.max_bonus) : null, wager: promo.wager || 20, code: promo.code } }), req.user.id]
+        );
+        creditedAmount = parseFloat(promo.value);
+      } else if (promoType === 'freespins') {
+        const spinsCount = parseInt(promo.value) || 0;
+        if (spinsCount > 0) {
+          await client.query(
+            'UPDATE users SET freespins = freespins + $1 WHERE id = $2',
+            [spinsCount, req.user.id]
+          );
+        }
+        creditedAmount = spinsCount;
       }
     });
     
