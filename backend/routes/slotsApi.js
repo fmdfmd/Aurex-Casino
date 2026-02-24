@@ -721,8 +721,22 @@ router.get('/ws-proxy/*', async (req, res) => {
   const target = `https://check5.wscenter.xyz/${subpath}${qs}`;
   try {
     const resp = await axios.get(target, { timeout: 15000, responseType: 'arraybuffer' });
-    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
-    res.send(resp.data);
+    const ct = resp.headers['content-type'] || '';
+    if (ct) res.setHeader('Content-Type', ct);
+
+    // For UserAuth responses — rewrite game URLs so the iframe loads through ext-proxy
+    if (subpath.includes('UserAuth')) {
+      let body = Buffer.from(resp.data).toString('utf-8');
+      console.log(`[ws-proxy] UserAuth raw: ${body.slice(0, 300)}`);
+      body = body.replace(
+        /https?:\/\/(?!check\d*\.wscenter\.xyz)[a-zA-Z0-9._-]+\.[a-zA-Z]{2,}[^"'\s}\])\\]*/g,
+        (url) => `/api/slots/ext-proxy?u=${encodeURIComponent(url)}`
+      );
+      console.log(`[ws-proxy] UserAuth rewritten: ${body.slice(0, 300)}`);
+      res.send(body);
+    } else {
+      res.send(resp.data);
+    }
   } catch (e) {
     console.log(`[ws-proxy] Failed ${target}: ${e.message}`);
     res.status(502).send('proxy error');
