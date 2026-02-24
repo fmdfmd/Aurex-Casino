@@ -211,6 +211,8 @@ router.post('/deposit', auth, async (req, res) => {
           subToken,
           userId: req.user.id,
           userIp: req.ip,
+          userAgent: req.headers['user-agent'],
+          userPhone: req.user.phone || undefined,
           redirectUrl: 'https://aurex.casino/wallet'
         });
       } catch (expayErr) {

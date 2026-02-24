@@ -64,7 +64,12 @@ class ExpayService {
     return WITHDRAW_SUB_TOKEN_MAP[paymentMethod] || { token: 'CARDRUBP2P', subToken: 'INTERBANKRUB' };
   }
 
-  async createDeposit({ amount, transactionId, token, subToken, userId, userIp, redirectUrl }) {
+  generateDeviceId(userIp, userAgent) {
+    const raw = `${userAgent || ''}|${userIp || ''}|aurex`;
+    return crypto.createHash('md5').update(raw).digest('hex');
+  }
+
+  async createDeposit({ amount, transactionId, token, subToken, userId, userIp, userAgent, userPhone, redirectUrl }) {
     const payload = {
       refer_type: 'p2p_payform',
       token: token || 'CARDRUBP2P',
@@ -81,6 +86,10 @@ class ExpayService {
       }
     };
     if (userIp) payload.client_ip = userIp;
+    if (subToken === 'NSPKRUB') {
+      payload.device_id = this.generateDeviceId(userIp, userAgent);
+      if (userPhone) payload.phone_number = userPhone.startsWith('+') ? userPhone : `+${userPhone}`;
+    }
 
     const response = await apiClient.post('/api/transaction/create/in', payload);
     const data = response.data;
