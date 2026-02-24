@@ -861,6 +861,13 @@ router.all('/ext-proxy', async (req, res) => {
         `window.WebSocket.prototype=NWS.prototype;` +
         `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
         `window.WebSocket.CLOSING=NWS.CLOSING;window.WebSocket.CLOSED=NWS.CLOSED;` +
+        `var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
+        `if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
+        `set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}` +
+        `var oSA=Element.prototype.setAttribute;` +
+        `Element.prototype.setAttribute=function(n,v){` +
+        `if((n==='src'&&this.tagName==='IFRAME')||(n==='src'&&this.tagName==='SCRIPT'))` +
+        `{return oSA.call(this,n,px(v));}return oSA.call(this,n,v);};` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -960,6 +967,13 @@ window.WebSocket.CONNECTING=NWS.CONNECTING;
 window.WebSocket.OPEN=NWS.OPEN;
 window.WebSocket.CLOSING=NWS.CLOSING;
 window.WebSocket.CLOSED=NWS.CLOSED;
+var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
+if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{
+  set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}
+var oSA=Element.prototype.setAttribute;
+Element.prototype.setAttribute=function(n,v){
+  if((n==='src'&&this.tagName==='IFRAME')||(n==='src'&&this.tagName==='SCRIPT'))
+  {return oSA.call(this,n,px(v));}return oSA.call(this,n,v);};
 })()</script>`;
 
   const htmlWithFallback = interceptor + html;
