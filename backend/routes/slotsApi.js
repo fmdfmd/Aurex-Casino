@@ -781,10 +781,39 @@ router.all('/game-proxy/tk/*', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Blocked game-server domains and their proxy paths.
+// Fundist HTML uses gateway URLs that *redirect* to these domains, so we
+// must resolve the redirect chain server-side and rewrite before serving.
+// ---------------------------------------------------------------------------
+const BLOCKED_DOMAINS = [
+  { re: /game-p\d+\.thunderkick\.com/, proxy: '/api/slots/game-proxy/tk' },
+  // Yggdrasil — add when we identify the blocked domain
+];
+
+async function resolveRedirectChain(url, maxHops = 5) {
+  let current = url;
+  for (let i = 0; i < maxHops; i++) {
+    try {
+      const resp = await axios({
+        method: 'get', url: current,
+        maxRedirects: 0, validateStatus: () => true, timeout: 5000,
+        headers: { 'user-agent': 'Mozilla/5.0', accept: 'text/html' }
+      });
+      if (resp.status >= 300 && resp.status < 400 && resp.headers.location) {
+        current = new URL(resp.headers.location, current).toString();
+      } else {
+        break;
+      }
+    } catch { break; }
+  }
+  return current;
+}
+
+// ---------------------------------------------------------------------------
 // game-frame — serves the Fundist HTML as a full page inside our iframe.
 // Rewrites blocked provider domains to go through our proxies.
 // ---------------------------------------------------------------------------
-router.get('/game-frame/:token', (req, res) => {
+router.get('/game-frame/:token', async (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
   console.log(`[game-frame] GET: token=${req.params.token}, found=${!!entry}, store size=${gameFrameStore.size}`);
   if (!entry) {
@@ -799,10 +828,50 @@ router.get('/game-frame/:token', (req, res) => {
     console.log('[game-frame] Patched wscenter → ws-proxy');
   }
 
-  // Rewrite Thunderkick game server URLs (ISP-blocked)
+  // Direct domain rewrite (in case the HTML contains the domain directly)
   if (/game-p\d+\.thunderkick\.com/.test(html)) {
     html = html.replace(/(https?:)?\/\/game-p\d+\.thunderkick\.com/g, '/api/slots/game-proxy/tk');
-    console.log('[game-frame] Patched thunderkick → game-proxy/tk');
+    console.log('[game-frame] Patched thunderkick → game-proxy/tk (direct)');
+  }
+
+  // -------------------------------------------------------------------
+  // Pre-resolve redirect chains: Fundist gateway URLs redirect to blocked
+  // game servers. We follow the redirects server-side and rewrite the
+  // original URL to point to our proxy instead.
+  // -------------------------------------------------------------------
+  try {
+    const srcRe = /(?:src|href|data)=["']?(https?:\/\/[^"'\s>]+)/gi;
+    const jsRe = /(?:\.src\s*=\s*|location(?:\.href)?\s*=\s*)["'](https?:\/\/[^"']+)/gi;
+    const foundUrls = new Set();
+    let m;
+    while ((m = srcRe.exec(html)) !== null) foundUrls.add(m[1]);
+    while ((m = jsRe.exec(html)) !== null) foundUrls.add(m[1]);
+
+    const localHosts = new Set(['aurex.casino', 'localhost', '127.0.0.1']);
+    const urlsToCheck = [...foundUrls].filter(u => {
+      try { return !localHosts.has(new URL(u).hostname); } catch { return false; }
+    });
+
+    if (urlsToCheck.length > 0) {
+      console.log(`[game-frame] Resolving ${urlsToCheck.length} external URL(s)…`);
+      const results = await Promise.all(urlsToCheck.map(async (origUrl) => {
+        const finalUrl = await resolveRedirectChain(origUrl);
+        return { origUrl, finalUrl };
+      }));
+
+      for (const { origUrl, finalUrl } of results) {
+        for (const { re, proxy } of BLOCKED_DOMAINS) {
+          if (re.test(finalUrl)) {
+            const proxied = finalUrl.replace(new RegExp(`(https?:)?//${re.source}`, 'g'), proxy);
+            html = html.split(origUrl).join(proxied);
+            console.log(`[game-frame] Redirect resolved: ${origUrl} → ${proxied}`);
+            break;
+          }
+        }
+      }
+    }
+  } catch (e) {
+    console.error('[game-frame] Redirect resolution error:', e.message);
   }
 
   // Wrap fragment in proper HTML document to avoid Quirks Mode
