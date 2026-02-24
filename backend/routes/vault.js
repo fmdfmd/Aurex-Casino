@@ -3,56 +3,46 @@ const router = express.Router();
 const pool = require('../config/database');
 const { auth } = require('../middleware/auth');
 
-// Создать дефолтные бонусы для пользователя
 async function createDefaultBonuses(userId, vipLevel = 1) {
+  const now = new Date();
+  const dayMs = 24 * 60 * 60 * 1000;
+
   const defaultBonuses = [
     {
-      type: 'freespins',
-      name: 'Ежедневные фриспины',
-      description: '25 бесплатных вращений каждый день',
-      value: '25 FS',
-      value_amount: 25,
-      icon: '🎰',
-      gradient: 'from-purple-500 to-pink-500',
-      expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000),
-      is_locked: false,
-      wager_required: 30
-    },
-    {
       type: 'cashback',
-      name: 'Недельный кэшбэк',
-      description: 'Возврат 10% от проигрышей за неделю',
-      value: '10%',
+      name: 'Еженедельный кэшбэк',
+      description: 'Кэшбэк начисляется автоматически каждый понедельник',
+      value: 'до 15%',
       value_amount: 0,
       icon: '💰',
       gradient: 'from-green-500 to-emerald-500',
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+      expires_at: new Date(now.getTime() + 30 * dayMs),
       is_locked: false,
       wager_required: 5
     },
     {
       type: 'reload',
-      name: 'Бонус на депозит',
-      description: '50% бонус на следующий депозит',
+      name: 'Бонус на депозит 50%',
+      description: 'Бонус 50% на следующий депозит от ₽500',
       value: '50%',
-      value_amount: 50,
+      value_amount: 0,
       icon: '🎁',
       gradient: 'from-blue-500 to-cyan-500',
-      expires_at: new Date(Date.now() + 3 * 24 * 60 * 60 * 1000),
+      expires_at: new Date(now.getTime() + 7 * dayMs),
       is_locked: false,
       wager_required: 25
     },
     {
       type: 'vip',
-      name: 'VIP Бонус',
-      description: 'Эксклюзивный бонус для VIP игроков',
+      name: 'VIP Бонус ₽5,000',
+      description: 'Эксклюзивный бонус для VIP 3+ игроков',
       value: '₽5,000',
       value_amount: 5000,
       icon: '👑',
       gradient: 'from-aurex-gold-500 to-amber-500',
-      expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      expires_at: new Date(now.getTime() + 30 * dayMs),
       is_locked: vipLevel < 3,
-      unlock_condition: vipLevel < 3 ? 'Достигните VIP уровня Gold (3+)' : null,
+      unlock_condition: vipLevel < 3 ? 'Достигните VIP уровня 3 (Gold)' : null,
       wager_required: 15
     }
   ];
@@ -207,15 +197,22 @@ router.get('/summary', auth, async (req, res) => {
   try {
     const result = await pool.query(`
       SELECT 
+        COUNT(*) as total,
         COUNT(*) FILTER (WHERE status = 'available' AND is_locked = false) as available,
         COUNT(*) FILTER (WHERE is_locked = true AND status = 'available') as locked,
-        COUNT(*) FILTER (WHERE status IN ('used', 'activated')) as used,
-        COUNT(*) as total
+        COALESCE(SUM(value_amount) FILTER (WHERE status = 'available'), 0) as total_value
       FROM vault_bonuses
       WHERE user_id = $1
     `, [req.user.id]);
     
-    res.json({ success: true, data: result.rows[0] });
+    const row = result.rows[0];
+    res.json({ success: true, data: {
+      totalBonuses: parseInt(row.total) || 0,
+      activeBonuses: parseInt(row.available) || 0,
+      lockedBonuses: parseInt(row.locked) || 0,
+      totalValue: parseFloat(row.total_value) || 0,
+      savedThisMonth: 0
+    }});
   } catch (error) {
     console.error('Get vault summary error:', error);
     res.status(500).json({ success: false, message: error.message });
