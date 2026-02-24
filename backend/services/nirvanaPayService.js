@@ -1,8 +1,20 @@
 const axios = require('axios');
 const config = require('../config/config');
 
+// H2H API client (payouts, status checks)
 const apiClient = axios.create({
   baseURL: config.nirvanaPay.apiUrl,
+  timeout: 30000,
+  headers: {
+    'Content-Type': 'application/json',
+    'ApiPublic': config.nirvanaPay.apiKey,
+    'ApiPrivate': config.nirvanaPay.apiKey
+  }
+});
+
+// Payment Form API client (deposit orders with redirect)
+const formClient = axios.create({
+  baseURL: 'https://f.nirvanapay.pro',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
@@ -28,6 +40,23 @@ apiClient.interceptors.response.use(
   }
 );
 
+formClient.interceptors.request.use((req) => {
+  console.log(`[NirvanaPay Form] ${req.method.toUpperCase()} ${req.baseURL}${req.url}`, req.data ? JSON.stringify(req.data).slice(0, 400) : '');
+  return req;
+});
+
+formClient.interceptors.response.use(
+  (res) => {
+    console.log(`[NirvanaPay Form] Response ${res.status}:`, JSON.stringify(res.data).slice(0, 500));
+    return res;
+  },
+  (err) => {
+    const data = err.response?.data;
+    console.error(`[NirvanaPay Form] Error ${err.response?.status}:`, JSON.stringify(data).slice(0, 500));
+    throw err;
+  }
+);
+
 const RUB_TOKENS = {
   'SBP': 'СБП',
   'C2C': 'Межбанк',
@@ -43,11 +72,62 @@ const RUB_TOKENS = {
 class NirvanaPayService {
 
   /**
-   * Create a payin (deposit).
-   * Returns H2H data: receiver (card/phone), bankName, recipientName.
-   * No redirect URL — details are shown to user directly.
+   * Create deposit via Payment Form (f.nirvanapay.pro).
+   * Returns redirectURL — user goes to Nirvana's payment page.
+   * tokenCode is optional; if omitted, user picks method on Nirvana's form.
    */
-  async createDeposit({ amount, transactionId, token = 'СБП', currency = 'RUB', userIp, userAgent, userEmail, userId }) {
+  async createDepositForm({ amount, transactionId, tokenCode, currency = 'RUB', returnUrl, userIp, userAgent, userEmail, userId }) {
+    const callbackBase = config.nirvanaPay.callbackUrl;
+    const externalID = `dep_${transactionId}`;
+
+    const payload = {
+      amount,
+      redirectURL: returnUrl || config.avePay.returnUrl || 'https://aurex.casino/wallet',
+      siteName: 'AUREX Casino',
+      callbackURL: `${callbackBase}?txId=${transactionId}&type=deposit`,
+      externalID,
+      currency
+    };
+
+    if (tokenCode) {
+      payload.tokenCode = tokenCode;
+    }
+
+    if (userIp || userAgent || userEmail || userId) {
+      payload.userInfo = {};
+      if (userIp) payload.userInfo.ip = userIp;
+      if (userAgent) payload.userInfo.userAgent = userAgent;
+      if (userEmail) payload.userInfo.email = userEmail;
+      if (userId) payload.userInfo.id = String(userId);
+    }
+
+    const response = await formClient.post('/api/v2/order', payload);
+    const data = response.data;
+
+    if (!data?.data?.redirectURL) {
+      throw new Error('Nirvana Pay: no redirectURL in response');
+    }
+
+    return {
+      redirectUrl: data.data.redirectURL,
+      externalID
+    };
+  }
+
+  /**
+   * Check order status via Payment Form API.
+   */
+  async getOrderStatus(externalId) {
+    const response = await formClient.get(`/api/v2/order?externalId=${externalId}`);
+    return response.data?.data || response.data;
+  }
+
+  /**
+   * Create a payin (deposit) via H2H API.
+   * Returns receiver details (card/phone) — shown to user directly.
+   * Use createDepositForm() instead for redirect-based flow.
+   */
+  async createDepositH2H({ amount, transactionId, token = 'СБП', currency = 'RUB', userIp, userAgent, userEmail, userId }) {
     const callbackBase = config.nirvanaPay.callbackUrl;
     const clientID = `dep_${transactionId}`;
 

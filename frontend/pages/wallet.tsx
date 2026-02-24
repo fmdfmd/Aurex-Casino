@@ -270,24 +270,7 @@ export default function WalletPage() {
         throw new Error(depositData.message || 'Ошибка создания депозита');
       }
 
-      // Nirvana Pay H2H — show payment details to user
-      if (depositData.data?.provider === 'nirvana' && depositData.data?.paymentDetails) {
-        const details = depositData.data.paymentDetails;
-        setNirvanaPaymentDetails({
-          receiver: details.receiver,
-          bankName: details.bankName,
-          recipientName: details.recipientName,
-          amount: details.amount,
-          transactionId: depositData.data.transaction?.id
-        });
-        if (acceptBonus && currentBonus && bonusAmount > 0) {
-          toast.success(`Бонус ${currentBonus.percent}% (+₽${bonusAmount.toLocaleString('ru-RU')}) будет применён после подтверждения оплаты!`, { duration: 4000 });
-        }
-        toast.success('Переведите средства по реквизитам ниже', { duration: 3000 });
-        return;
-      }
-
-      // AVE PAY returns redirectUrl — send user to payment page
+      // Both AVE PAY and Nirvana Pay return redirectUrl
       const redirectUrl = depositData.data?.redirectUrl;
       if (redirectUrl) {
         if (acceptBonus && currentBonus && bonusAmount > 0) {

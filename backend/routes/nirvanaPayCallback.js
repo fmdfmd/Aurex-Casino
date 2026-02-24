@@ -34,17 +34,32 @@ router.get('/', async (req, res) => {
     }
 
     const tx = txResult.rows[0];
-    const clientID = tx.type === 'deposit' ? `dep_${tx.id}` : `wd_${tx.id}`;
+    const externalID = `dep_${tx.id}`;
 
+    // Try Payment Form status first, then H2H status
     let statusData;
     try {
-      statusData = await nirvanaPayService.getStatus(clientID);
+      const orderStatus = await nirvanaPayService.getOrderStatus(externalID);
+      if (orderStatus && orderStatus.status) {
+        const formStatusMap = { 'SUCCESS': 'SUCCESS', 'ERROR': 'ERROR', 'ACCEPTED': 'CREATED' };
+        statusData = { status: formStatusMap[orderStatus.status] || orderStatus.status, amountFiatReceived: orderStatus.amount };
+        console.log(`[NirvanaPay Callback] Form status for ${externalID}:`, orderStatus.status);
+      }
     } catch (err) {
-      console.error(`[NirvanaPay Callback] Status check failed for ${clientID}:`, err.message);
-      return res.status(200).send('OK');
+      console.log(`[NirvanaPay Callback] Form status check failed, trying H2H:`, err.message);
     }
 
-    console.log(`[NirvanaPay Callback] Status for ${clientID}:`, JSON.stringify(statusData).slice(0, 400));
+    if (!statusData || statusData.status === 'CREATED') {
+      const clientID = tx.type === 'deposit' ? `dep_${tx.id}` : `wd_${tx.id}`;
+      try {
+        statusData = await nirvanaPayService.getStatus(clientID);
+      } catch (err) {
+        console.error(`[NirvanaPay Callback] H2H status check also failed for ${clientID}:`, err.message);
+        return res.status(200).send('OK');
+      }
+    }
+
+    console.log(`[NirvanaPay Callback] Final status for tx ${txIdNum}:`, JSON.stringify(statusData).slice(0, 400));
 
     if (statusData.status === 'SUCCESS') {
       if (tx.type === 'deposit') {
