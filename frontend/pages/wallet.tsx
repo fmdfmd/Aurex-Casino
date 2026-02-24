@@ -663,9 +663,9 @@ export default function WalletPage() {
                                 </div>
                               )}
                               {method.iconUrl ? (
-                                <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-lg mx-auto mb-1.5 object-contain group-hover:scale-110 transition-transform" />
+                                <img src={method.iconUrl} alt={method.name} className="w-full h-10 rounded-lg mx-auto mb-1.5 object-contain group-hover:scale-110 transition-transform" />
                               ) : (
-                                <div className="w-9 h-9 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
+                                <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
                               )}
                               <div className="text-white font-medium text-xs text-center">{method.name}</div>
                               <div className="text-[10px] text-aurex-platinum-500 text-center mt-0.5">
@@ -911,9 +911,9 @@ export default function WalletPage() {
                               )}
                               <div className="flex items-center space-x-3">
                                 {method.iconUrl ? (
-                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg object-contain group-hover:scale-110 transition-transform" />
+                                  <img src={method.iconUrl} alt={method.name} className="w-16 h-10 rounded-lg object-contain group-hover:scale-110 transition-transform" />
                                 ) : (
-                                  <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
+                                  <div className="w-16 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
                                 )}
                                 <div className="text-left">
                                   <div className="text-white font-medium text-sm">{method.name}</div>
