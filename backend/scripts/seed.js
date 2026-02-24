@@ -5,18 +5,29 @@ async function seedDatabase() {
   try {
     console.log('🌱 Seeding database...');
     
-    // Create admin user
+    // Create/update admin user
     const adminPassword = await bcrypt.hash('ErIobhbhqwe2p-!k', 12);
-    await pool.query(`
-      INSERT INTO users (
-        odid, username, email, password, balance, bonus_balance, currency,
-        vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
-        referral_code
-      ) VALUES (
-        'AUREX-000001', 'ADMIN', 'admin@aurex.io', $1, 100000, 0, 'RUB',
-        5, 999999, true, true, true, 'aurex_admin_001', 'ADMIN001'
-      ) ON CONFLICT (username) DO UPDATE SET password = $1, is_admin = true
-    `, [adminPassword]);
+    // Update existing admin (any case) or create new
+    const existingAdmin = await pool.query("SELECT id FROM users WHERE LOWER(username) = 'admin' LIMIT 1");
+    if (existingAdmin.rows.length > 0) {
+      await pool.query(
+        "UPDATE users SET username = 'ADMIN', password = $1, is_admin = true WHERE id = $2",
+        [adminPassword, existingAdmin.rows[0].id]
+      );
+    } else {
+      await pool.query(`
+        INSERT INTO users (
+          odid, username, email, password, balance, bonus_balance, currency,
+          vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
+          referral_code
+        ) VALUES (
+          'AUREX-000001', 'ADMIN', 'admin@aurex.io', $1, 100000, 0, 'RUB',
+          5, 999999, true, true, true, 'aurex_admin_001', 'ADMIN001'
+        ) ON CONFLICT (username) DO UPDATE SET password = $1, is_admin = true
+      `, [adminPassword]);
+    }
+    // Clean up duplicate ADMIN users (case variations)
+    await pool.query("DELETE FROM users WHERE LOWER(username) = 'admin' AND id != (SELECT MIN(id) FROM users WHERE LOWER(username) = 'admin')").catch(() => {});
     
     // Create test user
     const testPassword = await bcrypt.hash('test123', 12);
