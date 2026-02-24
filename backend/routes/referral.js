@@ -34,29 +34,30 @@ router.get('/stats', auth, async (req, res) => {
     
     const user = userResult.rows[0];
     
+    const userId = String(req.user.id);
+    
     const refResult = await pool.query(`
       SELECT 
         COUNT(*) as total_referrals,
         COUNT(*) FILTER (WHERE deposit_count > 0) as active_referrals
       FROM users
-      WHERE referred_by = $1::text
-    `, [req.user.id]);
+      WHERE referred_by = $1
+    `, [userId]);
     
     const refStats = refResult.rows[0];
     const totalReferrals = parseInt(refStats.total_referrals);
     const tier = getReferralTier(totalReferrals);
     const effectivePercent = user.custom_referral_percent != null ? parseFloat(user.custom_referral_percent) : tier.commissionPercent;
     
-    // GGR рефералов за текущий месяц
     const ggrResult = await pool.query(`
       SELECT 
         COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
         COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM transactions t
       JOIN users u ON t.user_id = u.id
-      WHERE u.referred_by = $1::text 
+      WHERE u.referred_by = $1
         AND t.created_at >= date_trunc('month', CURRENT_DATE)
-    `, [req.user.id]);
+    `, [userId]);
     
     const monthBets = parseFloat(ggrResult.rows[0].total_bets) || 0;
     const monthWins = parseFloat(ggrResult.rows[0].total_wins) || 0;
@@ -105,10 +106,11 @@ router.get('/list', auth, async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Get referral count + custom percent
+    const userId = String(req.user.id);
+    
     const meResult = await pool.query(
-      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1::text) as ref_count FROM users WHERE id = $1',
-      [req.user.id]
+      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1) as ref_count FROM users WHERE id = $2',
+      [userId, req.user.id]
     );
     const totalRefs = parseInt(meResult.rows[0].ref_count);
     const tier = getReferralTier(totalRefs);
@@ -122,11 +124,11 @@ router.get('/list', auth, async (req, res) => {
         COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM users u
       LEFT JOIN transactions t ON t.user_id = u.id
-      WHERE u.referred_by = $1::text
+      WHERE u.referred_by = $1
       GROUP BY u.id
       ORDER BY u.created_at DESC
       LIMIT $2 OFFSET $3
-    `, [req.user.id, parseInt(limit), offset]);
+    `, [userId, parseInt(limit), offset]);
     
     const referrals = result.rows.map(r => {
       const ggr = Math.max(0, parseFloat(r.total_bets) - parseFloat(r.total_wins));
@@ -172,10 +174,10 @@ router.post('/claim', auth, async (req, res) => {
     
     const prelimEarnings = parseFloat(userResult.rows[0]?.referral_earnings) || 0;
     
-    if (prelimEarnings < 100) {
+    if (prelimEarnings < 5000) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Минимальная сумма для вывода: ₽100' 
+        message: 'Минимальная сумма для вывода: ₽5,000' 
       });
     }
     
@@ -187,7 +189,7 @@ router.post('/claim', auth, async (req, res) => {
         [req.user.id]
       );
       claimedAmount = parseFloat(locked.rows[0]?.referral_earnings) || 0;
-      if (claimedAmount < 100) return;
+      if (claimedAmount < 5000) return;
       
       await client.query(
         'UPDATE users SET balance = balance + $1, referral_earnings = 0 WHERE id = $2',
@@ -201,8 +203,8 @@ router.post('/claim', auth, async (req, res) => {
       );
     });
     
-    if (claimedAmount < 100) {
-      return res.status(400).json({ success: false, message: 'Минимальная сумма для вывода: ₽100' });
+    if (claimedAmount < 5000) {
+      return res.status(400).json({ success: false, message: 'Минимальная сумма для вывода: ₽5,000' });
     }
     const earnings = claimedAmount;
     

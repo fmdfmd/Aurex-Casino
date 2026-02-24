@@ -57,6 +57,7 @@ export default function ReferralPage() {
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
   const [tiers, setTiers] = useState<ReferralTier[]>([]);
+  const [claimLoading, setClaimLoading] = useState(false);
 
   useEffect(() => {
     fetchReferralData();
@@ -156,6 +157,27 @@ export default function ReferralPage() {
     : defaultTier;
 
   const nextTier = tiers.find(t => t.requiredReferrals > stats.totalReferrals);
+
+  const handleClaim = async () => {
+    setClaimLoading(true);
+    try {
+      const res = await fetch('/api/referral/claim', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(data.message || 'Переведено на баланс!');
+        fetchReferralData();
+      } else {
+        toast.error(data.message || 'Ошибка вывода');
+      }
+    } catch (error) {
+      toast.error('Ошибка сервера');
+    } finally {
+      setClaimLoading(false);
+    }
+  };
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text);
@@ -488,27 +510,26 @@ export default function ReferralPage() {
 
                     <div className="space-y-4 mb-6">
                       <div className="flex justify-between py-2 border-b border-aurex-gold-500/10">
-                        <span className="text-aurex-platinum-400">{t('profile.referralProgram.minWithdraw')}</span>
-                        <span className="text-white">₽50</span>
+                        <span className="text-aurex-platinum-400">Минимальная сумма</span>
+                        <span className="text-white">₽5,000</span>
                       </div>
                       <div className="flex justify-between py-2 border-b border-aurex-gold-500/10">
-                        <span className="text-aurex-platinum-400">{t('profile.referralProgram.pendingAccrual')}</span>
-                        <span className="text-yellow-400">₽{stats.pendingEarnings}</span>
+                        <span className="text-aurex-platinum-400">Способ вывода</span>
+                        <span className="text-white">На основной баланс</span>
                       </div>
                       <div className="flex justify-between py-2">
-                        <span className="text-aurex-platinum-400">{t('profile.referralProgram.withdrawMethod')}</span>
-                        <span className="text-white">{t('profile.referralProgram.withdrawMethodValue')}</span>
+                        <span className="text-aurex-platinum-400">Начисление комиссий</span>
+                        <span className="text-yellow-400">Каждый понедельник</span>
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
-                      <button className="py-4 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all">
-                        {t('profile.referralProgram.toMainBalance')}
-                      </button>
-                      <button className="py-4 bg-aurex-obsidian-700 text-aurex-platinum-300 font-bold rounded-xl border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all">
-                        {t('profile.referralProgram.toCrypto')}
-                      </button>
-                    </div>
+                    <button
+                      onClick={handleClaim}
+                      disabled={claimLoading || stats.availableWithdraw < 5000}
+                      className="w-full py-4 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {claimLoading ? 'Переводим...' : stats.availableWithdraw < 5000 ? `Минимум ₽5,000 (сейчас ₽${Math.round(stats.availableWithdraw)})` : 'Перевести на баланс'}
+                    </button>
                   </motion.div>
                 )}
               </div>
