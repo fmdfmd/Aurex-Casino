@@ -685,10 +685,27 @@ router.get('/proxy-sw.js', (req, res) => {
   res.send("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>self.registration.unregister());");
 });
 
+// wscenter.xyz auth proxy — wscenter is not accessible directly from browsers
+// (either ISP-blocked or origin-restricted). We proxy only this one auth call.
+router.get('/ws-proxy/*', async (req, res) => {
+  const subpath = req.params[0] || '';
+  const qIdx = req.originalUrl.indexOf('?');
+  const qs = qIdx !== -1 ? req.originalUrl.substring(qIdx) : '';
+  const target = `https://check5.wscenter.xyz/${subpath}${qs}`;
+  try {
+    const resp = await axios.get(target, { timeout: 15000, responseType: 'arraybuffer' });
+    if (resp.headers['content-type']) res.setHeader('Content-Type', resp.headers['content-type']);
+    res.send(resp.data);
+  } catch (e) {
+    console.log(`[ws-proxy] Failed ${target}: ${e.message}`);
+    res.status(502).send('proxy error');
+  }
+});
 
 // ---------------------------------------------------------------------------
 // game-frame — serves the Fundist HTML as a full page inside our iframe.
-// No proxying — games load directly from provider servers as Fundist intended.
+// Only wscenter auth URLs are rewritten to go through ws-proxy.
+// Everything else loads directly from provider servers.
 // ---------------------------------------------------------------------------
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
@@ -697,7 +714,14 @@ router.get('/game-frame/:token', (req, res) => {
     return res.status(404).send('<html><body style="background:#000;color:#fff;display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif"><h2>Сессия истекла. Закройте и откройте игру снова.</h2></body></html>');
   }
 
-  const html = entry.html;
+  let html = entry.html;
+
+  // Rewrite wscenter auth URLs to go through our proxy (not accessible from browsers)
+  if (html.includes('wscenter')) {
+    html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
+    console.log('[game-frame] Patched wscenter → ws-proxy');
+  }
+
   const b64 = Buffer.from(html).toString('base64');
 
   const page = `<!DOCTYPE html>
