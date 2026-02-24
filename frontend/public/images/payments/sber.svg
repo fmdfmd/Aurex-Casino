@@ -1,7 +1,9 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
   <circle cx="32" cy="32" r="28" fill="url(#sberGrad)"/>
-  <path d="M32 14 C23 14 16 20 14.5 28 L28 28 L28 22 L36 22 L36 28 L49.5 28 C48 20 41 14 32 14Z" fill="#fff" opacity="0.9"/>
-  <path d="M32 50 C41 50 48 44 49.5 36 L36 36 L36 42 L28 42 L28 36 L14.5 36 C16 44 23 50 32 50Z" fill="#fff" opacity="0.9"/>
+  <path d="M32 14C22.06 14 14 22.06 14 32s8.06 18 18 18 18-8.06 18-18S41.94 14 32 14z" fill="none" stroke="#fff" stroke-width="3"/>
+  <path d="M32 14C22.06 14 14 22.06 14 32" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <path d="M32 50C41.94 50 50 41.94 50 32" stroke="#fff" stroke-width="5" stroke-linecap="round" fill="none"/>
+  <circle cx="32" cy="32" r="6" fill="#fff"/>
   <defs>
     <linearGradient id="sberGrad" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
       <stop stop-color="#21A038"/>

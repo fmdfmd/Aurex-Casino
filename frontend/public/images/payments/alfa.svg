@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" fill="none">
+  <circle cx="32" cy="32" r="28" fill="url(#alfaGrad)"/>
+  <path d="M32 16 L44 48 L38 48 L35.5 41 L28.5 41 L26 48 L20 48 Z M32 24 L29.5 36 L34.5 36 Z" fill="#fff"/>
+  <defs>
+    <linearGradient id="alfaGrad" x1="4" y1="4" x2="60" y2="60" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#EF3124"/>
+      <stop offset="1" stop-color="#C41E1A"/>
+    </linearGradient>
+  </defs>
+</svg>
