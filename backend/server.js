@@ -239,39 +239,6 @@ async function runProductionSetup() {
   }
 }
 
-// WebSocket proxy for game providers (SW can't intercept WS)
-const WebSocketLib = require('ws');
-server.on('upgrade', (req, socket, head) => {
-  try {
-    const url = new URL(req.url, `http://${req.headers.host}`);
-    if (!url.pathname.startsWith('/api/slots/ws-game-proxy')) return;
-    const target = url.searchParams.get('target');
-    if (!target || (!target.startsWith('ws://') && !target.startsWith('wss://'))) {
-      socket.destroy();
-      return;
-    }
-    console.log(`[ws-proxy] Connecting: ${target}`);
-    const remote = new WebSocketLib(target, {
-      headers: { 'User-Agent': req.headers['user-agent'] || 'Mozilla/5.0', Origin: new URL(target).origin }
-    });
-    const wss = new WebSocketLib.Server({ noServer: true });
-    wss.handleUpgrade(req, socket, head, (client) => {
-      remote.on('open', () => {
-        console.log(`[ws-proxy] Connected: ${target}`);
-        client.on('message', (d) => { if (remote.readyState === WebSocketLib.OPEN) remote.send(d); });
-        remote.on('message', (d) => { if (client.readyState === WebSocketLib.OPEN) client.send(d); });
-      });
-      remote.on('error', (e) => { console.log(`[ws-proxy] Error: ${e.message}`); try { client.close(); } catch {} });
-      remote.on('close', () => { try { client.close(); } catch {} });
-      client.on('close', () => { try { remote.close(); } catch {} });
-      client.on('error', () => { try { remote.close(); } catch {} });
-    });
-  } catch (e) {
-    console.log(`[ws-proxy] Setup error: ${e.message}`);
-    socket.destroy();
-  }
-});
-
 server.listen(PORT, () => {
   console.log(`🚀 AUREX Empire server running on port ${PORT}`);
   console.log(`🌍 Environment: ${process.env.NODE_ENV || 'development'}`);
