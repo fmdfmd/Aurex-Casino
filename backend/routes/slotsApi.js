@@ -788,6 +788,11 @@ router.get('/proxy-sw.js', (req, res) => {
 //    For HTML responses it rewrites src/href to route through itself
 //    and injects XHR/fetch interceptors so dynamic requests also go through us.
 router.all('/ext-proxy', express.raw({ type: () => true, limit: '10mb' }), async (req, res) => {
+  if (req.query._ws_beacon) {
+    console.log(`[ws-beacon] Game tried WebSocket: ${req.query._ws_beacon}`);
+    res.status(204).end();
+    return;
+  }
   const target = req.query.u;
   if (!target) return res.status(400).send('missing u');
 
@@ -871,7 +876,6 @@ router.all('/ext-proxy', express.raw({ type: () => true, limit: '10mb' }), async
 
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
-      const wsProto = req.protocol === 'https' ? 'wss' : 'ws';
       const inj = `<script>(function(){` +
         `var P='/api/slots/ext-proxy?u=',H=location.host||'${serverHost}',O='${origin}',B='${escapedBaseDir}';` +
         `function px(u){if(typeof u!='string')return u;` +
@@ -884,11 +888,12 @@ router.all('/ext-proxy', express.raw({ type: () => true, limit: '10mb' }), async
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-        `var wsP='${wsProto}://'+H+'/api/slots/ws-game-proxy?target=';` +
+        `var wsP=(location.protocol==='https:'?'wss':'ws')+'://'+H+'/api/slots/ws-game-proxy?target=';` +
         `var NWS=window.WebSocket;` +
         `window.WebSocket=function(u,p){` +
-        `if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
-        `var pu=wsP+encodeURIComponent(u);return p?new NWS(pu,p):new NWS(pu);}` +
+        `if(typeof u==='string'&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
+        `new Image().src='/api/slots/ext-proxy?_ws_beacon='+encodeURIComponent(u);` +
+        `if(u.indexOf(H)<0){var pu=wsP+encodeURIComponent(u);console.log('[ws-override] '+u+' → '+pu);return p?new NWS(pu,p):new NWS(pu);}}` +
         `return p?new NWS(u,p):new NWS(u);};` +
         `window.WebSocket.prototype=NWS.prototype;` +
         `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
@@ -975,18 +980,18 @@ router.get('/game-frame/:token', (req, res) => {
   );
 
   const gfHost = req.get('host') || 'aurex.casino';
-  const gfWsProto = req.protocol === 'https' ? 'wss' : 'ws';
   const interceptor = `<script>(function(){` +
     `var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';` +
     `function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}` +
     `var xo=XMLHttpRequest.prototype.open;` +
     `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
     `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-    `var wsP='${gfWsProto}://'+H+'/api/slots/ws-game-proxy?target=';` +
+    `var wsP=(location.protocol==='https:'?'wss':'ws')+'://'+H+'/api/slots/ws-game-proxy?target=';` +
     `var NWS=window.WebSocket;` +
     `window.WebSocket=function(u,p){` +
-    `if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
-    `var pu=wsP+encodeURIComponent(u);return p?new NWS(pu,p):new NWS(pu);}` +
+    `if(typeof u==='string'&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
+    `new Image().src='/api/slots/ext-proxy?_ws_beacon='+encodeURIComponent(u);` +
+    `if(u.indexOf(H)<0){var pu=wsP+encodeURIComponent(u);console.log('[ws-override] '+u+' → '+pu);return p?new NWS(pu,p):new NWS(pu);}}` +
     `return p?new NWS(u,p):new NWS(u);};` +
     `window.WebSocket.prototype=NWS.prototype;` +
     `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
