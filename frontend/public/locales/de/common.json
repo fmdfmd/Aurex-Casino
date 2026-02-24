@@ -196,7 +196,7 @@
       "title": "Empfehlungsprogramm - AUREX Partners",
       "metaDescription": "Lade Freunde zu AUREX ein und verdiene bis zu 20% von ihren Einzahlungen!",
       "heroTitle": "AUREX Partners",
-      "heroSubtitle": "Lade Freunde ein und erhalte bis zu <span class=\"text-aurex-gold-500 font-bold\">{{percent}}%</span> von ihren Einzahlungen!",
+      "heroSubtitle": "Lade Freunde ein und erhalte bis zu {{percent}}% vom GGR!",
       "yourReferralLink": "Dein Empfehlungslink",
       "copy": "Kopieren",
       "copied": "{{label}} kopiert!",

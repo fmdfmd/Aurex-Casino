@@ -39,7 +39,7 @@ router.get('/stats', auth, async (req, res) => {
         COUNT(*) as total_referrals,
         COUNT(*) FILTER (WHERE deposit_count > 0) as active_referrals
       FROM users
-      WHERE referred_by = $1
+      WHERE referred_by = $1::text
     `, [req.user.id]);
     
     const refStats = refResult.rows[0];
@@ -50,11 +50,11 @@ router.get('/stats', auth, async (req, res) => {
     // GGR рефералов за текущий месяц
     const ggrResult = await pool.query(`
       SELECT 
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM transactions t
       JOIN users u ON t.user_id = u.id
-      WHERE u.referred_by = $1 
+      WHERE u.referred_by = $1::text 
         AND t.created_at >= date_trunc('month', CURRENT_DATE)
     `, [req.user.id]);
     
@@ -107,7 +107,7 @@ router.get('/list', auth, async (req, res) => {
     
     // Get referral count + custom percent
     const meResult = await pool.query(
-      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1) as ref_count FROM users WHERE id = $1',
+      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1::text) as ref_count FROM users WHERE id = $1',
       [req.user.id]
     );
     const totalRefs = parseInt(meResult.rows[0].ref_count);
@@ -118,11 +118,11 @@ router.get('/list', auth, async (req, res) => {
     
     const result = await pool.query(`
       SELECT u.id, u.username, u.created_at, u.deposit_count,
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM users u
       LEFT JOIN transactions t ON t.user_id = u.id
-      WHERE u.referred_by = $1
+      WHERE u.referred_by = $1::text
       GROUP BY u.id
       ORDER BY u.created_at DESC
       LIMIT $2 OFFSET $3
@@ -244,15 +244,15 @@ async function processWeeklyReferralGGR(dbPool) {
       u_ref.referred_by as referrer_id,
       (SELECT COUNT(*) FROM users WHERE referred_by = u_ref.referred_by) as total_referrals,
       (SELECT custom_referral_percent FROM users WHERE id::text = u_ref.referred_by) as custom_percent,
-      COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
-      COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+      COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+      COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
     FROM users u_ref
     JOIN transactions t ON t.user_id = u_ref.id
       AND t.created_at >= $1 AND t.created_at < $2
     WHERE u_ref.referred_by IS NOT NULL
     GROUP BY u_ref.referred_by
-    HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) > 
-           COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0)
+    HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) > 
+           COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0)
   `, [lastWeekStart, lastWeekEnd]);
 
   let processed = 0;

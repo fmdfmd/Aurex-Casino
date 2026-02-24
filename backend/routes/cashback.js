@@ -198,14 +198,14 @@ router.post('/process-weekly', adminAuth, async (req, res) => {
     const usersResult = await pool.query(`
       SELECT 
         u.id, u.vip_level,
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM users u
       LEFT JOIN transactions t ON u.id = t.user_id 
         AND t.created_at >= $1 AND t.created_at < $2
       GROUP BY u.id
-      HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) > 
-             COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0)
+      HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) > 
+             COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0)
     `, [lastWeekStart, lastWeekEnd]);
     
     let processed = 0;
@@ -348,14 +348,14 @@ router.post('/admin/process', adminAuth, async (req, res) => {
     const usersResult = await pool.query(`
       SELECT 
         u.id, u.vip_level,
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM users u
       LEFT JOIN transactions t ON u.id = t.user_id 
         AND t.created_at >= $1 AND t.created_at < $2
       GROUP BY u.id
-      HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) > 
-             COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0)
+      HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) > 
+             COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0)
     `, [lastWeekStart, lastWeekEnd]);
     
     let processed = 0;

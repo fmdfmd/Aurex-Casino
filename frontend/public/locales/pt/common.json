@@ -196,7 +196,7 @@
       "title": "Programa de Indicação - AUREX Partners",
       "metaDescription": "Convide amigos para AUREX e ganhe até 20% de seus depósitos!",
       "heroTitle": "AUREX Partners",
-      "heroSubtitle": "Convide amigos e ganhe até <span class=\"text-aurex-gold-500 font-bold\">{{percent}}%</span> de seus depósitos!",
+      "heroSubtitle": "Convide amigos e ganhe até {{percent}}% do GGR!",
       "yourReferralLink": "Seu link de indicação",
       "copy": "Copiar",
       "copied": "{{label}} copiado!",
