@@ -722,25 +722,19 @@ router.get('/game-frame/:token', (req, res) => {
     console.log('[game-frame] Patched wscenter → ws-proxy');
   }
 
-  const b64 = Buffer.from(html).toString('base64');
+  // Wrap fragment in proper HTML document to avoid Quirks Mode
+  const fullHtml = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+    '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">' +
+    '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}' +
+    'iframe,object,embed{width:100%!important;height:100%!important;position:absolute!important;top:0!important;left:0!important;border:0!important}' +
+    '</style></head><body>' + html + '</body></html>';
+  const b64 = Buffer.from(fullHtml).toString('base64');
 
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-iframe,object,embed,div.game-container,.game-frame{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-body>iframe,body>div,body>object,body>embed{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-</style>
+<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}</style>
 </head><body>
 <script>
 (function(){
