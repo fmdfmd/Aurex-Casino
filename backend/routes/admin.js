@@ -252,6 +252,7 @@ router.get('/users', adminAuth, async (req, res) => {
       odid: u.odid,
       username: u.username,
       email: u.email,
+      phone: u.phone,
       balance: parseFloat(u.balance),
       bonusBalance: parseFloat(u.bonus_balance),
       vipLevel: u.vip_level,
@@ -260,6 +261,8 @@ router.get('/users', adminAuth, async (req, res) => {
       isAdmin: u.is_admin,
       isActive: u.is_active,
       referralCode: u.referral_code,
+      referredBy: u.referred_by,
+      customReferralPercent: u.custom_referral_percent != null ? parseFloat(u.custom_referral_percent) : null,
       depositCount: u.deposit_count,
       lastLogin: u.last_login,
       createdAt: u.created_at
@@ -307,6 +310,7 @@ router.get('/users/:identifier', adminAuth, async (req, res) => {
         odid: u.odid,
         username: u.username,
         email: u.email,
+        phone: u.phone,
         balance: parseFloat(u.balance),
         bonusBalance: parseFloat(u.bonus_balance),
         vipLevel: u.vip_level,
@@ -316,6 +320,7 @@ router.get('/users/:identifier', adminAuth, async (req, res) => {
         isActive: u.is_active,
         referralCode: u.referral_code,
         referredBy: u.referred_by,
+        customReferralPercent: u.custom_referral_percent != null ? parseFloat(u.custom_referral_percent) : null,
         depositCount: u.deposit_count,
         lastLogin: u.last_login,
         createdAt: u.created_at

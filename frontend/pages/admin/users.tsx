@@ -33,6 +33,7 @@ interface User {
   odid: string;
   username: string;
   email: string;
+  phone: string;
   balance: number;
   bonusBalance: number;
   vipLevel: number;
@@ -41,6 +42,8 @@ interface User {
   isAdmin: boolean;
   isActive: boolean;
   referralCode: string;
+  referredBy: string;
+  customReferralPercent: number | null;
   depositCount: number;
   lastLogin: string;
   createdAt: string;
@@ -56,6 +59,15 @@ export default function AdminUsersPage() {
   const [balanceAmount, setBalanceAmount] = useState('');
   const [balanceType, setBalanceType] = useState<'add' | 'subtract' | 'set'>('add');
   const [balanceCategory, setBalanceCategory] = useState<'main' | 'bonus'>('main');
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [editForm, setEditForm] = useState({
+    isActive: true,
+    isAdmin: false,
+    vipLevel: 1,
+    customReferralPercent: '' as string
+  });
+  const [editLoading, setEditLoading] = useState(false);
 
   // Fetch users
   useEffect(() => {
@@ -158,6 +170,63 @@ export default function AdminUsersPage() {
     setShowBalanceModal(false);
     setBalanceAmount('');
     setSelectedUser(null);
+  };
+
+  const handleViewUser = (user: User) => {
+    setSelectedUser(user);
+    setShowViewModal(true);
+  };
+
+  const handleEditUser = (user: User) => {
+    setSelectedUser(user);
+    setEditForm({
+      isActive: user.isActive,
+      isAdmin: user.isAdmin,
+      vipLevel: user.vipLevel || 1,
+      customReferralPercent: user.customReferralPercent != null ? String(user.customReferralPercent) : ''
+    });
+    setShowEditModal(true);
+  };
+
+  const handleEditSubmit = async () => {
+    if (!selectedUser) return;
+    setEditLoading(true);
+    try {
+      const body: any = {
+        isActive: editForm.isActive,
+        isAdmin: editForm.isAdmin,
+        vipLevel: editForm.vipLevel
+      };
+      if (editForm.customReferralPercent === '') {
+        body.customReferralPercent = null;
+      } else {
+        const pct = parseFloat(editForm.customReferralPercent);
+        if (!isNaN(pct) && pct >= 0 && pct <= 100) {
+          body.customReferralPercent = pct;
+        }
+      }
+
+      const res = await fetch(`/api/admin/users/${selectedUser.id}`, {
+        method: 'PUT',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(body)
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Пользователь обновлён');
+        setShowEditModal(false);
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Ошибка обновления');
+      }
+    } catch {
+      toast.error('Ошибка сервера');
+    } finally {
+      setEditLoading(false);
+    }
   };
 
   const copyToClipboard = (text: string) => {
@@ -326,12 +395,14 @@ export default function AdminUsersPage() {
                                 <Wallet className="w-4 h-4" />
                               </button>
                               <button
+                                onClick={() => handleViewUser(user)}
                                 className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors"
                                 title="Просмотр"
                               >
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
+                                onClick={() => handleEditUser(user)}
                                 className="p-2 bg-aurex-obsidian-700 text-aurex-platinum-400 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
                                 title="Редактировать"
                               >
@@ -347,6 +418,192 @@ export default function AdminUsersPage() {
               </table>
             </div>
           </div>
+
+          {/* View User Modal */}
+          <AnimatePresence>
+            {showViewModal && selectedUser && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={() => setShowViewModal(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-aurex-obsidian-800 border border-aurex-gold-500/30 rounded-2xl p-6 w-full max-w-lg max-h-[90vh] overflow-y-auto"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                      <Eye className="w-5 h-5 text-blue-400" />
+                      <span>Информация о пользователе</span>
+                    </h3>
+                    <button onClick={() => setShowViewModal(false)} className="p-2 text-aurex-platinum-400 hover:text-white"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  <div className="space-y-3">
+                    {[
+                      { label: 'ID', value: `#${selectedUser.id}` },
+                      { label: 'ODID', value: selectedUser.odid },
+                      { label: 'Логин', value: selectedUser.username },
+                      { label: 'Email', value: selectedUser.email || '—' },
+                      { label: 'Телефон', value: selectedUser.phone || '—' },
+                      { label: 'Основной баланс', value: `₽${(selectedUser.balance || 0).toLocaleString('ru-RU')}` },
+                      { label: 'Бонусный баланс', value: `₽${(selectedUser.bonusBalance || 0).toLocaleString('ru-RU')}` },
+                      { label: 'VIP уровень', value: getVipBadge(selectedUser.vipLevel).name },
+                      { label: 'Депозитов', value: String(selectedUser.depositCount || 0) },
+                      { label: 'Реферальный код', value: selectedUser.referralCode || '—' },
+                      { label: 'Приглашён (referred_by)', value: selectedUser.referredBy || '—' },
+                      { label: 'Реф. процент', value: selectedUser.customReferralPercent != null ? `${selectedUser.customReferralPercent}% (кастом)` : 'По умолчанию (5%)' },
+                      { label: 'Статус', value: selectedUser.isActive ? 'Активен' : 'Заблокирован' },
+                      { label: 'Администратор', value: selectedUser.isAdmin ? 'Да' : 'Нет' },
+                      { label: 'Последний вход', value: selectedUser.lastLogin ? new Date(selectedUser.lastLogin).toLocaleString('ru-RU') : '—' },
+                      { label: 'Регистрация', value: selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleString('ru-RU') : '—' },
+                    ].map((row) => (
+                      <div key={row.label} className="flex items-center justify-between py-2 border-b border-aurex-obsidian-700/50 last:border-0">
+                        <span className="text-aurex-platinum-400 text-sm">{row.label}</span>
+                        <span className="text-white font-medium text-sm">{row.value}</span>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="mt-6 flex gap-3">
+                    <button
+                      onClick={() => { setShowViewModal(false); handleEditUser(selectedUser); }}
+                      className="flex-1 py-3 bg-aurex-gold-500 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all"
+                    >
+                      Редактировать
+                    </button>
+                    <button
+                      onClick={() => { setShowViewModal(false); setShowBalanceModal(true); }}
+                      className="flex-1 py-3 bg-aurex-obsidian-700 text-aurex-platinum-300 font-bold rounded-xl border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all"
+                    >
+                      Изменить баланс
+                    </button>
+                  </div>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+
+          {/* Edit User Modal */}
+          <AnimatePresence>
+            {showEditModal && selectedUser && (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                onClick={() => setShowEditModal(false)}
+              >
+                <motion.div
+                  initial={{ scale: 0.9, opacity: 0 }}
+                  animate={{ scale: 1, opacity: 1 }}
+                  exit={{ scale: 0.9, opacity: 0 }}
+                  className="bg-aurex-obsidian-800 border border-aurex-gold-500/30 rounded-2xl p-6 w-full max-w-md"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center justify-between mb-6">
+                    <h3 className="text-xl font-bold text-white flex items-center space-x-2">
+                      <Edit2 className="w-5 h-5 text-aurex-gold-500" />
+                      <span>Редактировать: {selectedUser.username}</span>
+                    </h3>
+                    <button onClick={() => setShowEditModal(false)} className="p-2 text-aurex-platinum-400 hover:text-white"><X className="w-5 h-5" /></button>
+                  </div>
+
+                  <div className="space-y-5">
+                    {/* Status */}
+                    <div>
+                      <label className="block text-sm text-aurex-platinum-400 mb-2">Статус аккаунта</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditForm(f => ({ ...f, isActive: true }))}
+                          className={`flex-1 py-2 rounded-lg font-medium transition-all ${editForm.isActive ? 'bg-green-500 text-white' : 'bg-aurex-obsidian-700 text-aurex-platinum-300'}`}
+                        >
+                          Активен
+                        </button>
+                        <button
+                          onClick={() => setEditForm(f => ({ ...f, isActive: false }))}
+                          className={`flex-1 py-2 rounded-lg font-medium transition-all ${!editForm.isActive ? 'bg-red-500 text-white' : 'bg-aurex-obsidian-700 text-aurex-platinum-300'}`}
+                        >
+                          Заблокирован
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Admin */}
+                    <div>
+                      <label className="block text-sm text-aurex-platinum-400 mb-2">Права администратора</label>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => setEditForm(f => ({ ...f, isAdmin: false }))}
+                          className={`flex-1 py-2 rounded-lg font-medium transition-all ${!editForm.isAdmin ? 'bg-aurex-gold-500 text-aurex-obsidian-900' : 'bg-aurex-obsidian-700 text-aurex-platinum-300'}`}
+                        >
+                          Пользователь
+                        </button>
+                        <button
+                          onClick={() => setEditForm(f => ({ ...f, isAdmin: true }))}
+                          className={`flex-1 py-2 rounded-lg font-medium transition-all ${editForm.isAdmin ? 'bg-red-500 text-white' : 'bg-aurex-obsidian-700 text-aurex-platinum-300'}`}
+                        >
+                          Администратор
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* VIP Level */}
+                    <div>
+                      <label className="block text-sm text-aurex-platinum-400 mb-2">VIP уровень</label>
+                      <select
+                        value={editForm.vipLevel}
+                        onChange={(e) => setEditForm(f => ({ ...f, vipLevel: parseInt(e.target.value) }))}
+                        className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white focus:border-aurex-gold-500/50 focus:outline-none"
+                      >
+                        <option value={1}>Bronze (1)</option>
+                        <option value={2}>Silver (2)</option>
+                        <option value={3}>Gold (3)</option>
+                        <option value={4}>Platinum (4)</option>
+                        <option value={5}>Emperor (5)</option>
+                      </select>
+                    </div>
+
+                    {/* Custom Referral Percent */}
+                    <div>
+                      <label className="block text-sm text-aurex-platinum-400 mb-2">
+                        Реферальный процент от GGR
+                      </label>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="number"
+                          value={editForm.customReferralPercent}
+                          onChange={(e) => setEditForm(f => ({ ...f, customReferralPercent: e.target.value }))}
+                          placeholder="По умолчанию (5%)"
+                          min="0"
+                          max="100"
+                          step="0.5"
+                          className="flex-1 px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white placeholder-aurex-platinum-600 focus:border-aurex-gold-500/50 focus:outline-none"
+                        />
+                        <span className="text-aurex-platinum-400 text-lg">%</span>
+                      </div>
+                      <p className="text-xs text-aurex-platinum-500 mt-1">
+                        Оставьте пустым для стандартного процента. Для блогеров/стриммеров — ставьте выше.
+                      </p>
+                    </div>
+                  </div>
+
+                  <button
+                    onClick={handleEditSubmit}
+                    disabled={editLoading}
+                    className="w-full mt-6 py-4 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all disabled:opacity-50"
+                  >
+                    {editLoading ? 'Сохраняем...' : 'Сохранить изменения'}
+                  </button>
+                </motion.div>
+              </motion.div>
+            )}
+          </AnimatePresence>
 
           {/* Balance Modal */}
           <AnimatePresence>
