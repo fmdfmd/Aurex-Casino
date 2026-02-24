@@ -40,23 +40,34 @@ apiClient.interceptors.response.use(
   }
 );
 
-const SUB_TOKEN_MAP = {
-  'EXPAY_SBER': 'SBERRUB',
-  'EXPAY_SBP': 'SBPRUB',
-  'EXPAY_CARD': 'CARDRUB',
-  'EXPAY_NSPK': 'NSPKRUB'
+const DEPOSIT_SUB_TOKEN_MAP = {
+  'EXPAY_SBER': { token: 'RUBCISP2P', subToken: 'SBERCISP2P' },
+  'EXPAY_SBP':  { token: 'CARDRUBP2P', subToken: 'SBPRUB' },
+  'EXPAY_CARD': { token: 'CARDRUBP2P', subToken: 'CARDRUB' },
+  'EXPAY_NSPK': { token: 'CARDRUBP2P', subToken: 'NSPKRUB' }
+};
+
+const WITHDRAW_SUB_TOKEN_MAP = {
+  'EXPAY_SBER': { token: 'CARDRUBP2P', subToken: 'SBERRUB' },
+  'EXPAY_SBP':  { token: 'CARDRUBP2P', subToken: 'SBRRUB' },
+  'EXPAY_CARD': { token: 'CARDRUBP2P', subToken: 'INTERBANKRUB' },
+  'EXPAY_NSPK': { token: 'CARDRUBP2P', subToken: 'NSPKRUB' }
 };
 
 class ExpayService {
 
-  getSubToken(paymentMethod) {
-    return SUB_TOKEN_MAP[paymentMethod] || 'CARDRUB';
+  getDepositTokens(paymentMethod) {
+    return DEPOSIT_SUB_TOKEN_MAP[paymentMethod] || { token: 'CARDRUBP2P', subToken: 'CARDRUB' };
   }
 
-  async createDeposit({ amount, transactionId, subToken, userId, userIp, redirectUrl }) {
+  getWithdrawTokens(paymentMethod) {
+    return WITHDRAW_SUB_TOKEN_MAP[paymentMethod] || { token: 'CARDRUBP2P', subToken: 'INTERBANKRUB' };
+  }
+
+  async createDeposit({ amount, transactionId, token, subToken, userId, userIp, redirectUrl }) {
     const payload = {
       refer_type: 'p2p_payform',
-      token: 'CARDRUBP2P',
+      token: token || 'CARDRUBP2P',
       sub_token: subToken,
       amount,
       client_transaction_id: `dep_${transactionId}`,
@@ -85,9 +96,9 @@ class ExpayService {
     };
   }
 
-  async createWithdrawal({ amount, transactionId, subToken, receiver, recipientName, clientIp }) {
+  async createWithdrawal({ amount, transactionId, token, subToken, receiver, recipientName, clientIp }) {
     const payload = {
-      token: 'CARDRUBP2P',
+      token: token || 'CARDRUBP2P',
       sub_token: subToken,
       amount,
       client_transaction_id: `wd_${transactionId}`,

@@ -200,13 +200,14 @@ router.post('/deposit', auth, async (req, res) => {
     }
 
     if (useExpay) {
-      const subToken = expayService.getSubToken(paymentMethod);
+      const { token: expayToken, subToken } = expayService.getDepositTokens(paymentMethod);
 
       let expayResponse;
       try {
         expayResponse = await expayService.createDeposit({
           amount: parseFloat(amount),
           transactionId: transaction.id,
+          token: expayToken,
           subToken,
           userId: req.user.id,
           userIp: req.ip,
@@ -501,7 +502,7 @@ router.post('/withdraw', auth, async (req, res) => {
     }
 
     if (isExpayMethod(paymentMethod)) {
-      const subToken = expayService.getSubToken(paymentMethod);
+      const { token: expayToken, subToken } = expayService.getWithdrawTokens(paymentMethod);
       const isExpayCard = ['EXPAY_SBER', 'EXPAY_CARD'].includes(paymentMethod);
       const receiver = isExpayCard ? (cardNumber || '').replace(/\s/g, '') : (phone ? `7${phone}` : '');
 
@@ -510,6 +511,7 @@ router.post('/withdraw', auth, async (req, res) => {
         expayResponse = await expayService.createWithdrawal({
           amount: parseFloat(amount),
           transactionId: transaction.id,
+          token: expayToken,
           subToken,
           receiver,
           recipientName: '',

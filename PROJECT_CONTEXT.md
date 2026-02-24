@@ -965,12 +965,22 @@ Private Key:  7t05s96sl4ithqxhvfxj4gkmu97d29gk44vmzfoptaoaom7ti5oeo5gzlnq18ey19u
 
 **Доступные методы оплаты (RUB):**
 
-| ID метода | Название | Token | Sub-token | Депозит | Вывод | Мин. деп. | Макс. деп. |
-|---|---|---|---|---|---|---|---|
-| EXPAY_SBP | СБП | CARDRUBP2P | SBPRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
-| EXPAY_CARD | Карта | CARDRUBP2P | CARDRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
-| EXPAY_SBER | Сбербанк | CARDRUBP2P | SBERRUB | да (payform) | да | 500 ₽ | 300 000 ₽ |
-| EXPAY_NSPK | НСПК QR | CARDRUBP2P | NSPKRUB | да (payform) | нет | 500 ₽ | 300 000 ₽ |
+**Депозиты (pay-in):**
+
+| ID метода | Название | Token | Sub-token | Мин. | Макс. |
+|---|---|---|---|---|---|
+| EXPAY_SBP | СБП | CARDRUBP2P | SBPRUB | 500 ₽ | 300 000 ₽ |
+| EXPAY_CARD | Карта | CARDRUBP2P | CARDRUB | 500 ₽ | 300 000 ₽ |
+| EXPAY_SBER | Сбербанк | **RUBCISP2P** | **SBERCISP2P** | 500 ₽ | 300 000 ₽ |
+| EXPAY_NSPK | НСПК QR | CARDRUBP2P | NSPKRUB | 500 ₽ | 300 000 ₽ |
+
+**Выводы (pay-out):**
+
+| ID метода | Название | Token | Sub-token | Receiver |
+|---|---|---|---|---|
+| EXPAY_SBP | СБП | CARDRUBP2P | **SBRRUB** | Телефон |
+| EXPAY_CARD | Карта (другие банки) | CARDRUBP2P | **INTERBANKRUB** | Номер карты |
+| EXPAY_SBER | Сбербанк | CARDRUBP2P | SBERRUB | Номер карты |
 
 **Endpoints:**
 | Метод | URL | Описание |
