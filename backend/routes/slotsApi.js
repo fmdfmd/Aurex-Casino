@@ -752,7 +752,7 @@ router.all('/ext-proxy', express.raw({ type: () => true, limit: '10mb' }), async
     res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
 
     const body = Buffer.from(up.data).toString('utf-8');
-    const isRealHtml = ct.toLowerCase().includes('text/html') && body.trimStart().match(/^<!doctype|^<html/i);
+    const isRealHtml = ct.toLowerCase().includes('text/html');
 
     if (isRealHtml) {
       let h = body;
