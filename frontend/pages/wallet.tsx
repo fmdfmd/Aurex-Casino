@@ -323,12 +323,15 @@ export default function WalletPage() {
       return;
     }
 
-    if (selectedMethod === 'P2P_CARD' && cardNumber.replace(/\s/g, '').length !== 16) {
+    const isCardMethod = ['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(selectedMethod);
+    const isPhoneMethod = ['P2P_SBP', 'NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP'].includes(selectedMethod);
+
+    if (isCardMethod && cardNumber.replace(/\s/g, '').length !== 16) {
       toast.error('Введите корректный номер карты (16 цифр)');
       return;
     }
 
-    if (selectedMethod === 'P2P_SBP' && phone.length !== 10) {
+    if (isPhoneMethod && phone.length !== 10) {
       toast.error('Введите корректный номер телефона');
       return;
     }
@@ -338,7 +341,7 @@ export default function WalletPage() {
       return;
     }
 
-    if ((selectedMethod === 'CRYPTO' || selectedMethod.startsWith('CRYPTO_')) && !withdrawAddress) {
+    if ((selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) && !withdrawAddress) {
       toast.error('Введите адрес кошелька');
       return;
     }
@@ -371,12 +374,12 @@ export default function WalletPage() {
         currency: 'RUB'
       };
 
-      if (selectedMethod === 'P2P_CARD') {
+      if (isCardMethod) {
         body.cardNumber = cardNumber.replace(/\s/g, '');
-      } else if (selectedMethod === 'P2P_SBP') {
+      } else if (isPhoneMethod) {
         body.phone = phone;
-        body.bankCode = bankCode;
-      } else if (selectedMethod === 'CRYPTO' || selectedMethod.startsWith('CRYPTO_')) {
+        if (selectedMethod === 'P2P_SBP') body.bankCode = bankCode;
+      } else if (selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) {
         body.walletAddress = withdrawAddress;
       }
 
@@ -659,13 +662,13 @@ export default function WalletPage() {
 
                       {/* Fiat Methods */}
                       <div className="mb-4">
-                        <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Банковские</h3>
-                        <div className="grid grid-cols-2 gap-3">
-                          {paymentMethods.fiat.map((method) => (
+                        <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Способы оплаты</h3>
+                        <div className="grid grid-cols-3 gap-3">
+                          {paymentMethods.fiat.map((method: any) => (
                             <button
                               key={method.id}
-                              onClick={() => setSelectedMethod(method.id)}
-                              className={`relative p-4 rounded-xl border-2 transition-all group ${
+                              onClick={() => { setSelectedMethod(method.id); setNirvanaPaymentDetails(null); }}
+                              className={`relative p-3 rounded-xl border-2 transition-all group ${
                                 selectedMethod === method.id
                                   ? 'border-aurex-gold-500 bg-aurex-gold-500/10 shadow-lg shadow-aurex-gold-500/5'
                                   : 'border-aurex-gold-500/20 hover:border-aurex-gold-500/40 hover:bg-aurex-obsidian-700/50'
@@ -676,16 +679,14 @@ export default function WalletPage() {
                                   <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
                                 </div>
                               )}
-                              <div className="flex items-center space-x-3">
-                                {method.iconUrl ? (
-                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg group-hover:scale-110 transition-transform" />
-                                ) : (
-                                  <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
-                                )}
-                                <div className="text-left">
-                                  <div className="text-white font-medium text-sm">{method.name}</div>
-                                  <div className="text-xs text-aurex-platinum-500">от {(method.minDeposit || 5000).toLocaleString('ru-RU')} ₽ • 0%</div>
-                                </div>
+                              {method.iconUrl ? (
+                                <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-lg mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+                              ) : (
+                                <div className="w-9 h-9 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
+                              )}
+                              <div className="text-white font-medium text-xs text-center">{method.name}</div>
+                              <div className="text-[10px] text-aurex-platinum-500 text-center mt-0.5">
+                                {method.subtitle || `от ${(method.minDeposit || 100).toLocaleString('ru-RU')} ₽`}
                               </div>
                             </button>
                           ))}
@@ -903,8 +904,8 @@ export default function WalletPage() {
                         <h3 className="text-sm text-aurex-platinum-400 uppercase tracking-wider mb-3">Способ вывода</h3>
 
                         {/* Fiat */}
-                        <div className="grid grid-cols-2 gap-3 mb-3">
-                          {paymentMethods.fiat.map((method) => (
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                          {paymentMethods.fiat.filter((m: any) => m.minWithdraw != null).map((method: any) => (
                             <button
                               key={method.id}
                               onClick={() => {
@@ -982,7 +983,7 @@ export default function WalletPage() {
 
                       {/* Dynamic inputs based on selected method */}
                       <AnimatePresence mode="wait">
-                        {selectedMethod === 'P2P_CARD' && (
+                        {selectedMethod && ['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(selectedMethod) && (
                           <motion.div
                             key="card-input"
                             initial={{ opacity: 0, height: 0 }}
@@ -1008,7 +1009,7 @@ export default function WalletPage() {
                           </motion.div>
                         )}
 
-                        {selectedMethod === 'P2P_SBP' && (
+                        {selectedMethod && ['P2P_SBP', 'NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP'].includes(selectedMethod) && (
                           <motion.div
                             key="sbp-input"
                             initial={{ opacity: 0, height: 0 }}
@@ -1206,8 +1207,9 @@ export default function WalletPage() {
                           !selectedMethod ||
                           depositAmount <= 0 ||
                           isProcessing ||
-                          (selectedMethod === 'P2P_CARD' && cardNumber.replace(/\s/g, '').length !== 16) ||
-                          (selectedMethod === 'P2P_SBP' && (phone.length !== 10 || !bankCode)) ||
+                          (['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(selectedMethod) && cardNumber.replace(/\s/g, '').length !== 16) ||
+                          (['P2P_SBP', 'NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP'].includes(selectedMethod) && phone.length !== 10) ||
+                          (selectedMethod === 'P2P_SBP' && !bankCode) ||
                           ((selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) && !withdrawAddress) ||
                           (user?.wager?.active && (user.wager?.completed || 0) < (user.wager?.required || 0))
                         }

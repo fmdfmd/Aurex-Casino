@@ -13,7 +13,16 @@ function isNirvanaMethod(method) {
 function getNirvanaToken(method) {
   const map = {
     'NIRVANA_SBP': 'СБП',
-    'NIRVANA_C2C': 'Межбанк'
+    'NIRVANA_C2C': 'Межбанк',
+    'NIRVANA_NSPK': 'НСПК',
+    'NIRVANA_SBER': 'Сбербанк',
+    'NIRVANA_SBER_SBP': 'СБЕР СБП',
+    'NIRVANA_ALFA': 'Альфабанк',
+    'NIRVANA_ALFA_SBP': 'Альфа СБП',
+    'NIRVANA_VTB': 'ВТБ',
+    'NIRVANA_VTB_SBP': 'ВТБ СБП',
+    'NIRVANA_TRANS_SBP': 'ТрансСБП',
+    'NIRVANA_TRANS_C2C': 'ТрансМежбанк'
   };
   return map[method] || 'СБП';
 }
@@ -86,8 +95,24 @@ router.post('/deposit', auth, async (req, res) => {
 
     const useNirvana = isNirvanaMethod(paymentMethod);
 
-    const minDeposits = { 'P2P_CARD': 5000, 'P2P_SBP': 3000, 'NIRVANA_SBP': 100, 'NIRVANA_C2C': 100 };
-    const maxDeposits = { 'P2P_CARD': 300000, 'P2P_SBP': 300000, 'NIRVANA_SBP': 100000, 'NIRVANA_C2C': 100000 };
+    const minDeposits = {
+      'P2P_CARD': 5000, 'P2P_SBP': 3000,
+      'NIRVANA_SBP': 100, 'NIRVANA_C2C': 100,
+      'NIRVANA_NSPK': 50,
+      'NIRVANA_SBER': 1000, 'NIRVANA_SBER_SBP': 1000,
+      'NIRVANA_ALFA': 1000, 'NIRVANA_ALFA_SBP': 1000,
+      'NIRVANA_VTB': 1000, 'NIRVANA_VTB_SBP': 1000,
+      'NIRVANA_TRANS_SBP': 500, 'NIRVANA_TRANS_C2C': 500
+    };
+    const maxDeposits = {
+      'P2P_CARD': 300000, 'P2P_SBP': 300000,
+      'NIRVANA_SBP': 100000, 'NIRVANA_C2C': 100000,
+      'NIRVANA_NSPK': 150000,
+      'NIRVANA_SBER': 50000, 'NIRVANA_SBER_SBP': 50000,
+      'NIRVANA_ALFA': 50000, 'NIRVANA_ALFA_SBP': 50000,
+      'NIRVANA_VTB': 50000, 'NIRVANA_VTB_SBP': 50000,
+      'NIRVANA_TRANS_SBP': 100000, 'NIRVANA_TRANS_C2C': 100000
+    };
     const minDeposit = minDeposits[paymentMethod] || 100;
     const maxDeposit = maxDeposits[paymentMethod] || 300000;
 
@@ -305,15 +330,18 @@ router.post('/withdraw', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Минимальная сумма вывода: 1 000 ₽' });
     }
 
-    const feePercent = (paymentMethod === 'P2P_CARD' || paymentMethod === 'P2P_SBP') ? 5 : 2;
+    const feePercent = 5;
     const feeAmount = Math.round(amount * feePercent) / 100;
     const totalDeducted = amount + feeAmount;
 
-    if (paymentMethod === 'P2P_CARD' && !cardNumber) {
+    const needsCard = paymentMethod === 'P2P_CARD' || paymentMethod === 'NIRVANA_C2C' || paymentMethod === 'NIRVANA_TRANS_C2C';
+    const needsPhone = paymentMethod === 'P2P_SBP' || ['NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP'].includes(paymentMethod);
+
+    if (needsCard && !cardNumber) {
       return res.status(400).json({ success: false, message: 'Укажите номер карты' });
     }
 
-    if (paymentMethod === 'P2P_SBP' && !phone) {
+    if (needsPhone && !phone) {
       return res.status(400).json({ success: false, message: 'Укажите номер телефона' });
     }
     
@@ -367,7 +395,8 @@ router.post('/withdraw', auth, async (req, res) => {
 
     if (isNirvanaMethod(paymentMethod)) {
       const token = getNirvanaToken(paymentMethod);
-      const receiver = paymentMethod === 'NIRVANA_C2C' ? cardNumber : (phone ? `7${phone}` : '');
+      const isCardMethod = ['NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(paymentMethod);
+      const receiver = isCardMethod ? (cardNumber || '').replace(/\s/g, '') : (phone ? `7${phone}` : '');
 
       const nirvanaResponse = await nirvanaPayService.createWithdrawal({
         amount: parseFloat(amount),

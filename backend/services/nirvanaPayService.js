@@ -135,12 +135,23 @@ class NirvanaPayService {
   }
 
   /**
-   * Pick the best token based on amount and method.
+   * Pick the best token based on payment method.
    */
-  getToken(paymentMethod, amount) {
-    if (paymentMethod === 'NIRVANA_SBP') return 'СБП';
-    if (paymentMethod === 'NIRVANA_C2C') return 'Межбанк';
-    return 'СБП';
+  getToken(paymentMethod) {
+    const map = {
+      'NIRVANA_SBP': 'СБП',
+      'NIRVANA_C2C': 'Межбанк',
+      'NIRVANA_NSPK': 'НСПК',
+      'NIRVANA_SBER': 'Сбербанк',
+      'NIRVANA_SBER_SBP': 'СБЕР СБП',
+      'NIRVANA_ALFA': 'Альфабанк',
+      'NIRVANA_ALFA_SBP': 'Альфа СБП',
+      'NIRVANA_VTB': 'ВТБ',
+      'NIRVANA_VTB_SBP': 'ВТБ СБП',
+      'NIRVANA_TRANS_SBP': 'ТрансСБП',
+      'NIRVANA_TRANS_C2C': 'ТрансМежбанк'
+    };
+    return map[paymentMethod] || 'СБП';
   }
 }
 
