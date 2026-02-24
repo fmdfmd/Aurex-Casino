@@ -64,17 +64,10 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
         if (!html) throw new Error('Сервер не вернул HTML-фрагмент');
 
         const frameResp = await axios.post('/api/slots/game-frame', { html });
+        const token = frameResp.data?.token;
+        if (!token) throw new Error('Не удалось создать игровую сессию');
 
-        const pageHtml = frameResp.data?.pageHtml;
-        if (pageHtml) {
-          const blob = new Blob([pageHtml], { type: 'text/html; charset=utf-8' });
-          const blobUrl = URL.createObjectURL(blob);
-          setGameFrameUrl(blobUrl);
-        } else {
-          const token = frameResp.data?.token;
-          if (!token) throw new Error('Не удалось создать игровую сессию');
-          setGameFrameUrl(`/api/slots/game-frame/${token}`);
-        }
+        setGameFrameUrl(`/api/slots/game-frame/${token}`);
       } catch (e: any) {
         console.error('Failed to start game:', e);
         const msg = e?.response?.data?.error || e?.message || 'Не удалось запустить игру';
@@ -90,9 +83,6 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
 
   useEffect(() => {
     if (!isOpen) {
-      if (gameFrameUrl && gameFrameUrl.startsWith('blob:')) {
-        URL.revokeObjectURL(gameFrameUrl);
-      }
       setGameFrameUrl('');
       setLoadError('');
     }

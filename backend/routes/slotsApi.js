@@ -671,86 +671,19 @@ const gameFrameStore = new Map();
 
 router.post('/game-frame', optionalAuth, async (req, res) => {
   try {
-    const { html: rawHtml } = req.body;
-    if (!rawHtml) return res.status(400).json({ success: false, error: 'Missing html' });
-
-    // Also store for legacy GET (backwards compat)
+    const { html } = req.body;
+    if (!html) return res.status(400).json({ success: false, error: 'Missing html' });
+    
     const token = `gf_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
-    gameFrameStore.set(token, { html: rawHtml, created: Date.now(), userId: req.user?.id || 'demo' });
-
+    gameFrameStore.set(token, { html, created: Date.now(), userId: req.user?.id || 'demo' });
+    console.log(`[game-frame] POST: stored token=${token}, html size=${html.length}, store size=${gameFrameStore.size}`);
+    
     // Cleanup old entries (> 10 min)
     for (const [key, val] of gameFrameStore) {
       if (Date.now() - val.created > 10 * 60 * 1000) gameFrameStore.delete(key);
     }
-
-    // Process the HTML inline (same logic as GET handler)
-    let html = rawHtml;
-    const domains = [...new Set((html.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []))];
-    console.log(`[game-frame] POST: token=${token}, html size=${rawHtml.length}, external domains: ${domains.join(', ')}`);
-
-    const hasWscenter = html.includes('wscenter');
-    if (hasWscenter) {
-      html = html.replace(
-        /var\s+ifr\s*=\s*document\.createElement\(['"]iframe['"]\);[\s\S]*?\.appendChild\(ifr\);/,
-        "window.location.replace('/api/slots/ext-proxy?u='+encodeURIComponent(resp.data));"
-      );
-      html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
-      console.log('[game-frame] Patched wscenter: domain rewrite + iframe → ext-proxy redirect');
-    }
-
-    html = html.replace(
-      /(<iframe[^>]+src\s*=\s*)(["'])(https?:\/\/[^"']+)\2/gi,
-      (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
-    );
-
-    const gfHost = req.get('host') || 'aurex.casino';
-
-    const page = `<!DOCTYPE html>
-<html><head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<base href="https://${gfHost}/api/slots/">
-<style>
-html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
-iframe,object,embed,div.game-container,.game-frame{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-body>iframe,body>div,body>object,body>embed{
-  width:100%!important;height:100%!important;
-  position:absolute!important;top:0!important;left:0!important;
-  border:0!important;
-}
-</style>
-<script>
-(function(){
-var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
-function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
-var xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
-if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-var _WS=window.WebSocket;
-window.WebSocket=function(u,p){
-if(u&&typeof u==='string'){try{var pu=new URL(u);
-if(pu.host!==location.host){var nu=(location.protocol==='https:'?'wss://':'ws://')+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);
-return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}
-return p!==undefined?new _WS(u,p):new _WS(u);};
-window.WebSocket.prototype=_WS.prototype;
-window.WebSocket.CONNECTING=_WS.CONNECTING;
-window.WebSocket.OPEN=_WS.OPEN;
-window.WebSocket.CLOSING=_WS.CLOSING;
-window.WebSocket.CLOSED=_WS.CLOSED;
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'}).catch(function(){});
-}
-})();
-</script>
-</head><body>
-${html}
-</body></html>`;
-
-    res.json({ success: true, token, pageHtml: page });
+    
+    res.json({ success: true, token });
   } catch (e) {
     console.error('[game-frame] POST error:', e.message);
     res.status(500).json({ success: false, error: e.message });
@@ -900,7 +833,7 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
-      // Fallback interceptor (XHR + fetch + WebSocket) for game proxying
+      // Minimal fallback interceptor for browsers without Service Worker support
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
       const inj = `<script>(function(){` +
@@ -915,17 +848,6 @@ router.all('/ext-proxy', async (req, res) => {
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-        `var _WS=window.WebSocket;` +
-        `window.WebSocket=function(u,p){` +
-        `if(u&&typeof u==='string'){try{var pu=new URL(u);` +
-        `if(pu.host!==H){var nu=(location.protocol==='https:'?'wss://':'ws://')+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);` +
-        `return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}` +
-        `return p!==undefined?new _WS(u,p):new _WS(u);};` +
-        `window.WebSocket.prototype=_WS.prototype;` +
-        `window.WebSocket.CONNECTING=_WS.CONNECTING;` +
-        `window.WebSocket.OPEN=_WS.OPEN;` +
-        `window.WebSocket.CLOSING=_WS.CLOSING;` +
-        `window.WebSocket.CLOSED=_WS.CLOSED;` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -1003,9 +925,18 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Build a full HTML page with interceptors + game HTML served directly
+  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
   const gfHost = req.get('host') || 'aurex.casino';
+  const interceptor = `<script>(function(){
+var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
+function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
+var xo=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
+if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
+})()</script>`;
 
+  const htmlWithFallback = interceptor + html;
+  const b64 = Buffer.from(htmlWithFallback).toString('base64');
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -1023,31 +954,25 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
+</head><body>
 <script>
 (function(){
-var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
-function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
-var xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
-if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-var _WS=window.WebSocket;
-window.WebSocket=function(u,p){
-if(u&&typeof u==='string'){try{var pu=new URL(u);
-if(pu.host!==location.host){var nu=(location.protocol==='https:'?'wss://':'ws://')+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);
-return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}
-return p!==undefined?new _WS(u,p):new _WS(u);};
-window.WebSocket.prototype=_WS.prototype;
-window.WebSocket.CONNECTING=_WS.CONNECTING;
-window.WebSocket.OPEN=_WS.OPEN;
-window.WebSocket.CLOSING=_WS.CLOSING;
-window.WebSocket.CLOSED=_WS.CLOSED;
-if('serviceWorker' in navigator){
-  navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'}).catch(function(){});
-}
+  var b64='${b64}';
+  function loadGame(){document.open();document.write(atob(b64));document.close();}
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'})
+      .then(function(reg){
+        if(navigator.serviceWorker.controller){loadGame();return;}
+        var done=false;
+        navigator.serviceWorker.addEventListener('controllerchange',function(){if(!done){done=true;loadGame();}});
+        var w=reg.installing||reg.waiting;
+        if(w)w.addEventListener('statechange',function(){if(w.state==='activated'&&!done){done=true;loadGame();}});
+        setTimeout(function(){if(!done){done=true;loadGame();}},3000);
+      })
+      .catch(function(){loadGame();});
+  }else{loadGame();}
 })();
 </script>
-</head><body>
-${html}
 </body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
