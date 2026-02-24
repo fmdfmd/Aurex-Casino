@@ -193,92 +193,8 @@ router.get('/games', async (req, res) => {
 
     const merchants = apiData.merchants || {};
 
-    // Curated top games — pinned at the top in this exact order.
-    // ONLY games from ACTIVATED providers. When SoftGamings activates
-    // Pragmatic/Hacksaw/PlaynGO/Endorphina — add their games back here.
-    const topGameCodes = new Set([
-      // === TOP SLOTS — curated by real popularity ===
-
-      // Upgaming (872) — Plinko первый
-      'plinko',                                           // Plinko (Upgaming)
-
-      // Push Gaming (911) — топ слоты
-      'bigbamboo-01',                                     // Big Bamboo
-      'jamminjars',                                       // Jammin' Jars
-      'razorshark',                                       // Razor Shark
-      'razorreturns-01',                                  // Razor Returns
-      'firehopper-01',                                    // Fire Hopper
-      'fatrabbit1-01',                                    // Fat Rabbit
-      'wildswarm',                                        // Wild Swarm
-      'retrotapes-01',                                    // Retro Tapes
-      'dragonhopper-01',                                  // Dragon Hopper
-
-      // Thunderkick (920) — топ слоты
-      'tk-s1-g82-94',                                     // Esqueleto Explosivo 3
-      'tk-s1-g22',                                        // Midas Golden Touch
-      'tk-s1-g53-96',                                     // Midas Golden Touch – Reborn
-      'tk-s1-g90-94',                                     // Midas Golden Touch 3
-      'tk-s1-g13',                                        // Pink Elephants 2
-      'tk-s1-g55-96',                                     // Pink Elephants 2 – Reborn
-      'tk-s1-g34',                                        // Beat the Beast: Griffin's Gold
-      'tk-barbershop-a',                                  // Barbershop: Uncut
-      'tk-s1-g21',                                        // Carnival Queen
-      'tk-s1-g93-94',                                     // Carnival Queen 2
-      'tk-s1-g48-96',                                     // Shifting Seas
-      'tk-s1-g46',                                        // Gods of Rock
-
-      // BGaming (901)
-      'BonanzaBillion',                                   // Bonanza Billion
-      'FireLightning',                                    // Fire Lightning
-      'BookOfCats',                                       // Book of Cats
-      'CandyMonsta',                                      // Candy Monsta
-      'LuckyLadyMoon',                                    // Lady Wolf Moon
-      'AztecMagicDeluxe',                                 // Aztec Magic Deluxe
-      'WildWestTrueways',                                 // Wild West TRUEWAYS
-
-      // NetEnt / RedTiger (892 EvoOSS)
-      'deadoralive2:deadoralive20000',                    // Dead or Alive 2
-      'rabidrandy:rabidrandyr96000',                      // Rabid Randy
-      'dragonslock:dragonslock00000',                     // Dragons Lock
-
-      // PG Soft (939)
-      '1815268',                                          // Oishi Delights
-
-      // Belatra (956)
-      'buffalo',                                          // Big Wild Buffalo
-      'dragons_bonanza',                                  // Dragon's Bonanza
-      'wolf_thunder',                                     // Wolf Thunder
-      'towers',                                           // X Towers
-
-      // Yggdrasil (953)
-      '7329',                                             // Double Dragons
-      '7348',                                             // Lucha Maniacs
-
-      // Spinomenal (959)
-      'SlotMachine_DemiGods2',                            // Demi Gods 2
-      'SlotMachine_MajesticKing',                         // Majestic King
-
-      // =============================================
-      // === LIVE CASINO ===
-      // =============================================
-      'crazytime:CrazyTime0000001',                       // Crazy Time — Evolution
-      'roulette:LightningTable01',                        // Lightning Roulette — Evolution
-      'funkytime:FunkyTime0000001',                       // Funky Time — Evolution
-      'crazycoinflip:CrazyCoinFlip001',                   // Crazy Coin Flip — Evolution
-      'megaball:MegaBall00000001',                        // Mega Ball — Evolution
-      'roulette:InstantRo0000001',                        // Instant Roulette — Evolution
-      'moneywheel:MOWDream00000001',                      // Dream Catcher — Evolution
-      'lightningstorm:LightningStorm01',                  // Lightning Storm — Evolution
-      'deadoralivesaloon:doasaloon0000001',               // Dead or Alive: Saloon — Evolution
-      'monopoly:Monopoly00000001',                        // MONOPOLY Live — Evolution
-      'crazypachinko:CrazyPachinko001',                   // Crazy Pachinko — Evolution
-      'lightningdice:LightningDice001',                   // Lightning Dice — Evolution
-      'baccarat:XXXtremeLB000001',                        // XXXtreme Lightning Baccarat — Evolution
-      'blackjack:PowerInfiniteBJ1',                       // Power Infinite Blackjack — Evolution
-      'rng-roulette:rng-rt-lightning',                    // First Person Lightning Roulette — Evolution
-      'rng-blackjack:rng-bj-standard0',                   // First Person Blackjack — Evolution
-    ]);
-    const topGameOrder = [...topGameCodes];
+    // Game sorting is managed entirely in the Fundist backoffice (www5.fundist.org → Sorting).
+    // After changing sort order there, call POST /api/slots/catalog/refresh to apply.
 
     // Live casino providers — shown after all slot providers
     const liveProviderIds = new Set([
@@ -372,18 +288,9 @@ router.get('/games', async (req, res) => {
         // Max win multiplier
         const maxMultiplier = parseFloat(game.MaxMultiplier) || null;
 
-        // Sort score: pinned top games first, then Fundist sorting, live casino last.
-        // Provider weights are managed in Fundist backoffice (www5.fundist.org → Sorting).
-        const pageCode = game.PageCode || '';
-        const topIdx = topGameOrder.indexOf(pageCode);
-        let sortScore;
-        if (topIdx !== -1) {
-          sortScore = topIdx;
-        } else {
-          const fundistSort = parseInt(game.Sort || game.GSort || '999999', 10);
-          const isLive = liveProviderIds.has(merchantId);
-          sortScore = (isLive ? 100_000_000 : 1000) + Math.min(fundistSort, 99_999_999);
-        }
+        const fundistSort = parseInt(game.Sort || game.GSort || '999999', 10);
+        const isLive = liveProviderIds.has(merchantId);
+        const sortScore = isLive ? 100_000_000 + Math.min(fundistSort, 99_999_999) : fundistSort;
 
         const uniqueId = `${merchantId}_${game.PageCode}`;
         processedGames.push({
