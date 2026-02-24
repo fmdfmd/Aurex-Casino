@@ -716,28 +716,12 @@ router.get('/ws-proxy/*', async (req, res) => {
   }
 });
 
-// Service Worker for proxying all external game requests
+// Service Worker — self-unregistering (clears stale proxy-sw from user browsers)
 router.get('/proxy-sw.js', (req, res) => {
   res.setHeader('Content-Type', 'application/javascript');
   res.setHeader('Cache-Control', 'no-cache');
   res.setHeader('Service-Worker-Allowed', '/api/slots/');
-  const sw = [
-    "self.addEventListener('install', () => self.skipWaiting());",
-    "self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));",
-    "self.addEventListener('fetch', (e) => {",
-    "  const url = new URL(e.request.url);",
-    "  if (url.origin !== self.location.origin && url.protocol.startsWith('http')) {",
-    "    const proxyUrl = '/api/slots/ext-proxy?u=' + encodeURIComponent(e.request.url);",
-    "    e.respondWith(fetch(proxyUrl, {",
-    "      method: e.request.method,",
-    "      headers: e.request.headers,",
-    "      body: e.request.method !== 'GET' && e.request.method !== 'HEAD' ? e.request.body : undefined,",
-    "      redirect: 'follow'",
-    "    }).catch(() => fetch(e.request)));",
-    "  }",
-    "});",
-  ].join('\n');
-  res.send(sw);
+  res.send("self.addEventListener('install',()=>self.skipWaiting());self.addEventListener('activate',()=>self.registration.unregister());");
 });
 
 // 3. ext-proxy: generic external-content proxy.
@@ -903,7 +887,8 @@ router.get('/game-frame/:token', (req, res) => {
   }
 
   // wscenter games only need the domain rewrite (done above) — serve directly
-  // without interceptors/Service Worker that break game loading
+  // without interceptors/Service Worker that break game loading.
+  // Must also unregister any stale Service Worker cached from earlier visits.
   if (hasWscenter) {
     const page = `<!DOCTYPE html>
 <html><head>
@@ -923,7 +908,17 @@ body>iframe,body>div,body>object,body>embed{
 }
 </style>
 </head><body>
-<script>document.write(${JSON.stringify(html)});</script>
+<script>
+(function(){
+  function go(){document.open();document.write(${JSON.stringify(html)});document.close();}
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.getRegistrations().then(function(regs){
+      Promise.all(regs.map(function(r){return r.unregister();}))
+        .then(go).catch(go);
+    }).catch(go);
+  }else{go();}
+})();
+</script>
 </body></html>`;
 
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
