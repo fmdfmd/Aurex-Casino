@@ -930,14 +930,11 @@ router.get('/game-frame/:token', (req, res) => {
   // --- wscenter providers (Thunderkick, Spinomenal, BGaming, Habanero, NetEnt, …) ---
   const hasWscenter = html.includes('wscenter');
   if (hasWscenter) {
-    // Replace iframe creation with redirect through our ext-proxy
-    html = html.replace(
-      /var\s+ifr\s*=\s*document\.createElement\(['"]iframe['"]\);[\s\S]*?\.appendChild\(ifr\);/,
-      "window.location.replace('/api/slots/ext-proxy?u='+encodeURIComponent(resp.data));"
-    );
     // Rewrite wscenter domain to our wildcard proxy (covers <script src>, XHR URLs, etc.)
     html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
-    console.log('[game-frame] Patched wscenter: domain rewrite + iframe → ext-proxy redirect');
+    // iframe.src interceptor (in JS below) will catch the dynamically created iframe
+    // and route it through ext-proxy automatically — no window.location.replace needed
+    console.log('[game-frame] Patched wscenter: domain rewrite (iframe.src interceptor handles redirect)');
   }
 
   // Rewrite any remaining external <iframe src="https://…"> to go through ext-proxy
