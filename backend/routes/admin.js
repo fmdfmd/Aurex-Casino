@@ -44,11 +44,9 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       FROM game_sessions
     `);
 
-    // Top games
     const topGamesResult = await pool.query(`
       SELECT 
         game_id,
-        game_name,
         provider,
         COUNT(*) as sessions,
         COALESCE(SUM(bet_amount - win_amount), 0) as revenue,
@@ -56,7 +54,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
         COALESCE(SUM(win_amount), 0) as total_win
       FROM game_sessions
       WHERE started_at >= CURRENT_DATE - INTERVAL '30 days'
-      GROUP BY game_id, game_name, provider
+      GROUP BY game_id, provider
       ORDER BY revenue DESC
       LIMIT 10
     `);
@@ -91,7 +89,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
         },
         topGames: topGamesResult.rows.map(g => ({
           gameId: g.game_id,
-          gameName: g.game_name,
+          gameName: g.game_id,
           provider: g.provider,
           sessions: parseInt(g.sessions),
           revenue: parseFloat(g.revenue),
