@@ -729,6 +729,30 @@ router.get('/ws-proxy/*', async (req, res) => {
   }
 });
 
+// Service Worker for proxying all external game requests
+router.get('/proxy-sw.js', (req, res) => {
+  res.setHeader('Content-Type', 'application/javascript');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Service-Worker-Allowed', '/api/slots/');
+  const sw = [
+    "self.addEventListener('install', () => self.skipWaiting());",
+    "self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));",
+    "self.addEventListener('fetch', (e) => {",
+    "  const url = new URL(e.request.url);",
+    "  if (url.origin !== self.location.origin && url.protocol.startsWith('http')) {",
+    "    const proxyUrl = '/api/slots/ext-proxy?u=' + encodeURIComponent(e.request.url);",
+    "    e.respondWith(fetch(proxyUrl, {",
+    "      method: e.request.method,",
+    "      headers: e.request.headers,",
+    "      body: e.request.method !== 'GET' && e.request.method !== 'HEAD' ? e.request.body : undefined,",
+    "      redirect: 'follow'",
+    "    }).catch(() => fetch(e.request)));",
+    "  }",
+    "});",
+  ].join('\n');
+  res.send(sw);
+});
+
 // 3. ext-proxy: generic external-content proxy.
 //    For HTML responses it rewrites src/href to route through itself
 //    and injects XHR/fetch interceptors so dynamic requests also go through us.
@@ -809,7 +833,7 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
-      // Inject comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver, new Image()
+      // Minimal fallback interceptor for browsers without Service Worker support
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
       const inj = `<script>(function(){` +
@@ -821,148 +845,9 @@ router.all('/ext-proxy', async (req, res) => {
         `if(u.indexOf('://')<0&&u.charAt(0)!=='/'&&u.indexOf('data:')!==0&&u.indexOf('blob:')!==0)` +
         `{try{return P+encodeURIComponent(new URL(u,B).href);}catch(e){}}` +
         `return u;}` +
-        // XHR
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
-        // fetch
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
-        // Override iframe.src setter to proxy external URLs
-        `var ifrDesc=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
-        `if(ifrDesc&&ifrDesc.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
-        `set:function(v){return ifrDesc.set.call(this,px(v));},` +
-        `get:ifrDesc.get,configurable:true});}` +
-        // Override script.src setter
-        `var scrDesc=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');` +
-        `if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{` +
-        `set:function(v){return scrDesc.set.call(this,px(v));},` +
-        `get:scrDesc.get,configurable:true});}` +
-        // Override img.src setter — proxy external images (fixes white screen without VPN)
-        `var imgDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');` +
-        `if(imgDesc&&imgDesc.set){Object.defineProperty(HTMLImageElement.prototype,'src',{` +
-        `set:function(v){return imgDesc.set.call(this,px(v));},` +
-        `get:imgDesc.get,configurable:true});}` +
-        // Override link.href setter — proxy external CSS/fonts
-        `var linkDesc=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,'href');` +
-        `if(linkDesc&&linkDesc.set){Object.defineProperty(HTMLLinkElement.prototype,'href',{` +
-        `set:function(v){return linkDesc.set.call(this,px(v));},` +
-        `get:linkDesc.get,configurable:true});}` +
-        // Override audio/video src
-        `var audDesc=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');` +
-        `if(audDesc&&audDesc.set){Object.defineProperty(HTMLMediaElement.prototype,'src',{` +
-        `set:function(v){return audDesc.set.call(this,px(v));},` +
-        `get:audDesc.get,configurable:true});}` +
-        // Override setAttribute to catch src/href set via setAttribute
-        `var origSA=Element.prototype.setAttribute;` +
-        `Element.prototype.setAttribute=function(n,v){` +
-        `if((n==='src'||n==='href')&&typeof v==='string')v=px(v);` +
-        `return origSA.call(this,n,v);};` +
-        // MutationObserver for dynamically added elements
-        `if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){` +
-        `m.addedNodes.forEach(function(n){if(n.nodeType===1){` +
-        `var s=n.src,h2=n.href,t=n.tagName;` +
-        `if(t==='IFRAME'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){ifrDesc.set.call(n,px(s));}` +
-        `if(t==='SCRIPT'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}` +
-        `if(t==='IMG'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){imgDesc.set.call(n,px(s));}` +
-        `if(t==='LINK'&&h2&&h2.indexOf('://')>=0&&h2.indexOf(H)<0){linkDesc.set.call(n,px(h2));}` +
-        `if((t==='AUDIO'||t==='VIDEO'||t==='SOURCE')&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}` +
-        `n.querySelectorAll&&n.querySelectorAll('img[src],script[src],link[href],audio[src],video[src],source[src]').forEach(function(c){` +
-        `var cs=c.getAttribute('src'),ch=c.getAttribute('href');` +
-        `if(cs&&cs.indexOf('://')>=0&&cs.indexOf(H)<0)c.setAttribute('src',px(cs));` +
-        `if(ch&&ch.indexOf('://')>=0&&ch.indexOf(H)<0)c.setAttribute('href',px(ch));` +
-        `});` +
-        `}});});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}` +
-        // CSS style.backgroundImage MutationObserver — catches preloader images loaded via CSS url()
-        `function pxCss(v){if(typeof v!=='string'||v.indexOf('url(')<0)return v;` +
-        `var r='',ci=0;while(ci<v.length){var ui=v.indexOf('url(',ci);if(ui<0){r+=v.slice(ci);break;}` +
-        `r+=v.slice(ci,ui+4);ci=ui+4;var q='';var cc=v.charCodeAt(ci);if(cc===34||cc===39){q=v[ci];r+=q;ci++;}` +
-        `var ce=v.indexOf(q?q+')':')',ci);if(ce<0){r+=v.slice(ci);break;}var uu=v.slice(ci,ce);` +
-        `if(uu.indexOf('://')>=0&&uu.indexOf(H)<0&&uu.indexOf('/api/slots/')<0){r+=P+encodeURIComponent(uu);}else{r+=uu;}` +
-        `r+=q+')';ci=ce+(q?2:1);}return r;}` +
-        `if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){` +
-        `if(m.type==='attributes'&&m.attributeName==='style'){` +
-        `var el=m.target,bg=el.style.backgroundImage;` +
-        `if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){` +
-        `var nb=pxCss(bg);if(nb!==bg)el.style.backgroundImage=nb;}` +
-        `var bgAll=el.style.background;` +
-        `if(bgAll&&bgAll.indexOf('://')>=0&&bgAll.indexOf('/api/slots/')<0){` +
-        `var nbA=pxCss(bgAll);if(nbA!==bgAll)el.style.background=nbA;}` +
-        `}});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:['style'],subtree:true});}` +
-        `var cssFixId=setInterval(function(){var els=document.querySelectorAll('[style]');` +
-        `for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;` +
-        `if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){var nb=pxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);` +
-        `setTimeout(function(){clearInterval(cssFixId);},10000);` +
-        // Override Blob constructor to inject interceptors into HTML blob URLs
-        `var OB=window.Blob;` +
-        `var blobInj='<script>(function(){` +
-        `var P="/api/slots/ext-proxy?u=";` +
-        `function bpx(u){if(typeof u!="string")return u;` +
-        `if(u.indexOf("/api/slots/")===0||u.indexOf("data:")===0||u.indexOf("blob:")===0)return u;` +
-        `if(u.charAt(0)==="/")return u;` +
-        `if(u.indexOf("://")>=0)return P+encodeURIComponent(u);` +
-        `return u;}` +
-        `var xo=XMLHttpRequest.prototype.open;` +
-        `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=bpx(u);return xo.apply(this,arguments);};` +
-        `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=="string")u=bpx(u);return fo.call(this,u,o);};}` +
-        `var sd=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,"src");` +
-        `if(sd&&sd.set){Object.defineProperty(HTMLScriptElement.prototype,"src",{` +
-        `set:function(v){return sd.set.call(this,bpx(v));},get:sd.get,configurable:true});}` +
-        `var id=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");` +
-        `if(id&&id.set){Object.defineProperty(HTMLImageElement.prototype,"src",{` +
-        `set:function(v){return id.set.call(this,bpx(v));},get:id.get,configurable:true});}` +
-        `var ld=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,"href");` +
-        `if(ld&&ld.set){Object.defineProperty(HTMLLinkElement.prototype,"href",{` +
-        `set:function(v){return ld.set.call(this,bpx(v));},get:ld.get,configurable:true});}` +
-        `var md=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,"src");` +
-        `if(md&&md.set){Object.defineProperty(HTMLMediaElement.prototype,"src",{` +
-        `set:function(v){return md.set.call(this,bpx(v));},get:md.get,configurable:true});}` +
-        `var sa=Element.prototype.setAttribute;` +
-        `Element.prototype.setAttribute=function(n,v){` +
-        `if((n==="src"||n==="href")&&typeof v==="string")v=bpx(v);` +
-        `return sa.call(this,n,v);};` +
-        `function bpxCss(v){if(typeof v!=="string"||v.indexOf("url(")<0)return v;` +
-        `var r="",ci=0;while(ci<v.length){var ui=v.indexOf("url(",ci);if(ui<0){r+=v.slice(ci);break;}` +
-        `r+=v.slice(ci,ui+4);ci=ui+4;var q="";var cc=v.charCodeAt(ci);if(cc===34||cc===39){q=v[ci];r+=q;ci++;}` +
-        `var ce=v.indexOf(q?q+")":")",ci);if(ce<0){r+=v.slice(ci);break;}var uu=v.slice(ci,ce);` +
-        `if(uu.indexOf("://")>=0&&uu.indexOf("/api/slots/")<0){r+=P+encodeURIComponent(uu);}else{r+=uu;}` +
-        `r+=q+")";ci=ce+(q?2:1);}return r;}` +
-        `if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){` +
-        `if(m.type==="attributes"&&m.attributeName==="style"){` +
-        `var el=m.target,bg=el.style.backgroundImage;` +
-        `if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){` +
-        `var nb=bpxCss(bg);if(nb!==bg)el.style.backgroundImage=nb;}` +
-        `var bgA=el.style.background;` +
-        `if(bgA&&bgA.indexOf("://")>=0&&bgA.indexOf("/api/slots/")<0){` +
-        `var nbA=bpxCss(bgA);if(nbA!==bgA)el.style.background=nbA;}}` +
-        `});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:["style"],subtree:true});}` +
-        `var cssFixId=setInterval(function(){var els=document.querySelectorAll("[style]");` +
-        `for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;` +
-        `if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){var nb=bpxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);` +
-        `setTimeout(function(){clearInterval(cssFixId);},10000);` +
-        `})()<\\/script>';` +
-        `window.Blob=function(p,o){` +
-        `if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){` +
-        `console.warn('[AUREX-PROXY] Blob override: injecting interceptor into HTML blob, parts='+p.length);` +
-        `p=[blobInj].concat(Array.from(p));}` +
-        `return new OB(p,o);};` +
-        `window.Blob.prototype=OB.prototype;` +
-        // Override srcdoc setter — Thunderkick's generic.js sets iFrame.srcdoc = html
-        `var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');` +
-        `if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{` +
-        `set:function(v){` +
-        `if(typeof v==='string'&&v.indexOf('function px(')< 0&&v.indexOf('function bpx(')< 0){` +
-        `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
-        `else{v=blobInj+v;}}` +
-        `return srcdocD.set.call(this,v);},` +
-        `get:srcdocD.get,configurable:true});}` +
-        // Also catch setAttribute('srcdoc', ...)
-        `var origSA2=origSA;` +
-        `Element.prototype.setAttribute=function(n,v){` +
-        `if((n==='src'||n==='href')&&typeof v==='string')v=px(v);` +
-        `if(n==='srcdoc'&&typeof v==='string'&&v.indexOf('function px(')< 0&&v.indexOf('function bpx(')< 0){` +
-        `if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}` +
-        `else{v=blobInj+v;}}` +
-        `return origSA2.call(this,n,v);};` +
-        `console.warn('[AUREX-PROXY] Interceptors installed: XHR, fetch, iframe.src, script.src, img.src, link.href, srcdoc, setAttribute, MutationObserver, Blob');` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -1040,7 +925,7 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Comprehensive interceptor: XHR, fetch, iframe.src, setAttribute, MutationObserver
+  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
   const gfHost = req.get('host') || 'aurex.casino';
   const interceptor = `<script>(function(){
 var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
@@ -1048,131 +933,14 @@ function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf(':/
 var xo=XMLHttpRequest.prototype.open;
 XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
 if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-var ifrDesc=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');
-if(ifrDesc&&ifrDesc.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{
-set:function(v){return ifrDesc.set.call(this,px(v));},get:ifrDesc.get,configurable:true});}
-var scrDesc=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,'src');
-if(scrDesc&&scrDesc.set){Object.defineProperty(HTMLScriptElement.prototype,'src',{
-set:function(v){return scrDesc.set.call(this,px(v));},get:scrDesc.get,configurable:true});}
-var imgDesc=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,'src');
-if(imgDesc&&imgDesc.set){Object.defineProperty(HTMLImageElement.prototype,'src',{
-set:function(v){return imgDesc.set.call(this,px(v));},get:imgDesc.get,configurable:true});}
-var linkDesc=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,'href');
-if(linkDesc&&linkDesc.set){Object.defineProperty(HTMLLinkElement.prototype,'href',{
-set:function(v){return linkDesc.set.call(this,px(v));},get:linkDesc.get,configurable:true});}
-var audDesc=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,'src');
-if(audDesc&&audDesc.set){Object.defineProperty(HTMLMediaElement.prototype,'src',{
-set:function(v){return audDesc.set.call(this,px(v));},get:audDesc.get,configurable:true});}
-var origSA=Element.prototype.setAttribute;
-Element.prototype.setAttribute=function(n,v){
-if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
-return origSA.call(this,n,v);};
-if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){m.addedNodes.forEach(function(n){
-if(n.nodeType===1){var s=n.src,h2=n.href,t=n.tagName;
-if(t==='IFRAME'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){ifrDesc.set.call(n,px(s));}
-if(t==='SCRIPT'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}
-if(t==='IMG'&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){imgDesc.set.call(n,px(s));}
-if(t==='LINK'&&h2&&h2.indexOf('://')>=0&&h2.indexOf(H)<0){linkDesc.set.call(n,px(h2));}
-if((t==='AUDIO'||t==='VIDEO'||t==='SOURCE')&&s&&s.indexOf('://')>=0&&s.indexOf(H)<0){n.src=px(s);}
-n.querySelectorAll&&n.querySelectorAll('img[src],script[src],link[href],audio[src],video[src],source[src]').forEach(function(c){
-var cs=c.getAttribute('src'),ch=c.getAttribute('href');
-if(cs&&cs.indexOf('://')>=0&&cs.indexOf(H)<0)c.setAttribute('src',px(cs));
-if(ch&&ch.indexOf('://')>=0&&ch.indexOf(H)<0)c.setAttribute('href',px(ch));
-});}
-});});}).observe(document.documentElement||document.body,{childList:true,subtree:true});}
-function pxCss(v){if(typeof v!=='string'||v.indexOf('url(')<0)return v;
-var r='',ci=0;while(ci<v.length){var ui=v.indexOf('url(',ci);if(ui<0){r+=v.slice(ci);break;}
-r+=v.slice(ci,ui+4);ci=ui+4;var q='';if(v[ci]==='"'||v[ci]==="'"){q=v[ci];r+=q;ci++;}
-var ce=v.indexOf(q?q+')':')',ci);if(ce<0){r+=v.slice(ci);break;}var uu=v.slice(ci,ce);
-if(uu.indexOf('://')>=0&&uu.indexOf(H)<0&&uu.indexOf('/api/slots/')<0){r+=P+encodeURIComponent(uu);}else{r+=uu;}
-r+=q+')';ci=ce+(q?2:1);}return r;}
-if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){
-if(m.type==='attributes'&&m.attributeName==='style'){
-var el=m.target,bg=el.style.backgroundImage;
-if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){
-var nb=pxCss(bg);if(nb!==bg)el.style.backgroundImage=nb;}
-var bgAll=el.style.background;
-if(bgAll&&bgAll.indexOf('://')>=0&&bgAll.indexOf('/api/slots/')<0){
-var nbA=pxCss(bgAll);if(nbA!==bgAll)el.style.background=nbA;}
-}});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:['style'],subtree:true});}
-var cssFixId=setInterval(function(){var els=document.querySelectorAll('[style]');
-for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;
-if(bg&&bg.indexOf('://')>=0&&bg.indexOf('/api/slots/')<0){var nb=pxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);
-setTimeout(function(){clearInterval(cssFixId);},10000);
-var OB=window.Blob;
-var blobInj='<script>(function(){'+
-'var P="/api/slots/ext-proxy?u=";'+
-'function bpx(u){if(typeof u!="string")return u;'+
-'if(u.indexOf("/api/slots/")===0||u.indexOf("data:")===0||u.indexOf("blob:")===0)return u;'+
-'if(u.charAt(0)==="/")return u;'+
-'if(u.indexOf("://")>=0)return P+encodeURIComponent(u);'+
-'return u;}'+
-'var xo=XMLHttpRequest.prototype.open;'+
-'XMLHttpRequest.prototype.open=function(m,u){arguments[1]=bpx(u);return xo.apply(this,arguments);};'+
-'if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=="string")u=bpx(u);return fo.call(this,u,o);};}'+
-'var sd=Object.getOwnPropertyDescriptor(HTMLScriptElement.prototype,"src");'+
-'if(sd&&sd.set){Object.defineProperty(HTMLScriptElement.prototype,"src",{'+
-'set:function(v){return sd.set.call(this,bpx(v));},get:sd.get,configurable:true});}'+
-'var id=Object.getOwnPropertyDescriptor(HTMLImageElement.prototype,"src");'+
-'if(id&&id.set){Object.defineProperty(HTMLImageElement.prototype,"src",{'+
-'set:function(v){return id.set.call(this,bpx(v));},get:id.get,configurable:true});}'+
-'var ld=Object.getOwnPropertyDescriptor(HTMLLinkElement.prototype,"href");'+
-'if(ld&&ld.set){Object.defineProperty(HTMLLinkElement.prototype,"href",{'+
-'set:function(v){return ld.set.call(this,bpx(v));},get:ld.get,configurable:true});}'+
-'var md=Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype,"src");'+
-'if(md&&md.set){Object.defineProperty(HTMLMediaElement.prototype,"src",{'+
-'set:function(v){return md.set.call(this,bpx(v));},get:md.get,configurable:true});}'+
-'var sa=Element.prototype.setAttribute;'+
-'Element.prototype.setAttribute=function(n,v){'+
-'if((n==="src"||n==="href")&&typeof v==="string")v=bpx(v);'+
-'return sa.call(this,n,v);};'+
-'function bpxCss(v){if(typeof v!=="string"||v.indexOf("url(")<0)return v;'+
-'var r="",ci=0;while(ci<v.length){var ui=v.indexOf("url(",ci);if(ui<0){r+=v.slice(ci);break;}'+
-'r+=v.slice(ci,ui+4);ci=ui+4;var q="";var cc=v.charCodeAt(ci);if(cc===34||cc===39){q=v[ci];r+=q;ci++;}'+
-'var ce=v.indexOf(q?q+")":")",ci);if(ce<0){r+=v.slice(ci);break;}var uu=v.slice(ci,ce);'+
-'if(uu.indexOf("://")>=0&&uu.indexOf("/api/slots/")<0){r+=P+encodeURIComponent(uu);}else{r+=uu;}'+
-'r+=q+")";ci=ce+(q?2:1);}return r;}'+
-'if(window.MutationObserver){new MutationObserver(function(ms){ms.forEach(function(m){'+
-'if(m.type==="attributes"&&m.attributeName==="style"){'+
-'var el=m.target,bg=el.style.backgroundImage;'+
-'if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){'+
-'var nb=bpxCss(bg);if(nb!==bg)el.style.backgroundImage=nb;}'+
-'var bgA=el.style.background;'+
-'if(bgA&&bgA.indexOf("://")>=0&&bgA.indexOf("/api/slots/")<0){'+
-'var nbA=bpxCss(bgA);if(nbA!==bgA)el.style.background=nbA;}}'+
-'});}).observe(document.documentElement||document.body,{attributes:true,attributeFilter:["style"],subtree:true});}'+
-'var cssFixId=setInterval(function(){var els=document.querySelectorAll("[style]");'+
-'for(var i=0;i<els.length;i++){var bg=els[i].style.backgroundImage;'+
-'if(bg&&bg.indexOf("://")>=0&&bg.indexOf("/api/slots/")<0){var nb=bpxCss(bg);if(nb!==bg)els[i].style.backgroundImage=nb;}}},50);'+
-'setTimeout(function(){clearInterval(cssFixId);},10000);'+
-'})()<\\/script>';
-window.Blob=function(p,o){
-if(o&&o.type&&String(o.type).indexOf('text/html')>=0&&p&&p.length){
-p=[blobInj].concat(Array.from(p));}
-return new OB(p,o);};
-window.Blob.prototype=OB.prototype;
-var srcdocD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'srcdoc');
-if(srcdocD&&srcdocD.set){Object.defineProperty(HTMLIFrameElement.prototype,'srcdoc',{
-set:function(v){
-if(typeof v==='string'&&v.indexOf('function px(')<0&&v.indexOf('function bpx(')<0){
-if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
-else{v=blobInj+v;}}
-return srcdocD.set.call(this,v);},
-get:srcdocD.get,configurable:true});}
-var origSA2=origSA;
-Element.prototype.setAttribute=function(n,v){
-if((n==='src'||n==='href')&&typeof v==='string')v=px(v);
-if(n==='srcdoc'&&typeof v==='string'&&v.indexOf('function px(')<0&&v.indexOf('function bpx(')<0){
-if(v.indexOf('<head')>=0){v=v.replace(/<head[^>]*>/i,function(m){return m+blobInj;});}
-else{v=blobInj+v;}}
-return origSA2.call(this,n,v);};
 })()</script>`;
 
+  const htmlWithFallback = interceptor + html;
+  const escapedHtml = htmlWithFallback.replace(/`/g, '\\`').replace(/\$/g, '\\$');
   const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-${interceptor}
 <style>
 html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
 iframe,object,embed,div.game-container,.game-frame{
@@ -1186,7 +954,27 @@ body>iframe,body>div,body>object,body>embed{
   border:0!important;
 }
 </style>
-</head><body>${html}</body></html>`;
+</head><body>
+<script>
+(function(){
+  var gameHtml = \`${escapedHtml}\`;
+  function loadGame() { document.body.innerHTML = gameHtml; }
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/api/slots/proxy-sw.js', {scope:'/api/slots/'})
+      .then(function(reg) {
+        if (navigator.serviceWorker.controller) { loadGame(); return; }
+        navigator.serviceWorker.addEventListener('controllerchange', function() { loadGame(); });
+        var w = reg.installing || reg.waiting;
+        if (w) w.addEventListener('statechange', function() {
+          if (w.state === 'activated' && !navigator.serviceWorker.controller) loadGame();
+        });
+        setTimeout(loadGame, 3000);
+      })
+      .catch(function() { loadGame(); });
+  } else { loadGame(); }
+})();
+</script>
+</body></html>`;
 
   res.setHeader('Content-Type', 'text/html; charset=utf-8');
   res.setHeader('Cache-Control', 'no-store');
