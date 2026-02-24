@@ -196,7 +196,7 @@
       "title": "Referral Program - AUREX Partners",
       "metaDescription": "Invite friends to AUREX and earn up to 20% from their deposits!",
       "heroTitle": "AUREX Partners",
-      "heroSubtitle": "Invite friends and get up to <span class=\"text-aurex-gold-500 font-bold\">{{percent}}%</span> from their deposits!",
+      "heroSubtitle": "Invite friends and earn up to {{percent}}% from GGR!",
       "yourReferralLink": "Your referral link",
       "copy": "Copy",
       "copied": "{{label}} copied!",
@@ -251,7 +251,7 @@
       "benefit4": "Level bonuses",
       "benefit5": "Detailed statistics",
       "friendBonus": "Friend Bonus",
-      "friendBonusDesc": "Your friend gets a <span class=\"text-aurex-gold-500 font-bold\">welcome bonus up to 200%</span> on their first deposit when signing up via your link!"
+      "friendBonusDesc": "Your friend gets a welcome bonus up to 200% on their first deposit when signing up via your link!"
     }
   },
   "settings": {

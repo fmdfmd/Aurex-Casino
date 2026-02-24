@@ -50,6 +50,9 @@ export default function ReferralPage() {
     thisMonthEarnings: 0,
     referralCode: '',
     referralLink: '',
+    monthGGR: 0,
+    monthPotentialEarnings: 0,
+    commissionPercent: 10,
   });
   const [referrals, setReferrals] = useState<Referral[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,7 +92,10 @@ export default function ReferralPage() {
           availableWithdraw: statsData.data.availableWithdraw || 0,
           thisMonthEarnings: statsData.data.thisMonthEarnings || 0,
           referralCode: statsData.data.referralCode || `REF-${user?.odid}`,
-          referralLink: statsData.data.referralLink || `https://aurex.io/?ref=${user?.odid}`,
+          referralLink: statsData.data.referralLink || `https://aurex.casino/register?ref=${user?.odid}`,
+          monthGGR: statsData.data.monthGGR || 0,
+          monthPotentialEarnings: statsData.data.monthPotentialEarnings || 0,
+          commissionPercent: statsData.data.commissionPercent || 10,
         });
       }
 
@@ -122,6 +128,9 @@ export default function ReferralPage() {
         thisMonthEarnings: 0,
         referralCode: '',
         referralLink: '',
+        monthGGR: 0,
+        monthPotentialEarnings: 0,
+        commissionPercent: 10,
       });
       setReferrals([]);
     } finally {
@@ -193,7 +202,11 @@ export default function ReferralPage() {
                 </h1>
                 
                 <p className="text-xl text-aurex-platinum-300 mb-8 max-w-2xl mx-auto">
-                  {t('profile.referralProgram.heroSubtitle', { percent: tiers.length > 0 ? Math.max(...tiers.map((tier: any) => tier.commissionPercent || tier.percent || 0)) : 20 })}
+                  Приглашай друзей и получай до{' '}
+                  <span className="text-aurex-gold-500 font-bold">
+                    {tiers.length > 0 ? Math.max(...tiers.map((tier: any) => tier.commissionPercent || tier.percent || 0)) : 20}%
+                  </span>{' '}
+                  от GGR!
                 </p>
 
                 {/* Referral Link Box */}
@@ -242,7 +255,7 @@ export default function ReferralPage() {
               >
                 <Users className="w-8 h-8 mb-3 opacity-80" />
                 <div className="text-3xl font-black">{stats.totalReferrals}</div>
-                <div className="text-sm opacity-80">{t('profile.referralProgram.totalReferrals')}</div>
+                <div className="text-sm opacity-80">Всего рефералов</div>
               </motion.div>
 
               <motion.div
@@ -252,8 +265,8 @@ export default function ReferralPage() {
                 className="p-5 bg-gradient-to-br from-green-500 to-emerald-600 rounded-2xl text-white"
               >
                 <DollarSign className="w-8 h-8 mb-3 opacity-80" />
-                <div className="text-3xl font-black">₽{stats.totalEarnings}</div>
-                <div className="text-sm opacity-80">{t('profile.referralProgram.totalEarnings')}</div>
+                <div className="text-3xl font-black">₽{Math.round(stats.monthGGR || 0)}</div>
+                <div className="text-sm opacity-80">GGR рефералов (месяц)</div>
               </motion.div>
 
               <motion.div
@@ -263,8 +276,8 @@ export default function ReferralPage() {
                 className="p-5 bg-gradient-to-br from-aurex-gold-500 to-amber-600 rounded-2xl text-aurex-obsidian-900"
               >
                 <TrendingUp className="w-8 h-8 mb-3 opacity-80" />
-                <div className="text-3xl font-black">₽{stats.thisMonthEarnings}</div>
-                <div className="text-sm opacity-80">{t('profile.referralProgram.thisMonth')}</div>
+                <div className="text-3xl font-black">₽{Math.round((stats.monthPotentialEarnings || 0) + (stats.thisMonthEarnings || 0))}</div>
+                <div className="text-sm opacity-80">Заработок ({stats.commissionPercent}% от GGR)</div>
               </motion.div>
 
               <motion.div
@@ -274,7 +287,7 @@ export default function ReferralPage() {
                 className="p-5 bg-gradient-to-br from-purple-500 to-violet-600 rounded-2xl text-white"
               >
                 <Gift className="w-8 h-8 mb-3 opacity-80" />
-                <div className="text-3xl font-black">₽{stats.availableWithdraw}</div>
+                <div className="text-3xl font-black">₽{Math.round(stats.availableWithdraw || 0)}</div>
                 <div className="text-sm opacity-80">Доступно к выводу</div>
               </motion.div>
             </div>

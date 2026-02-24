@@ -196,7 +196,7 @@
       "title": "Реферальная программа - AUREX Partners",
       "metaDescription": "Приглашай друзей в AUREX и зарабатывай до 20% от их депозитов!",
       "heroTitle": "AUREX Partners",
-      "heroSubtitle": "Приглашай друзей и получай до <span class=\"text-aurex-gold-500 font-bold\">{{percent}}%</span> от их депозитов!",
+      "heroSubtitle": "Приглашай друзей и получай до {{percent}}% от GGR!",
       "yourReferralLink": "Ваша реферальная ссылка",
       "copy": "Копировать",
       "copied": "{{label}} скопирован!",
@@ -251,7 +251,7 @@
       "benefit4": "Бонусы за уровни",
       "benefit5": "Детальная статистика",
       "friendBonus": "Бонус для друга",
-      "friendBonusDesc": "Ваш друг получит <span class=\"text-aurex-gold-500 font-bold\">приветственный бонус до 200%</span> на первый депозит при регистрации по вашей ссылке!"
+      "friendBonusDesc": "Ваш друг получит приветственный бонус до 200% на первый депозит при регистрации по вашей ссылке!"
     }
   },
   "settings": {
