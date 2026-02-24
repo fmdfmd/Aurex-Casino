@@ -703,9 +703,86 @@ router.get('/ws-proxy/*', async (req, res) => {
 });
 
 // ---------------------------------------------------------------------------
+// Thunderkick reverse proxy — ISP blocks game-p*.thunderkick.com.
+// We proxy all game traffic and rewrite domain refs in HTML/JS so the game's
+// own API calls (e.g. /gamelauncher/api/info/) also route through us.
+// ---------------------------------------------------------------------------
+const TK_DOMAIN_RE = /(https?:)?\/\/game-p\d+\.thunderkick\.com/g;
+const TK_TARGET_HOST = 'game-p1.thunderkick.com';
+
+router.all('/game-proxy/tk/*', async (req, res) => {
+  const subpath = req.params[0] || '';
+  const qIdx = req.originalUrl.indexOf('?');
+  const qs = qIdx !== -1 ? req.originalUrl.substring(qIdx) : '';
+  const target = `https://${TK_TARGET_HOST}/${subpath}${qs}`;
+
+  try {
+    const fwdHeaders = {};
+    for (const h of ['accept', 'accept-language', 'content-type', 'cookie', 'user-agent']) {
+      if (req.headers[h]) fwdHeaders[h] = req.headers[h];
+    }
+    fwdHeaders['host'] = TK_TARGET_HOST;
+    fwdHeaders['origin'] = `https://${TK_TARGET_HOST}`;
+    fwdHeaders['referer'] = `https://${TK_TARGET_HOST}/`;
+
+    // Reconstruct body for POST (Express may have already parsed it)
+    let body;
+    if (['POST', 'PUT', 'PATCH'].includes(req.method) && req.body != null) {
+      if (Buffer.isBuffer(req.body)) {
+        body = req.body;
+      } else if (typeof req.body === 'object') {
+        const ct = (req.headers['content-type'] || '');
+        if (ct.includes('json')) {
+          body = JSON.stringify(req.body);
+        } else {
+          body = new URLSearchParams(req.body).toString();
+        }
+      } else {
+        body = req.body;
+      }
+    }
+
+    const resp = await axios({
+      method: req.method.toLowerCase(),
+      url: target,
+      data: body,
+      headers: fwdHeaders,
+      responseType: 'arraybuffer',
+      decompress: true,
+      timeout: 30000,
+      maxRedirects: 5,
+      validateStatus: () => true
+    });
+
+    res.status(resp.status);
+
+    const skip = new Set([
+      'transfer-encoding', 'connection', 'content-encoding', 'content-length',
+      'content-security-policy', 'x-frame-options', 'strict-transport-security'
+    ]);
+    for (const [k, v] of Object.entries(resp.headers)) {
+      if (!skip.has(k.toLowerCase())) {
+        try { res.setHeader(k, v); } catch {}
+      }
+    }
+
+    const ct = (resp.headers['content-type'] || '').toLowerCase();
+    if (ct.includes('html') || ct.includes('javascript') || ct.includes('json') || ct.includes('text/')) {
+      let text = resp.data.toString('utf-8');
+      text = text.replace(TK_DOMAIN_RE, '/api/slots/game-proxy/tk');
+      res.send(text);
+    } else {
+      res.send(resp.data);
+    }
+  } catch (e) {
+    console.error(`[game-proxy/tk] ${req.method} /${subpath}: ${e.message}`);
+    if (!res.headersSent) res.status(502).send('proxy error');
+  }
+});
+
+// ---------------------------------------------------------------------------
 // game-frame — serves the Fundist HTML as a full page inside our iframe.
-// Only wscenter auth URLs are rewritten to go through ws-proxy.
-// Everything else loads directly from provider servers.
+// Rewrites blocked provider domains to go through our proxies.
 // ---------------------------------------------------------------------------
 router.get('/game-frame/:token', (req, res) => {
   const entry = gameFrameStore.get(req.params.token);
@@ -720,6 +797,12 @@ router.get('/game-frame/:token', (req, res) => {
   if (html.includes('wscenter')) {
     html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
     console.log('[game-frame] Patched wscenter → ws-proxy');
+  }
+
+  // Rewrite Thunderkick game server URLs (ISP-blocked)
+  if (/game-p\d+\.thunderkick\.com/.test(html)) {
+    html = html.replace(/(https?:)?\/\/game-p\d+\.thunderkick\.com/g, '/api/slots/game-proxy/tk');
+    console.log('[game-frame] Patched thunderkick → game-proxy/tk');
   }
 
   // Wrap fragment in proper HTML document to avoid Quirks Mode
