@@ -174,11 +174,15 @@ class FundistApiService {
   _normalizeFullList(raw) {
     // Case 1: Game/FullList format { categories, games, merchants, ... }
     if (raw && !Array.isArray(raw) && Array.isArray(raw.games)) {
-      return {
+      const result = {
         categories: raw.categories || [],
         games: raw.games,
         merchants: raw.merchants || {},
       };
+      if (raw.merchantsCurrencies) {
+        this._buildMerchantCurrencyMap(raw.merchantsCurrencies);
+      }
+      return result;
     }
 
     // Case 2: Game/List format — plain JSON array of game objects
@@ -201,6 +205,29 @@ class FundistApiService {
     }
 
     return { categories: [], games: [], merchants: {} };
+  }
+
+  _buildMerchantCurrencyMap(merchantsCurrencies) {
+    this._merchantCurrencies = new Map();
+    for (const entry of merchantsCurrencies) {
+      const mid = String(entry.IDMerchant || '');
+      if (!mid) continue;
+      const currencies = Array.isArray(entry.Currencies) ? entry.Currencies : [];
+      const defaultCurrency = entry.DefaultCurrency || null;
+      const existing = this._merchantCurrencies.get(mid);
+      if (!existing || (currencies.length > 0 && (!existing.currencies || existing.currencies.length === 0))) {
+        this._merchantCurrencies.set(mid, { currencies, defaultCurrency });
+      }
+    }
+    console.log(`[Fundist] Built merchant currency map: ${this._merchantCurrencies.size} providers`);
+  }
+
+  getGameCurrency(merchantId, userCurrency = 'RUB') {
+    if (!this._merchantCurrencies) return userCurrency;
+    const info = this._merchantCurrencies.get(String(merchantId));
+    if (!info || !info.currencies || info.currencies.length === 0) return userCurrency;
+    if (info.currencies.includes(userCurrency)) return userCurrency;
+    return info.defaultCurrency || info.currencies[0] || userCurrency;
   }
 
   // ---------------------------------------------------------------------------

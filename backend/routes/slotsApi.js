@@ -644,13 +644,17 @@ router.post('/start-game', optionalAuth, async (req, res) => {
       );
     } else {
       const userId = req.user.id;
-      const currency = req.user.currency || req.body.currency || 'RUB';
+      const userCurrency = req.user.currency || req.body.currency || 'RUB';
+      const gameCurrency = fundistService.getGameCurrency(resolvedSystemId, userCurrency);
+      if (gameCurrency !== userCurrency) {
+        console.log(`[start-game] Currency conversion: user=${userCurrency}, provider=${gameCurrency} (systemId=${resolvedSystemId})`);
+      }
       const extParam = `aurex_${userId}_${Date.now()}`;
       gameData = await fundistService.startGameSession(
         userId,
         effectiveGameCode,
         resolvedSystemId,
-        currency,
+        gameCurrency,
         userIp,
         language,
         { extParam, referer, demo: false, isMobile }
