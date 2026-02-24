@@ -377,6 +377,7 @@ router.get('/games', async (req, res) => {
         ['PG Soft', ['Skylight Wonders', 'Pharaoh Royals', 'Galaxy Miner', 'Incan Wonders', 'Fortune Snake', "Geisha's Revenge", 'Chocolate Deluxe', 'Rio Fantasia']],
         ['Popiplay', ['Oktobearfest', 'Detective Donut Kickback', 'Wild Piggy Bank', 'Emotions', 'Bison Horizon Hold and Win', 'RoxDogs', 'Zoodiac', 'Ruby Royal']],
         ['Peter & Sons', ['DCirque']],
+        ['Push Gaming', ['The Great Banker', 'Olympus Unleashed', 'Big Bamboo', 'Fire Hopper', 'Razor Shark', "Jammin' Jars 2", 'Mad Blast', 'Dragon Hopper']],
       ];
 
       const findGame = (list, name, prov) => {
