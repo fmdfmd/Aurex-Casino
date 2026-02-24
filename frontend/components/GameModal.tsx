@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { ArrowLeft, X } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { ArrowLeft, X, ShieldAlert } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import axios from 'axios';
 import toast from 'react-hot-toast';
@@ -85,8 +85,23 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     if (!isOpen) {
       setGameFrameUrl('');
       setLoadError('');
+      setShowVpnHint(false);
     }
   }, [isOpen]);
+
+  // VPN hint: show after 10s if game iframe is open (in case it fails to load)
+  const [showVpnHint, setShowVpnHint] = useState(false);
+  const vpnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (vpnTimerRef.current) clearTimeout(vpnTimerRef.current);
+    if (gameFrameUrl) {
+      vpnTimerRef.current = setTimeout(() => setShowVpnHint(true), 10000);
+    } else {
+      setShowVpnHint(false);
+    }
+    return () => { if (vpnTimerRef.current) clearTimeout(vpnTimerRef.current); };
+  }, [gameFrameUrl]);
 
   if (!isOpen || !game) return null;
 
@@ -134,12 +149,31 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
             </div>
           </div>
         ) : gameFrameUrl ? (
-          <iframe
-            className="absolute inset-0 w-full h-full border-0"
-            src={gameFrameUrl}
-            allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
-            allowFullScreen
-          />
+          <>
+            <iframe
+              className="absolute inset-0 w-full h-full border-0"
+              src={gameFrameUrl}
+              allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
+              allowFullScreen
+            />
+            {showVpnHint && (
+              <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 animate-slide-up max-w-sm w-[calc(100%-2rem)]">
+                <div className="flex items-center gap-3 bg-gray-900/95 backdrop-blur-md border border-yellow-500/30 rounded-xl px-4 py-3 shadow-lg shadow-black/40">
+                  <ShieldAlert className="w-5 h-5 text-yellow-500 shrink-0" />
+                  <p className="text-xs text-gray-300 leading-snug">
+                    <span className="text-white font-semibold">Игра не загружается?</span>{' '}
+                    Попробуйте включить VPN
+                  </p>
+                  <button
+                    onClick={() => setShowVpnHint(false)}
+                    className="p-1 text-gray-500 hover:text-white transition-colors shrink-0"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         ) : null}
       </div>
     </div>
