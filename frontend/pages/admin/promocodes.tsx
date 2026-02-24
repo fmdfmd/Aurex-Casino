@@ -31,9 +31,9 @@ interface Promocode {
   type: 'balance' | 'bonus' | 'freespins' | 'deposit_bonus';
   value: number;
   minDeposit: number;
-  maxUses: number;
+  usageLimit: number;
   usedCount: number;
-  usedBy: string[];
+  usedBy?: string[];
   expiresAt: string | null;
   isActive: boolean;
   description: string;
@@ -146,26 +146,6 @@ export default function AdminPromocodesPage() {
       console.error('Failed to save promocode:', error);
     }
 
-    // Update local state
-    if (editingPromo) {
-      setPromocodes(prev => prev.map(p => 
-        p.id === editingPromo.id 
-          ? { ...p, ...promoData, isActive: true }
-          : p
-      ));
-    } else {
-      const newPromo: Promocode = {
-        id: Date.now().toString(),
-        ...promoData,
-        usedCount: 0,
-        usedBy: [],
-        isActive: true,
-        createdAt: new Date().toISOString()
-      };
-      setPromocodes(prev => [newPromo, ...prev]);
-    }
-
-    toast.success(editingPromo ? 'Промокод обновлён!' : 'Промокод создан!');
     closeModal();
   };
 
@@ -225,7 +205,7 @@ export default function AdminPromocodesPage() {
       type: promo.type,
       value: String(promo.value),
       minDeposit: String(promo.minDeposit),
-      maxUses: String(promo.maxUses),
+      maxUses: String(promo.usageLimit),
       expiresAt: promo.expiresAt ? promo.expiresAt.split('T')[0] : '',
       description: promo.description
     });
@@ -402,7 +382,7 @@ export default function AdminPromocodesPage() {
                   ) : (
                     filteredPromocodes.map((promo) => {
                       const isExpired = promo.expiresAt && new Date(promo.expiresAt) < new Date();
-                      const usagePercent = promo.maxUses > 0 ? (promo.usedCount / promo.maxUses) * 100 : 0;
+                      const usagePercent = promo.usageLimit > 0 ? (promo.usedCount / promo.usageLimit) * 100 : 0;
                       
                       return (
                         <tr 
@@ -449,10 +429,10 @@ export default function AdminPromocodesPage() {
                           <td className="px-6 py-4">
                             <div>
                               <span className="text-white font-medium">{promo.usedCount}</span>
-                              {promo.maxUses > 0 && (
-                                <span className="text-aurex-platinum-500">/{promo.maxUses}</span>
+                              {promo.usageLimit > 0 && (
+                                <span className="text-aurex-platinum-500">/{promo.usageLimit}</span>
                               )}
-                              {promo.maxUses > 0 && (
+                              {promo.usageLimit > 0 && (
                                 <div className="w-20 h-1.5 bg-aurex-obsidian-700 rounded-full mt-1">
                                   <div 
                                     className={`h-full rounded-full ${usagePercent >= 100 ? 'bg-red-500' : usagePercent >= 75 ? 'bg-yellow-500' : 'bg-green-500'}`}
