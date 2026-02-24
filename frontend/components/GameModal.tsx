@@ -89,19 +89,27 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
     }
   }, [isOpen]);
 
-  // VPN hint: show after 10s if game iframe is open (in case it fails to load)
+  // VPN hint: show after 10s ONLY if the game iframe hasn't loaded yet
   const [showVpnHint, setShowVpnHint] = useState(false);
   const vpnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const iframeLoadedRef = useRef(false);
 
   useEffect(() => {
     if (vpnTimerRef.current) clearTimeout(vpnTimerRef.current);
+    iframeLoadedRef.current = false;
     if (gameFrameUrl) {
-      vpnTimerRef.current = setTimeout(() => setShowVpnHint(true), 10000);
+      vpnTimerRef.current = setTimeout(() => {
+        if (!iframeLoadedRef.current) setShowVpnHint(true);
+      }, 10000);
     } else {
       setShowVpnHint(false);
     }
     return () => { if (vpnTimerRef.current) clearTimeout(vpnTimerRef.current); };
   }, [gameFrameUrl]);
+
+  const handleIframeLoad = () => {
+    iframeLoadedRef.current = true;
+  };
 
   if (!isOpen || !game) return null;
 
@@ -155,6 +163,7 @@ export default function GameModal({ isOpen, onClose, game, mode, onModeChange }:
               src={gameFrameUrl}
               allow="autoplay; fullscreen; camera; microphone; encrypted-media; clipboard-write; web-share"
               allowFullScreen
+              onLoad={handleIframeLoad}
             />
             {showVpnHint && (
               <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 animate-slide-up max-w-sm w-[calc(100%-2rem)]">
