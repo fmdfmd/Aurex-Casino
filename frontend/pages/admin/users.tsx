@@ -132,7 +132,6 @@ export default function AdminUsersPage() {
     }
 
     try {
-      // Try API call first
       const response = await fetch(`/api/admin/users/${selectedUser.id}/balance`, {
         method: 'POST',
         headers: { 
@@ -146,30 +145,20 @@ export default function AdminUsersPage() {
         })
       });
 
-      if (response.ok) {
-        toast.success('Баланс обновлён');
+      const data = await response.json();
+      if (data.success) {
+        const actionText = balanceType === 'add' ? 'добавлено' : balanceType === 'subtract' ? 'снято' : 'установлено';
+        toast.success(`₽${amount.toFixed(2)} ${actionText} ${balanceCategory === 'main' ? 'на основной' : 'на бонусный'} баланс`);
+        setShowBalanceModal(false);
+        setBalanceAmount('');
+        setSelectedUser(null);
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Ошибка обновления баланса');
       }
     } catch (error) {
-      // Update locally for demo
+      toast.error('Ошибка сервера при обновлении баланса');
     }
-
-    // Update local state
-    setUsers(users.map(u => {
-      if (u.id === selectedUser.id) {
-        return {
-          ...u,
-          [balanceCategory === 'main' ? 'balance' : 'bonusBalance']: newBalance
-        };
-      }
-      return u;
-    }));
-
-    const actionText = balanceType === 'add' ? 'добавлено' : balanceType === 'subtract' ? 'снято' : 'установлено';
-    toast.success(`₽${amount.toFixed(2)} ${actionText} ${balanceCategory === 'main' ? 'на основной' : 'на бонусный'} баланс`);
-    
-    setShowBalanceModal(false);
-    setBalanceAmount('');
-    setSelectedUser(null);
   };
 
   const handleViewUser = (user: User) => {
