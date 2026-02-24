@@ -791,4 +791,91 @@ router.get('/freerounds/:userId', adminAuth, async (req, res) => {
   }
 });
 
+// ============ SUPPORT MANAGERS ============
+
+router.get('/support-managers', adminAuth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT * FROM support_managers ORDER BY created_at DESC'
+    );
+    res.json({ success: true, data: result.rows });
+  } catch (error) {
+    console.error('Get managers error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get managers' });
+  }
+});
+
+router.post('/support-managers', adminAuth, async (req, res) => {
+  try {
+    const { telegramId, username, firstName, role } = req.body;
+    if (!telegramId) {
+      return res.status(400).json({ success: false, error: 'telegramId обязателен' });
+    }
+
+    const result = await pool.query(
+      `INSERT INTO support_managers (telegram_id, username, first_name, role)
+       VALUES ($1, $2, $3, $4)
+       ON CONFLICT (telegram_id) DO UPDATE SET
+         username = COALESCE($2, support_managers.username),
+         first_name = COALESCE($3, support_managers.first_name),
+         role = COALESCE($4, support_managers.role),
+         is_active = true,
+         updated_at = CURRENT_TIMESTAMP
+       RETURNING *`,
+      [telegramId, username || null, firstName || null, role || 'junior']
+    );
+
+    res.json({ success: true, message: 'Менеджер добавлен', data: result.rows[0] });
+  } catch (error) {
+    console.error('Add manager error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.patch('/support-managers/:id', adminAuth, async (req, res) => {
+  try {
+    const { isActive, role } = req.body;
+    const updates = [];
+    const values = [];
+
+    if (isActive !== undefined) {
+      values.push(isActive);
+      updates.push(`is_active = $${values.length}`);
+    }
+    if (role !== undefined) {
+      values.push(role);
+      updates.push(`role = $${values.length}`);
+    }
+
+    if (updates.length === 0) {
+      return res.status(400).json({ success: false, error: 'No updates' });
+    }
+
+    values.push(req.params.id);
+    const result = await pool.query(
+      `UPDATE support_managers SET ${updates.join(', ')}, updated_at = CURRENT_TIMESTAMP WHERE id = $${values.length} RETURNING *`,
+      values
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Manager not found' });
+    }
+
+    res.json({ success: true, data: result.rows[0] });
+  } catch (error) {
+    console.error('Update manager error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+router.delete('/support-managers/:id', adminAuth, async (req, res) => {
+  try {
+    await pool.query('DELETE FROM support_managers WHERE id = $1', [req.params.id]);
+    res.json({ success: true, message: 'Менеджер удалён' });
+  } catch (error) {
+    console.error('Delete manager error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
