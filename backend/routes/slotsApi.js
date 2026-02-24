@@ -671,19 +671,86 @@ const gameFrameStore = new Map();
 
 router.post('/game-frame', optionalAuth, async (req, res) => {
   try {
-    const { html } = req.body;
-    if (!html) return res.status(400).json({ success: false, error: 'Missing html' });
-    
+    const { html: rawHtml } = req.body;
+    if (!rawHtml) return res.status(400).json({ success: false, error: 'Missing html' });
+
+    // Also store for legacy GET (backwards compat)
     const token = `gf_${Date.now()}_${Math.random().toString(36).substr(2, 12)}`;
-    gameFrameStore.set(token, { html, created: Date.now(), userId: req.user?.id || 'demo' });
-    console.log(`[game-frame] POST: stored token=${token}, html size=${html.length}, store size=${gameFrameStore.size}`);
-    
+    gameFrameStore.set(token, { html: rawHtml, created: Date.now(), userId: req.user?.id || 'demo' });
+
     // Cleanup old entries (> 10 min)
     for (const [key, val] of gameFrameStore) {
       if (Date.now() - val.created > 10 * 60 * 1000) gameFrameStore.delete(key);
     }
-    
-    res.json({ success: true, token });
+
+    // Process the HTML inline (same logic as GET handler)
+    let html = rawHtml;
+    const domains = [...new Set((html.match(/https?:\/\/[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || []))];
+    console.log(`[game-frame] POST: token=${token}, html size=${rawHtml.length}, external domains: ${domains.join(', ')}`);
+
+    const hasWscenter = html.includes('wscenter');
+    if (hasWscenter) {
+      html = html.replace(
+        /var\s+ifr\s*=\s*document\.createElement\(['"]iframe['"]\);[\s\S]*?\.appendChild\(ifr\);/,
+        "window.location.replace('/api/slots/ext-proxy?u='+encodeURIComponent(resp.data));"
+      );
+      html = html.replace(/https?:\/\/check\d*\.wscenter\.xyz/g, '/api/slots/ws-proxy');
+      console.log('[game-frame] Patched wscenter: domain rewrite + iframe → ext-proxy redirect');
+    }
+
+    html = html.replace(
+      /(<iframe[^>]+src\s*=\s*)(["'])(https?:\/\/[^"']+)\2/gi,
+      (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
+    );
+
+    const gfHost = req.get('host') || 'aurex.casino';
+
+    const page = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<base href="https://${gfHost}/api/slots/">
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+iframe,object,embed,div.game-container,.game-frame{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+body>iframe,body>div,body>object,body>embed{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+</style>
+<script>
+(function(){
+var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
+function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
+var xo=XMLHttpRequest.prototype.open;
+XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
+if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
+var _WS=window.WebSocket;
+window.WebSocket=function(u,p){
+if(u&&typeof u==='string'){try{var pu=new URL(u);
+if(pu.host!==location.host){var nu=(location.protocol==='https:'?'wss://':'ws://')+H+'/api/slots/ws-game-proxy?target='+encodeURIComponent(u);
+return p!==undefined?new _WS(nu,p):new _WS(nu);}}catch(e){}}
+return p!==undefined?new _WS(u,p):new _WS(u);};
+window.WebSocket.prototype=_WS.prototype;
+window.WebSocket.CONNECTING=_WS.CONNECTING;
+window.WebSocket.OPEN=_WS.OPEN;
+window.WebSocket.CLOSING=_WS.CLOSING;
+window.WebSocket.CLOSED=_WS.CLOSED;
+if('serviceWorker' in navigator){
+  navigator.serviceWorker.register('/api/slots/proxy-sw.js',{scope:'/api/slots/'}).catch(function(){});
+}
+})();
+</script>
+</head><body>
+${html}
+</body></html>`;
+
+    res.json({ success: true, token, pageHtml: page });
   } catch (e) {
     console.error('[game-frame] POST error:', e.message);
     res.status(500).json({ success: false, error: e.message });
