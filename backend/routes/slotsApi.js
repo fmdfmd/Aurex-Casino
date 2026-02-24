@@ -902,13 +902,43 @@ router.get('/game-frame/:token', (req, res) => {
     console.log('[game-frame] Patched wscenter: domain rewrite to ws-proxy');
   }
 
-  // Rewrite any remaining external <iframe src="https://…"> to go through ext-proxy
+  // wscenter games only need the domain rewrite (done above) — serve directly
+  // without interceptors/Service Worker that break game loading
+  if (hasWscenter) {
+    const page = `<!DOCTYPE html>
+<html><head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<style>
+html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}
+iframe,object,embed,div.game-container,.game-frame{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+body>iframe,body>div,body>object,body>embed{
+  width:100%!important;height:100%!important;
+  position:absolute!important;top:0!important;left:0!important;
+  border:0!important;
+}
+</style>
+</head><body>
+<script>document.write(${JSON.stringify(html)});</script>
+</body></html>`;
+
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Cache-Control', 'no-store');
+    res.removeHeader('X-Frame-Options');
+    res.removeHeader('Content-Security-Policy');
+    return res.send(page);
+  }
+
+  // Non-wscenter games: full proxy layer (interceptors + Service Worker)
   html = html.replace(
     /(<iframe[^>]+src\s*=\s*)(["'])(https?:\/\/[^"']+)\2/gi,
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
   const gfHost = req.get('host') || 'aurex.casino';
   const interceptor = `<script>(function(){
 var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
