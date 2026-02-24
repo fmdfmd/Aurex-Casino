@@ -34,7 +34,7 @@ export default function Footer() {
   };
 
   const socialLinks = [
-    { href: 'https://t.me/aurexcasino', label: 'Telegram', Icon: Send },
+    { href: 'https://t.me/aurex_casino', label: 'Telegram', Icon: Send },
     { href: 'https://instagram.com/aurexcasino', label: 'Instagram', Icon: Instagram },
     { href: 'https://twitter.com/aurexcasino', label: 'Twitter (X)', Icon: Twitter },
     { href: 'https://discord.gg/aurexcasino', label: 'Discord', Icon: MessageSquare },
