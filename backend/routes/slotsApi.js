@@ -756,7 +756,7 @@ router.get('/proxy-sw.js', (req, res) => {
 // 3. ext-proxy: generic external-content proxy.
 //    For HTML responses it rewrites src/href to route through itself
 //    and injects XHR/fetch interceptors so dynamic requests also go through us.
-router.all('/ext-proxy', async (req, res) => {
+router.all('/ext-proxy', express.raw({ type: () => true, limit: '10mb' }), async (req, res) => {
   const target = req.query.u;
   if (!target) return res.status(400).send('missing u');
 
@@ -770,14 +770,21 @@ router.all('/ext-proxy', async (req, res) => {
       'Accept': req.headers['accept'] || '*/*',
       'Accept-Language': req.headers['accept-language'] || 'ru,en',
       'Referer': parsedUrl.origin + '/',
+      'Origin': parsedUrl.origin,
     };
     if (req.headers['content-type']) fwdHeaders['Content-Type'] = req.headers['content-type'];
     if (req.headers['cookie']) fwdHeaders['Cookie'] = req.headers['cookie'];
 
+    const isWrite = ['POST', 'PUT', 'PATCH'].includes(req.method);
+    let fwdBody = undefined;
+    if (isWrite && req.body != null) {
+      fwdBody = Buffer.isBuffer(req.body) ? req.body : req.body;
+    }
+
     const up = await axios({
       method: req.method === 'OPTIONS' ? 'GET' : req.method,
       url: target,
-      data: ['POST', 'PUT', 'PATCH'].includes(req.method) ? req.body : undefined,
+      data: fwdBody,
       timeout: 30000,
       responseType: 'arraybuffer',
       headers: fwdHeaders,
@@ -785,44 +792,42 @@ router.all('/ext-proxy', async (req, res) => {
       maxRedirects: 10,
     });
 
+    if (isWrite) {
+      const respSnippet = Buffer.from(up.data).toString('utf-8').slice(0, 500);
+      console.log(`[ext-proxy] ${req.method} ${parsedUrl.hostname}${parsedUrl.pathname} → ${up.status} (${up.data.length}b): ${respSnippet}`);
+    }
+
     const ct = up.headers['content-type'] || '';
     if (ct) res.setHeader('Content-Type', ct);
     if (up.headers['cache-control']) res.setHeader('Cache-Control', up.headers['cache-control']);
-    // Forward Set-Cookie from upstream (game sessions)
     const setCookies = up.headers['set-cookie'];
     if (setCookies) res.setHeader('Set-Cookie', setCookies);
     res.removeHeader('X-Frame-Options');
     res.removeHeader('Content-Security-Policy');
     res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+    res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,PATCH,DELETE,OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With');
 
-    // Only rewrite actual HTML pages, not API responses that happen to have text/html
     const body = Buffer.from(up.data).toString('utf-8');
     const isRealHtml = ct.toLowerCase().includes('text/html') && body.trimStart().match(/^<!doctype|^<html/i);
 
     if (isRealHtml) {
       let h = body;
       const origin = parsedUrl.origin;
-
       const baseDir = target.replace(/[?#].*$/, '').replace(/\/[^\/]*$/, '/');
 
-      // Rewrite absolute external URLs in HTML attributes
       h = h.replace(
         /((?:src|href|action|poster)\s*=\s*)(["'])(https?:\/\/[^"'\s>]+)\2/gi,
         (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(u)}${q}`
       );
-      // Protocol-relative URLs
       h = h.replace(
         /((?:src|href)\s*=\s*)(["'])(\/\/[^"'\s>]+)\2/gi,
         (_, pre, q, u) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent('https:' + u)}${q}`
       );
-      // Root-relative URLs → absolute through proxy
       h = h.replace(
         /((?:src|href)\s*=\s*)(["'])(\/(?!\/|api\/slots\/)[^"'\s>]*)\2/gi,
         (_, pre, q, p) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(origin + p)}${q}`
       );
-      // Path-relative URLs (no leading slash, no protocol) → resolve against game base dir
       h = h.replace(
         /((?:src|href)\s*=\s*)(["'])(?!https?:|\/\/|\/|#|data:|javascript:|mailto:|about:|blob:|\{)([^"'\s>]+)\2/gi,
         (_, pre, q, rel) => {
@@ -833,9 +838,9 @@ router.all('/ext-proxy', async (req, res) => {
         }
       );
 
-      // Minimal fallback interceptor for browsers without Service Worker support
       const escapedBaseDir = baseDir.replace(/'/g, "\\'");
       const serverHost = req.get('host') || 'aurex.casino';
+      const wsProto = req.protocol === 'https' ? 'wss' : 'ws';
       const inj = `<script>(function(){` +
         `var P='/api/slots/ext-proxy?u=',H=location.host||'${serverHost}',O='${origin}',B='${escapedBaseDir}';` +
         `function px(u){if(typeof u!='string')return u;` +
@@ -848,6 +853,22 @@ router.all('/ext-proxy', async (req, res) => {
         `var xo=XMLHttpRequest.prototype.open;` +
         `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
         `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
+        `var wsP='${wsProto}://'+H+'/api/slots/ws-game-proxy?target=';` +
+        `var NWS=window.WebSocket;` +
+        `window.WebSocket=function(u,p){` +
+        `if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
+        `var pu=wsP+encodeURIComponent(u);return p?new NWS(pu,p):new NWS(pu);}` +
+        `return p?new NWS(u,p):new NWS(u);};` +
+        `window.WebSocket.prototype=NWS.prototype;` +
+        `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
+        `window.WebSocket.CLOSING=NWS.CLOSING;window.WebSocket.CLOSED=NWS.CLOSED;` +
+        `try{var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
+        `if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
+        `set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}` +
+        `var oSA=Element.prototype.setAttribute;` +
+        `Element.prototype.setAttribute=function(n,v){` +
+        `if(n==='src'&&(this.tagName==='IFRAME'||this.tagName==='SCRIPT')){return oSA.call(this,n,px(v));}` +
+        `return oSA.call(this,n,v);};}catch(e){}` +
         `})()<\/script>`;
 
       if (h.includes('<head')) {
@@ -925,15 +946,31 @@ router.get('/game-frame/:token', (req, res) => {
     (_, pre, q, url) => `${pre}${q}/api/slots/ext-proxy?u=${encodeURIComponent(url)}${q}`
   );
 
-  // Minimal fallback interceptor (XHR + fetch only) for browsers without Service Worker
   const gfHost = req.get('host') || 'aurex.casino';
-  const interceptor = `<script>(function(){
-var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';
-function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}
-var xo=XMLHttpRequest.prototype.open;
-XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};
-if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}
-})()</script>`;
+  const gfWsProto = req.protocol === 'https' ? 'wss' : 'ws';
+  const interceptor = `<script>(function(){` +
+    `var P='/api/slots/ext-proxy?u=',H=location.host||'${gfHost}';` +
+    `function px(u){if(typeof u!='string'||u.indexOf('/api/slots/')>=0||u.indexOf('://')<0||u.indexOf(H)>=0)return u;return P+encodeURIComponent(u);}` +
+    `var xo=XMLHttpRequest.prototype.open;` +
+    `XMLHttpRequest.prototype.open=function(m,u){arguments[1]=px(u);return xo.apply(this,arguments);};` +
+    `if(window.fetch){var fo=window.fetch;window.fetch=function(u,o){if(typeof u=='string')u=px(u);return fo.call(this,u,o);};}` +
+    `var wsP='${gfWsProto}://'+H+'/api/slots/ws-game-proxy?target=';` +
+    `var NWS=window.WebSocket;` +
+    `window.WebSocket=function(u,p){` +
+    `if(typeof u==='string'&&u.indexOf(H)<0&&(u.indexOf('ws://')===0||u.indexOf('wss://')===0)){` +
+    `var pu=wsP+encodeURIComponent(u);return p?new NWS(pu,p):new NWS(pu);}` +
+    `return p?new NWS(u,p):new NWS(u);};` +
+    `window.WebSocket.prototype=NWS.prototype;` +
+    `window.WebSocket.CONNECTING=NWS.CONNECTING;window.WebSocket.OPEN=NWS.OPEN;` +
+    `window.WebSocket.CLOSING=NWS.CLOSING;window.WebSocket.CLOSED=NWS.CLOSED;` +
+    `try{var iD=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,'src');` +
+    `if(iD&&iD.set){Object.defineProperty(HTMLIFrameElement.prototype,'src',{` +
+    `set:function(v){iD.set.call(this,px(v));},get:iD.get,configurable:true});}` +
+    `var oSA=Element.prototype.setAttribute;` +
+    `Element.prototype.setAttribute=function(n,v){` +
+    `if(n==='src'&&(this.tagName==='IFRAME'||this.tagName==='SCRIPT')){return oSA.call(this,n,px(v));}` +
+    `return oSA.call(this,n,v);};}catch(e){}` +
+    `})()</script>`;
 
   const htmlWithFallback = interceptor + html;
   const b64 = Buffer.from(htmlWithFallback).toString('base64');
