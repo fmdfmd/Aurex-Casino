@@ -23,7 +23,7 @@
 | Backend (Railway) | https://aurex-casino-production.up.railway.app |
 | Railway Internal | xtjxpx6j.up.railway.app (используется в nginx proxy_pass) |
 | Диагностика сервера | https://aurex.casino/api/diag |
-| VPS-прокси (Aeza) | 62.60.149.199 (nginx reverse proxy) |
+| VPS-прокси (4VPS.su) | 185.236.20.24 (nginx reverse proxy, Нидерланды/Амстердам) |
 | Cloudflare | Активен, Free план, аккаунт Cazinovarush@gmail |
 | IP сервера Railway | 208.77.244.96 (проверять через /api/diag) |
 | Telegram канал | https://t.me/aurex_casino |
@@ -31,7 +31,7 @@
 
 ### Архитектура трафика (через Cloudflare)
 ```
-Пользователь → Cloudflare (скрывает IP) → VPS 62.60.149.199 (nginx) → Railway (бэкенд)
+Пользователь → Cloudflare (скрывает IP) → VPS 185.236.20.24 (nginx) → Railway (бэкенд)
 ```
 - **Cloudflare:** DNS-прокси, SSL (Edge + Origin), DDoS защита, скрытие IP VPS
 - **Cloudflare NS:** `aron.ns.cloudflare.com`, `bruce.ns.cloudflare.com`
@@ -39,14 +39,17 @@
 - **Cloudflare Zone ID:** `127e1fd2ca27bfcd4b466467d11ce9a9`
 - **Регистратор:** Namecheap (NS перенаправлены на Cloudflare)
 
-### VPS-прокси (Aeza)
-- IP: 62.60.149.199 (**скрыт за Cloudflare**, не виден пользователям)
-- Доступ: root / 8wmWUwb8dU01
+### VPS-прокси (4VPS.su — Нидерланды, Амстердам)
+- IP: 185.236.20.24 (**скрыт за Cloudflare**, не виден пользователям)
+- Доступ: root / mD5IT47T9m227
+- Хостер: 4VPS.su, тариф NL-cx01 (1 ядро, 1GB RAM, 10GB NVMe, 420₽/мес)
+- ОС: Ubuntu 22.04
 - Назначение: nginx reverse proxy → Railway
-- SSL Origin: Let's Encrypt (автообновление)
-- Защита: fail2ban (бан после 3 неудачных SSH)
+- SSL Origin: Let's Encrypt (автообновление certbot)
+- Защита: fail2ban (SSH)
 - Nginx: `real_ip_header CF-Connecting-IP` — восстанавливает реальный IP клиента из Cloudflare
 - ВАЖНО: если VPS упадёт — aurex.casino не работает, но Railway URL работает
+- **История:** Предыдущий VPS (Aeza, 62.60.149.199) заблокирован 24.02.2026 за размещение казино. Миграция на 4VPS.su выполнена 24.02.2026.
 
 ### Зеркала — стратегия при блокировке
 - **Резервные домены:** aurex1.casino — aurex10.casino (оплачены на Namecheap, DNS НЕ привязан)
@@ -55,7 +58,7 @@
 - **При блокировке домена:**
   1. РКН банит `aurex.casino`
   2. Добавить `aurex1.casino` в Cloudflare (тот же аккаунт)
-  3. Прописать A-запись на VPS `62.60.149.199` с оранжевым облаком (Proxied)
+  3. Прописать A-запись на VPS `185.236.20.24` с оранжевым облаком (Proxied)
   4. Обновить nginx `server_name` + certbot для нового домена
   5. Готово за 10-15 минут
 - **При блокировке IP VPS:**
