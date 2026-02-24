@@ -1,25 +1,25 @@
 const axios = require('axios');
 const config = require('../config/config');
 
-// H2H API client (payouts, status checks)
+// H2H API client (deposits + payouts + status checks)
 const apiClient = axios.create({
   baseURL: config.nirvanaPay.apiUrl,
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
-    'ApiPublic': config.nirvanaPay.apiKey,
-    'ApiPrivate': config.nirvanaPay.apiKey
+    'ApiPublic': config.nirvanaPay.apiPublicKey,
+    'ApiPrivate': config.nirvanaPay.apiPrivateKey
   }
 });
 
-// Payment Form API client (deposit orders with redirect)
+// Payment Form API client (deposit orders with redirect — needs separate activation)
 const formClient = axios.create({
   baseURL: 'https://f.nirvanapay.pro',
   timeout: 30000,
   headers: {
     'Content-Type': 'application/json',
-    'ApiPublic': config.nirvanaPay.apiKey,
-    'ApiPrivate': config.nirvanaPay.apiKey
+    'ApiPublic': config.nirvanaPay.apiPublicKey,
+    'ApiPrivate': config.nirvanaPay.apiPrivateKey
   }
 });
 

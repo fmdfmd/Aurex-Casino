@@ -51,7 +51,8 @@ module.exports = {
   // Nirvana Pay Payment System
   nirvanaPay: {
     apiUrl: process.env.NIRVANAPAY_API_URL || 'https://api.nirvanapay.pro',
-    apiKey: process.env.NIRVANAPAY_API_KEY || '7EbCK8H4g7rZvAT9cqmA',
+    apiPublicKey: process.env.NIRVANAPAY_PUBLIC_KEY || '00cb61a2-3b3f-4b70-b2df-efe1487e15fe',
+    apiPrivateKey: process.env.NIRVANAPAY_PRIVATE_KEY || 'ad9174c6-db56-476f-ad82-4a200f3ea14e',
     callbackUrl: process.env.NIRVANAPAY_CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/payments/nirvana/callback'
   },
 

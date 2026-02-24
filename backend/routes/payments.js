@@ -136,29 +136,26 @@ router.post('/deposit', auth, async (req, res) => {
     if (useNirvana) {
       const token = getNirvanaToken(paymentMethod);
 
-      // Use Payment Form API — redirect user to Nirvana's payment page
-      const nirvanaResponse = await nirvanaPayService.createDepositForm({
+      // H2H API — returns receiver details (card/phone) for user to send payment manually
+      const nirvanaResponse = await nirvanaPayService.createDepositH2H({
         amount: parseFloat(amount),
         transactionId: transaction.id,
-        tokenCode: token,
+        token,
         currency,
-        returnUrl: `${config.avePay.returnUrl || 'https://aurex.casino/wallet'}?provider=nirvana&txId=${transaction.id}`,
         userIp: req.ip,
         userAgent: req.headers['user-agent'],
         userEmail: req.user.email || undefined,
         userId: req.user.id
       });
 
-      if (nirvanaResponse.externalID) {
-        await pool.query(
-          "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
-          [nirvanaResponse.externalID, transaction.id]
-        );
-      }
+      await pool.query(
+        "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+        [nirvanaResponse.clientID, transaction.id]
+      );
 
       return res.json({
         success: true,
-        message: 'Перенаправляем на оплату',
+        message: 'Переведите средства по указанным реквизитам',
         data: {
           transaction: {
             id: transaction.id,
@@ -167,7 +164,12 @@ router.post('/deposit', auth, async (req, res) => {
             createdAt: transaction.created_at
           },
           provider: 'nirvana',
-          redirectUrl: nirvanaResponse.redirectUrl,
+          nirvanaDetails: {
+            receiver: nirvanaResponse.receiver,
+            bankName: nirvanaResponse.bankName,
+            recipientName: nirvanaResponse.recipientName
+          },
+          redirectUrl: null,
           avePayId: null
         }
       });
