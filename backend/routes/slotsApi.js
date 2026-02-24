@@ -890,6 +890,7 @@ router.get('/game-frame/:token', (req, res) => {
   // without interceptors/Service Worker that break game loading.
   // Must also unregister any stale Service Worker cached from earlier visits.
   if (hasWscenter) {
+    const b64ws = Buffer.from(html).toString('base64');
     const page = `<!DOCTYPE html>
 <html><head>
 <meta charset="utf-8">
@@ -910,7 +911,8 @@ body>iframe,body>div,body>object,body>embed{
 </head><body>
 <script>
 (function(){
-  function go(){document.open();document.write(${JSON.stringify(html)});document.close();}
+  var b64='${b64ws}';
+  function go(){document.open();document.write(atob(b64));document.close();}
   if('serviceWorker' in navigator){
     navigator.serviceWorker.getRegistrations().then(function(regs){
       Promise.all(regs.map(function(r){return r.unregister();}))
