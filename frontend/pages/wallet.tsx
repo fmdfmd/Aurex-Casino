@@ -663,7 +663,7 @@ export default function WalletPage() {
                                 </div>
                               )}
                               {method.iconUrl ? (
-                                <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-lg mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+                                <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-lg mx-auto mb-1.5 object-contain group-hover:scale-110 transition-transform" />
                               ) : (
                                 <div className="w-9 h-9 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
                               )}
@@ -697,7 +697,7 @@ export default function WalletPage() {
                                   </div>
                                 )}
                                 {method.iconUrl ? (
-                                  <img src={method.iconUrl} alt={method.name} className="w-11 h-11 rounded-full mx-auto mb-2 group-hover:scale-110 transition-transform" />
+                                  <img src={method.iconUrl} alt={method.name} className="w-11 h-11 rounded-full mx-auto mb-2 object-contain group-hover:scale-110 transition-transform" />
                                 ) : (
                                   <div className="w-11 h-11 rounded-full bg-aurex-obsidian-700 flex items-center justify-center text-xl mx-auto mb-2">{method.icon}</div>
                                 )}
@@ -911,7 +911,7 @@ export default function WalletPage() {
                               )}
                               <div className="flex items-center space-x-3">
                                 {method.iconUrl ? (
-                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg group-hover:scale-110 transition-transform" />
+                                  <img src={method.iconUrl} alt={method.name} className="w-10 h-10 rounded-lg object-contain group-hover:scale-110 transition-transform" />
                                 ) : (
                                   <div className="w-10 h-10 rounded-lg bg-aurex-obsidian-700 flex items-center justify-center text-xl">{method.icon}</div>
                                 )}
@@ -949,7 +949,7 @@ export default function WalletPage() {
                                   </div>
                                 )}
                                 {method.iconUrl ? (
-                                  <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-full mx-auto mb-1.5 group-hover:scale-110 transition-transform" />
+                                  <img src={method.iconUrl} alt={method.name} className="w-9 h-9 rounded-full mx-auto mb-1.5 object-contain group-hover:scale-110 transition-transform" />
                                 ) : (
                                   <div className="w-9 h-9 rounded-full bg-aurex-obsidian-700 flex items-center justify-center text-lg mx-auto mb-1.5">{method.icon}</div>
                                 )}
@@ -1068,7 +1068,7 @@ export default function WalletPage() {
                                           }`}
                                         >
                                           {bank.iconUrl ? (
-                                            <img src={bank.iconUrl} alt={bank.name} className="w-6 h-6 rounded" />
+                                            <img src={bank.iconUrl} alt={bank.name} className="w-6 h-6 rounded object-contain" />
                                           ) : (
                                             <span className="text-xl">{bank.icon}</span>
                                           )}
