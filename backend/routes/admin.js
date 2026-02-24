@@ -244,7 +244,7 @@ router.get('/users/:identifier', adminAuth, async (req, res) => {
 router.put('/users/:identifier', adminAuth, async (req, res) => {
   try {
     const { identifier } = req.params;
-    const { isActive, isAdmin, vipLevel, balance, bonusBalance } = req.body;
+    const { isActive, isAdmin, vipLevel, balance, bonusBalance, customReferralPercent } = req.body;
     
     let userId;
     if (identifier.startsWith('AUREX-')) {
@@ -279,6 +279,11 @@ router.put('/users/:identifier', adminAuth, async (req, res) => {
     if (bonusBalance !== undefined) {
       values.push(bonusBalance);
       updates.push(`bonus_balance = $${values.length}`);
+    }
+    if (customReferralPercent !== undefined) {
+      const pct = customReferralPercent === null ? null : parseFloat(customReferralPercent);
+      values.push(pct);
+      updates.push(`custom_referral_percent = $${values.length}`);
     }
     
     if (updates.length === 0) {

@@ -24,7 +24,7 @@ function getReferralTier(totalReferrals) {
 router.get('/stats', auth, async (req, res) => {
   try {
     const userResult = await pool.query(
-      'SELECT referral_code, referral_earnings FROM users WHERE id = $1',
+      'SELECT referral_code, referral_earnings, custom_referral_percent FROM users WHERE id = $1',
       [req.user.id]
     );
     
@@ -45,6 +45,7 @@ router.get('/stats', auth, async (req, res) => {
     const refStats = refResult.rows[0];
     const totalReferrals = parseInt(refStats.total_referrals);
     const tier = getReferralTier(totalReferrals);
+    const effectivePercent = user.custom_referral_percent != null ? parseFloat(user.custom_referral_percent) : tier.commissionPercent;
     
     // GGR рефералов за текущий месяц
     const ggrResult = await pool.query(`
@@ -60,7 +61,7 @@ router.get('/stats', auth, async (req, res) => {
     const monthBets = parseFloat(ggrResult.rows[0].total_bets) || 0;
     const monthWins = parseFloat(ggrResult.rows[0].total_wins) || 0;
     const monthGGR = Math.max(0, monthBets - monthWins);
-    const monthPotentialEarnings = monthGGR * (tier.commissionPercent / 100);
+    const monthPotentialEarnings = monthGGR * (effectivePercent / 100);
 
     // Заработок за текущий месяц (уже начисленный)
     const monthResult = await pool.query(`
@@ -84,7 +85,8 @@ router.get('/stats', auth, async (req, res) => {
         pendingEarnings: totalEarnings,
         availableWithdraw: totalEarnings,
         thisMonthEarnings,
-        commissionPercent: tier.commissionPercent,
+        commissionPercent: effectivePercent,
+        isCustomPercent: user.custom_referral_percent != null,
         commissionModel: 'GGR',
         currentTier: tier,
         monthGGR,
@@ -103,13 +105,16 @@ router.get('/list', auth, async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    // Get referral count for tier calculation
-    const countResult = await pool.query(
-      'SELECT COUNT(*) FROM users WHERE referred_by = $1',
+    // Get referral count + custom percent
+    const meResult = await pool.query(
+      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1) as ref_count FROM users WHERE id = $1',
       [req.user.id]
     );
-    const totalRefs = parseInt(countResult.rows[0].count);
+    const totalRefs = parseInt(meResult.rows[0].ref_count);
     const tier = getReferralTier(totalRefs);
+    const effectivePercent = meResult.rows[0].custom_referral_percent != null
+      ? parseFloat(meResult.rows[0].custom_referral_percent)
+      : tier.commissionPercent;
     
     const result = await pool.query(`
       SELECT u.id, u.username, u.created_at, u.deposit_count,
@@ -131,7 +136,7 @@ router.get('/list', auth, async (req, res) => {
         registeredAt: r.created_at,
         depositCount: r.deposit_count,
         ggr,
-        earned: ggr * (tier.commissionPercent / 100),
+        earned: ggr * (effectivePercent / 100),
         status: r.deposit_count > 0 ? 'active' : 'inactive',
       };
     });
@@ -238,6 +243,7 @@ async function processWeeklyReferralGGR(dbPool) {
     SELECT 
       u_ref.referred_by as referrer_id,
       (SELECT COUNT(*) FROM users WHERE referred_by = u_ref.referred_by) as total_referrals,
+      (SELECT custom_referral_percent FROM users WHERE id::text = u_ref.referred_by) as custom_percent,
       COALESCE(SUM(CASE WHEN t.type = 'bet' THEN t.amount ELSE 0 END), 0) as total_bets,
       COALESCE(SUM(CASE WHEN t.type = 'win' THEN t.amount ELSE 0 END), 0) as total_wins
     FROM users u_ref
@@ -259,7 +265,8 @@ async function processWeeklyReferralGGR(dbPool) {
     if (ggr <= 0) continue;
 
     const tier = getReferralTier(parseInt(row.total_referrals));
-    const commission = ggr * (tier.commissionPercent / 100);
+    const percent = row.custom_percent != null ? parseFloat(row.custom_percent) : tier.commissionPercent;
+    const commission = ggr * (percent / 100);
     
     if (commission < 10) continue; // min 10 RUB
 
