@@ -100,7 +100,10 @@ const defaultPaymentMethodsConfig = {
     // Nirvana Pay — СБП через конкретные банки
     { id: 'NIRVANA_SBER_SBP', name: 'Сбер СБП', iconUrl: '/images/payments/sber.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana', subtitle: 'СБП через Сбер' },
     { id: 'NIRVANA_ALFA_SBP', name: 'Альфа СБП', iconUrl: '/images/payments/alfa.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana', subtitle: 'СБП через Альфу' },
-    { id: 'NIRVANA_VTB_SBP', name: 'ВТБ СБП', iconUrl: '/images/payments/vtb.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana', subtitle: 'СБП через ВТБ' }
+    { id: 'NIRVANA_VTB_SBP', name: 'ВТБ СБП', iconUrl: '/images/payments/vtb.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'nirvana', subtitle: 'СБП через ВТБ' },
+    // Nirvana Pay — трансграничные переводы
+    { id: 'NIRVANA_TRANS_SBP', name: 'Транс СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 500, maxDeposit: 100000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'nirvana', subtitle: 'трансграничный' },
+    { id: 'NIRVANA_TRANS_C2C', name: 'Транс C2C', iconUrl: '/images/payments/card.png', minDeposit: 500, maxDeposit: 100000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'nirvana', subtitle: 'трансграничный' }
   ],
   crypto: [],
   banks: [
