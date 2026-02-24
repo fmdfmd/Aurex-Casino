@@ -907,9 +907,52 @@ router.get('/game-frame/:token', async (req, res) => {
     console.error('[game-frame] Redirect resolution error:', e.message);
   }
 
+  // Client-side interceptor: Fundist JS dynamically creates iframes via
+  // iframe.src = "https://game-p1.thunderkick.com/...". We override the
+  // setter so blocked domains are rewritten to our proxy BEFORE the browser
+  // starts loading. Also catches setAttribute('src', ...) and DOM insertion.
+  const iframeInterceptor = '<script>(function(){' +
+    'var RULES=[' +
+      '[/game-p\\d+\\.thunderkick\\.com/,"thunderkick.com","/api/slots/game-proxy/tk"]' +
+    '];' +
+    'function rw(v){' +
+      'if(typeof v!=="string")return v;' +
+      'for(var i=0;i<RULES.length;i++){' +
+        'if(v.indexOf(RULES[i][1])!==-1){' +
+          'v=v.replace(new RegExp("(https?:)?//"+RULES[i][0].source,"g"),RULES[i][2]);' +
+        '}' +
+      '}' +
+      'return v;' +
+    '}' +
+    'var d=Object.getOwnPropertyDescriptor(HTMLIFrameElement.prototype,"src");' +
+    'if(d&&d.set){' +
+      'Object.defineProperty(HTMLIFrameElement.prototype,"src",{' +
+        'set:function(v){d.set.call(this,rw(v));},' +
+        'get:function(){return d.get.call(this);},' +
+        'configurable:true' +
+      '});' +
+    '}' +
+    'var sa=Element.prototype.setAttribute;' +
+    'Element.prototype.setAttribute=function(n,v){' +
+      'if(this.tagName==="IFRAME"&&n==="src")v=rw(v);' +
+      'return sa.call(this,n,v);' +
+    '};' +
+    'new MutationObserver(function(ml){ml.forEach(function(m){' +
+      'm.addedNodes.forEach(function(n){' +
+        'if(!n||!n.querySelectorAll)return;' +
+        'var fs=n.tagName==="IFRAME"?[n]:[].slice.call(n.querySelectorAll("iframe"));' +
+        'fs.forEach(function(f){' +
+          'var s=f.getAttribute("src");' +
+          'if(s){var r=rw(s);if(r!==s)f.src=r;}' +
+        '});' +
+      '});' +
+    '});}).observe(document.documentElement,{childList:true,subtree:true});' +
+    '})();</script>';
+
   // Wrap fragment in proper HTML document to avoid Quirks Mode
   const fullHtml = '<!DOCTYPE html><html><head><meta charset="utf-8">' +
     '<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">' +
+    iframeInterceptor +
     '<style>html,body{margin:0;padding:0;width:100%;height:100%;overflow:hidden;background:#000}' +
     'iframe,object,embed{width:100%!important;height:100%!important;position:absolute!important;top:0!important;left:0!important;border:0!important}' +
     '</style></head><body>' + html + '</body></html>';
