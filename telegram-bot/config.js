@@ -17,7 +17,7 @@ module.exports = {
   internalApiKey: process.env.INTERNAL_API_KEY || 'aurex-internal-key-2026',
 
   // Links
-  websiteUrl: process.env.WEBSITE_URL || 'https://zonal-insight-production-32f9.up.railway.app',
+  websiteUrl: process.env.WEBSITE_URL || 'https://aurex1.casino',
   channelUrl: process.env.CHANNEL_URL || 'https://t.me/aurex_casino',
   
   // Bot Settings
