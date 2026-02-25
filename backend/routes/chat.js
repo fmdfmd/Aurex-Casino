@@ -201,7 +201,7 @@ router.get('/ticket/:id/messages', auth, async (req, res) => {
     const after = req.query.after || '1970-01-01';
 
     const ticketCheck = await pool.query(
-      'SELECT id, status, assigned_to FROM tickets WHERE id = $1 AND user_id = $2',
+      'SELECT id, status, assigned_to, assigned_operator_name FROM tickets WHERE id = $1 AND user_id = $2',
       [id, req.user.id]
     );
     if (ticketCheck.rows.length === 0) {
@@ -210,8 +210,8 @@ router.get('/ticket/:id/messages', auth, async (req, res) => {
 
     const ticket = ticketCheck.rows[0];
 
-    let operatorName = null;
-    if (ticket.assigned_to) {
+    let operatorName = ticket.assigned_operator_name || null;
+    if (!operatorName && ticket.assigned_to) {
       const opResult = await pool.query('SELECT username FROM users WHERE id = $1', [ticket.assigned_to]);
       operatorName = opResult.rows[0]?.username || 'Оператор';
     }
@@ -299,9 +299,9 @@ router.patch('/internal/ticket/:id/assign', internalAuth, async (req, res) => {
     const { operatorName } = req.body;
 
     const result = await pool.query(
-      `UPDATE tickets SET status = 'in_progress', updated_at = CURRENT_TIMESTAMP
+      `UPDATE tickets SET status = 'in_progress', assigned_operator_name = $2, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND status = 'open' RETURNING *`,
-      [id]
+      [id, operatorName || 'Оператор']
     );
 
     if (result.rows.length === 0) {
