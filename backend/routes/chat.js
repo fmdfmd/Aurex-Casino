@@ -1,9 +1,39 @@
 const express = require('express');
 const router = express.Router();
 const axios = require('axios');
+const path = require('path');
+const fs = require('fs');
+const multer = require('multer');
 const { auth } = require('../middleware/auth');
 const pool = require('../config/database');
 const telegramNotify = require('../services/telegramNotify');
+
+const CHAT_UPLOAD_DIR = process.env.UPLOAD_DIR
+  ? path.join(process.env.UPLOAD_DIR, 'chat')
+  : path.join(__dirname, '..', 'uploads', 'chat');
+
+if (!fs.existsSync(CHAT_UPLOAD_DIR)) {
+  fs.mkdirSync(CHAT_UPLOAD_DIR, { recursive: true });
+}
+
+const chatUpload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, CHAT_UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname);
+      cb(null, `chat-${Date.now()}-${Math.round(Math.random() * 1E9)}${ext}`);
+    }
+  }),
+  fileFilter: (req, file, cb) => {
+    const allowed = /jpeg|jpg|png|gif|webp|pdf|mp4|mov/;
+    if (allowed.test(path.extname(file.originalname).toLowerCase()) || allowed.test(file.mimetype.split('/')[1])) {
+      cb(null, true);
+    } else {
+      cb(new Error('Недопустимый тип файла'), false);
+    }
+  },
+  limits: { fileSize: 20 * 1024 * 1024 }
+});
 
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY || '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';
 const INTERNAL_API_KEY = process.env.INTERNAL_API_KEY || 'aurex-internal-key-2026';
@@ -217,7 +247,7 @@ router.get('/ticket/:id/messages', auth, async (req, res) => {
     }
 
     const messagesResult = await pool.query(
-      `SELECT id, message, is_staff, created_at FROM ticket_messages
+      `SELECT id, message, is_staff, file_url, file_name, file_type, created_at FROM ticket_messages
        WHERE ticket_id = $1 AND created_at > $2
        ORDER BY created_at ASC`,
       [id, after]
@@ -236,11 +266,13 @@ router.get('/ticket/:id/messages', auth, async (req, res) => {
 });
 
 // ===== LIVE SUPPORT: User sends message in operator mode =====
-router.post('/ticket/:id/message', auth, async (req, res) => {
+router.post('/ticket/:id/message', auth, chatUpload.single('file'), async (req, res) => {
   try {
     const { id } = req.params;
     const { message } = req.body;
-    if (!message) return res.status(400).json({ success: false, message: 'Сообщение обязательно' });
+    const file = req.file;
+
+    if (!message && !file) return res.status(400).json({ success: false, message: 'Сообщение обязательно' });
 
     const ticketCheck = await pool.query(
       'SELECT * FROM tickets WHERE id = $1 AND user_id = $2',
@@ -250,18 +282,26 @@ router.post('/ticket/:id/message', auth, async (req, res) => {
       return res.status(404).json({ success: false, message: 'Тикет не найден' });
     }
 
+    let fileUrl = null, fileName = null, fileType = null;
+    if (file) {
+      fileUrl = `/uploads/chat/${file.filename}`;
+      fileName = file.originalname;
+      fileType = file.mimetype;
+    }
+
     await pool.query(
-      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff)
-       VALUES ($1, $2, $3, false)`,
-      [id, req.user.id, message]
+      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff, file_url, file_name, file_type)
+       VALUES ($1, $2, $3, false, $4, $5, $6)`,
+      [id, req.user.id, message || (file ? `[Файл: ${fileName}]` : ''), fileUrl, fileName, fileType]
     );
 
     const ticket = ticketCheck.rows[0];
-    telegramNotify.notifyChatMessage(ticket, req.user, message).catch(err => {
+    const notifyMsg = file ? `📎 ${fileName}${message ? '\n' + message : ''}` : message;
+    telegramNotify.notifyChatMessage(ticket, req.user, notifyMsg, fileUrl).catch(err => {
       console.error('Telegram chat message notify error:', err.message);
     });
 
-    res.json({ success: true });
+    res.json({ success: true, fileUrl });
   } catch (error) {
     console.error('Send chat message error:', error);
     res.status(500).json({ success: false, message: error.message });
@@ -272,12 +312,12 @@ router.post('/ticket/:id/message', auth, async (req, res) => {
 router.post('/internal/ticket/:id/reply', internalAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { message, operatorName } = req.body;
+    const { message, operatorName, fileUrl, fileName, fileType } = req.body;
 
     await pool.query(
-      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff)
-       VALUES ($1, NULL, $2, true)`,
-      [id, message]
+      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff, file_url, file_name, file_type)
+       VALUES ($1, NULL, $2, true, $3, $4, $5)`,
+      [id, message || (fileUrl ? `[Файл: ${fileName || 'файл'}]` : ''), fileUrl || null, fileName || null, fileType || null]
     );
 
     await pool.query(
@@ -288,6 +328,35 @@ router.post('/internal/ticket/:id/reply', internalAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Internal reply error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===== INTERNAL: Operator reply with file from Telegram bot =====
+router.post('/internal/ticket/:id/reply-file', internalAuth, chatUpload.single('file'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const file = req.file;
+
+    let fileUrl = null, fileName = null, fileType = null;
+    if (file) {
+      fileUrl = `/uploads/chat/${file.filename}`;
+      fileName = file.originalname;
+      fileType = file.mimetype;
+    }
+
+    await pool.query(
+      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff, file_url, file_name, file_type)
+       VALUES ($1, NULL, $2, true, $3, $4, $5)`,
+      [id, message || (fileUrl ? `[Файл: ${fileName}]` : ''), fileUrl, fileName, fileType]
+    );
+
+    await pool.query('UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = $1', [id]);
+
+    res.json({ success: true });
+  } catch (error) {
+    console.error('Internal reply-file error:', error);
     res.status(500).json({ success: false, message: error.message });
   }
 });

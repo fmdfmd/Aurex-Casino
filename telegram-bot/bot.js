@@ -810,7 +810,40 @@ bot.on('photo', async (ctx) => {
     return;
   }
   
-  // Check if manager is replying with photo
+  // Check if manager is replying with photo to a WEB ticket
+  if (await isManager(ctx)) {
+    let webTicketId = managerWebTickets.get(userId);
+    if (!webTicketId) {
+      const dbTicketId = await db.getActiveWebTicketForOperator(userId);
+      if (dbTicketId) { managerWebTickets.set(userId, dbTicketId); webTicketId = dbTicketId; }
+    }
+    if (webTicketId) {
+      try {
+        const fileLink = await bot.telegram.getFileLink(photo.file_id);
+        const photoResponse = await axios.get(fileLink.href, { responseType: 'arraybuffer' });
+        const ext = fileLink.href.split('.').pop() || 'jpg';
+        const fileName = `photo-${Date.now()}.${ext}`;
+        const FormData = require('form-data');
+        const formData = new FormData();
+        formData.append('message', caption || '');
+        formData.append('file', Buffer.from(photoResponse.data), { filename: fileName, contentType: `image/${ext}` });
+        await axios.post(
+          `${config.backendUrl}/api/chat/internal/ticket/${webTicketId}/reply-file`,
+          formData,
+          { headers: { 'x-internal-key': config.internalApiKey, ...formData.getHeaders() }, timeout: 15000 }
+        );
+        await ctx.reply(`📷 Фото отправлено в веб-чат (тикет #${webTicketId}).`, {
+          ...Markup.inlineKeyboard([[Markup.button.callback('❌ Закрыть веб-тикет', `close_web:${webTicketId}`)]])
+        });
+      } catch (error) {
+        console.error('Web ticket photo reply error:', error.response?.data || error.message);
+        await ctx.reply('❌ Не удалось отправить фото в веб-чат.');
+      }
+      return;
+    }
+  }
+
+  // Check if manager is replying with photo to a Telegram ticket
   if (await isManager(ctx)) {
     const managerTicketId = managerReplies.get(userId);
     if (managerTicketId) {

@@ -10,6 +10,8 @@ import {
   Headphones,
   UserCheck,
   ArrowLeft,
+  Paperclip,
+  Image as ImageIcon,
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 
@@ -18,6 +20,9 @@ interface Message {
   type: 'user' | 'agent' | 'system' | 'operator';
   text: string;
   timestamp: Date;
+  fileUrl?: string;
+  fileName?: string;
+  fileType?: string;
 }
 
 type ChatMode = 'ai' | 'operator' | 'waiting';
@@ -34,8 +39,10 @@ export default function LiveChatWidget() {
   const [ticketId, setTicketId] = useState<number | null>(null);
   const [operatorName, setOperatorName] = useState<string | null>(null);
   const [lastPollTimestamp, setLastPollTimestamp] = useState<string | null>(null);
+  const [isUploading, setIsUploading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (isOpen && messages.length === 0) {
@@ -88,6 +95,9 @@ export default function LiveChatWidget() {
             type: 'operator' as const,
             text: m.message,
             timestamp: new Date(m.created_at),
+            fileUrl: m.file_url || undefined,
+            fileName: m.file_name || undefined,
+            fileType: m.file_type || undefined,
           }));
 
         if (newMsgs.length > 0) {
@@ -150,17 +160,28 @@ export default function LiveChatWidget() {
     }
   };
 
-  const sendToOperator = async (text: string) => {
+  const sendToOperator = async (text: string, file?: File) => {
     if (!ticketId || !token) return;
     try {
-      await fetch(`/api/chat/ticket/${ticketId}/message`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
-        body: JSON.stringify({ message: text })
-      });
+      if (file) {
+        const formData = new FormData();
+        if (text) formData.append('message', text);
+        formData.append('file', file);
+        await fetch(`/api/chat/ticket/${ticketId}/message`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}` },
+          body: formData
+        });
+      } else {
+        await fetch(`/api/chat/ticket/${ticketId}/message`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({ message: text })
+        });
+      }
     } catch (err) {
       console.error('Send to operator error:', err);
     }
@@ -247,6 +268,32 @@ export default function LiveChatWidget() {
     }
   };
 
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || mode !== 'operator' || !ticketId) return;
+
+    const isImage = file.type.startsWith('image/');
+    const fileUrl = isImage ? URL.createObjectURL(file) : undefined;
+
+    const userMessage: Message = {
+      id: Date.now().toString(),
+      type: 'user',
+      text: inputText.trim() || `📎 ${file.name}`,
+      timestamp: new Date(),
+      fileUrl,
+      fileName: file.name,
+      fileType: file.type,
+    };
+    setMessages(prev => [...prev, userMessage]);
+
+    setIsUploading(true);
+    await sendToOperator(inputText.trim(), file);
+    setIsUploading(false);
+    setInputText('');
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
@@ -284,7 +331,42 @@ export default function LiveChatWidget() {
       ? 'Ищем свободного оператора'
       : 'Онлайн 24/7';
 
-  const isInputDisabled = isTyping || mode === 'waiting';
+  const isInputDisabled = isTyping || mode === 'waiting' || isUploading;
+
+  const renderMessageContent = (msg: Message) => {
+    const isImage = msg.fileType?.startsWith('image/');
+    return (
+      <>
+        {msg.fileUrl && isImage && (
+          <a href={msg.fileUrl} target="_blank" rel="noopener noreferrer" className="block mb-2">
+            <img
+              src={msg.fileUrl}
+              alt={msg.fileName || 'Изображение'}
+              className="max-w-full max-h-48 rounded-lg object-cover cursor-pointer hover:opacity-90 transition-opacity"
+              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }}
+            />
+          </a>
+        )}
+        {msg.fileUrl && !isImage && (
+          <a
+            href={msg.fileUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-center gap-2 mb-2 px-3 py-2 bg-white/10 rounded-lg hover:bg-white/20 transition-colors"
+          >
+            <Paperclip className="w-4 h-4 flex-shrink-0" />
+            <span className="text-sm truncate underline">{msg.fileName || 'Файл'}</span>
+          </a>
+        )}
+        {msg.text && !(msg.fileUrl && msg.text.startsWith('[Файл:')) && !(msg.fileUrl && msg.text.startsWith('📎')) && (
+          <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+        )}
+        {!msg.text && !msg.fileUrl && (
+          <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+        )}
+      </>
+    );
+  };
 
   return (
     <div id="live-chat-widget">
@@ -394,7 +476,7 @@ export default function LiveChatWidget() {
                           <span className="text-xs font-semibold text-blue-200">Оператор</span>
                         </div>
                       )}
-                      <p className="text-sm whitespace-pre-wrap">{msg.text}</p>
+                      {renderMessageContent(msg)}
                       <div className={`flex items-center gap-1 mt-1 text-xs ${
                         msg.type === 'user' ? 'text-aurex-obsidian-700' : msg.type === 'operator' ? 'text-blue-200' : 'text-aurex-platinum-500'
                       }`}>
@@ -457,7 +539,30 @@ export default function LiveChatWidget() {
             )}
 
             <div className="p-4 border-t border-aurex-obsidian-700">
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*,.pdf,.mp4,.mov"
+                onChange={handleFileSelect}
+                className="hidden"
+              />
               <div className="flex items-center gap-2">
+                {mode === 'operator' && (
+                  <motion.button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isInputDisabled}
+                    whileHover={{ scale: 1.05 }}
+                    whileTap={{ scale: 0.95 }}
+                    className="p-3 rounded-xl bg-aurex-obsidian-800 text-aurex-platinum-400 hover:text-aurex-gold-500 hover:bg-aurex-obsidian-700 transition-colors disabled:opacity-50"
+                    title="Прикрепить файл"
+                  >
+                    {isUploading ? (
+                      <div className="w-5 h-5 border-2 border-aurex-gold-500 border-t-transparent rounded-full animate-spin" />
+                    ) : (
+                      <Paperclip className="w-5 h-5" />
+                    )}
+                  </motion.button>
+                )}
                 <input
                   type="text"
                   value={inputText}

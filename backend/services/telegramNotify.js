@@ -208,35 +208,45 @@ ${this.escapeHtml((ticket.message || '').substring(0, 500))}
   /**
    * Переслать сообщение из чата привязанному менеджеру
    */
-  async notifyChatMessage(ticket, user, messageText) {
-    if (!ticket.assigned_to) {
-      const managers = await this.getActiveManagers();
-      const msg = `💬 <b>Новое сообщение в чат-тикете #${ticket.id}</b>
+  async notifyChatMessage(ticket, user, messageText, fileUrl) {
+    const caption = `💬 <b>Чат-тикет #${ticket.id}</b>\n👤 ${this.escapeHtml(user.username || user.email || 'User')}:\n\n${this.escapeHtml((messageText || '').substring(0, 500))}`;
 
-👤 ${this.escapeHtml(user.username || user.email || 'User')}
-
-${this.escapeHtml(messageText.substring(0, 500))}`;
-      for (const managerId of managers) {
-        await this.sendMessage(managerId, msg);
+    let targetManagers = [];
+    if (ticket.operator_telegram_id) {
+      targetManagers = [ticket.operator_telegram_id];
+    } else {
+      try {
+        const result = await pool.query('SELECT telegram_id FROM support_managers WHERE is_active = true');
+        targetManagers = result.rows.map(r => r.telegram_id);
+      } catch (err) {
+        console.error('notifyChatMessage get managers error:', err.message);
+        return;
       }
-      return;
     }
 
-    // Try to find the manager's telegram_id by assigned_to
-    try {
-      const result = await pool.query(
-        `SELECT telegram_id FROM support_managers WHERE is_active = true`
-      );
-      // Broadcast to all active managers — the bot tracks which manager has the ticket
-      const msg = `💬 <b>Чат-тикет #${ticket.id}</b>
-👤 ${this.escapeHtml(user.username || user.email || 'User')}:
-
-${this.escapeHtml(messageText.substring(0, 500))}`;
-      for (const row of result.rows) {
-        await this.sendMessage(row.telegram_id, msg);
+    for (const managerId of targetManagers) {
+      if (fileUrl && fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        await this.sendPhoto(managerId, fileUrl, caption);
+      } else {
+        await this.sendMessage(managerId, caption);
       }
+    }
+  }
+
+  async sendPhoto(chatId, fileUrl, caption) {
+    if (!BOT_TOKEN) return;
+    try {
+      const photoUrl = fileUrl.startsWith('http') ? fileUrl : `${process.env.BACKEND_URL || 'https://aurex-casino-production.up.railway.app'}${fileUrl}`;
+      const axios = require('axios');
+      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+        chat_id: chatId,
+        photo: photoUrl,
+        caption: caption?.substring(0, 1024),
+        parse_mode: 'HTML'
+      });
     } catch (err) {
-      console.error('notifyChatMessage error:', err.message);
+      console.error('sendPhoto error, falling back to text:', err.message);
+      await this.sendMessage(chatId, `${caption}\n\n📎 Фото: ${fileUrl}`);
     }
   }
 

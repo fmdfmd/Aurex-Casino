@@ -1,0 +1,4 @@
+ALTER TABLE ticket_messages ADD COLUMN IF NOT EXISTS file_url VARCHAR(500);
+ALTER TABLE ticket_messages ADD COLUMN IF NOT EXISTS file_name VARCHAR(255);
+ALTER TABLE ticket_messages ADD COLUMN IF NOT EXISTS file_type VARCHAR(100);
+ALTER TABLE ticket_messages ALTER COLUMN message DROP NOT NULL;
