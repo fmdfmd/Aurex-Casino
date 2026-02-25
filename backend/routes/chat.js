@@ -361,6 +361,38 @@ router.post('/internal/ticket/:id/reply-file', internalAuth, chatUpload.single('
   }
 });
 
+// ===== INTERNAL: Operator sends file from Telegram bot =====
+router.post('/internal/ticket/:id/reply-file', internalAuth, chatUpload.single('file'), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    const file = req.file;
+
+    let fileUrl = null, fileName = null, fileType = null;
+    if (file) {
+      fileUrl = `/uploads/chat/${file.filename}`;
+      fileName = file.originalname;
+      fileType = file.mimetype;
+    }
+
+    await pool.query(
+      `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff, file_url, file_name, file_type)
+       VALUES ($1, NULL, $2, true, $3, $4, $5)`,
+      [id, message || (file ? `[Файл: ${fileName}]` : ''), fileUrl, fileName, fileType]
+    );
+
+    await pool.query(
+      'UPDATE tickets SET updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [id]
+    );
+
+    res.json({ success: true, fileUrl });
+  } catch (error) {
+    console.error('Internal reply-file error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 // ===== INTERNAL: Operator takes ticket from Telegram bot =====
 router.patch('/internal/ticket/:id/assign', internalAuth, async (req, res) => {
   try {
