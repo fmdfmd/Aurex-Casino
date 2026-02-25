@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 25 февраля 2026**
+> **Последнее обновление: 11 января 2026** (актуализация всех систем)
 
 ---
 
@@ -307,12 +307,15 @@ java -jar OWClientTest_v2.14.jar \
 ### Способы входа
 - **Телефон:** регистрация через SMS (uCaller flash-call)
 - **Google OAuth:** настроен (GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET на Railway)
-  - Redirect URI: `https://aurex.casino/api/auth/google/callback`
+  - Redirect URI: `https://aurex.casino/api/auth/google/callback` + `https://aurex1.casino/api/auth/google/callback`
+  - Authorized JavaScript Origins: `https://aurex.casino` + `https://aurex1.casino`
   - Google Cloud проект: "AUREX casino"
+  - **Мультидомен:** бэкенд динамически определяет `redirect_uri` из `Origin`/`Referer` заголовка запроса
 - **Telegram Login:** виджет + `data-auth-url`
   - Бот: @aurex_support_bot
-  - Домен: aurex.casino (установлен в @BotFather)
+  - Домены: aurex.casino + aurex1.casino (оба установлены в @BotFather)
   - Endpoint: `GET /api/auth/telegram/callback`
+  - **Мультидомен:** бэкенд динамически определяет `frontendUrl` для редиректа после логина
 - Соцсети создают пользователя без пароля (password nullable)
 
 ### uCaller (верификация телефона)
@@ -388,12 +391,19 @@ java -jar OWClientTest_v2.14.jar \
 - Путь: `/api/loyalty/*`
 
 ### Промокоды
-- Различные типы бонусов
-- Управление через админ-панель
+- Типы: balance (прямое зачисление), bonus, freespins, deposit_bonus
+- Управление через админ-панель (`/admin/promocodes`)
+- Массовое создание (например, 20 промокодов по 1000₽)
+- Каждый промокод — одноразовый на аккаунт (таблица `promocode_usages`)
+- **Balance-промокоды:** зачисляются напрямую на `balance` без вейджера
+- **Файлы:** `backend/routes/promocodes.js`, `frontend/pages/admin/promocodes.tsx`, `frontend/pages/wallet.tsx`
 
 ### Реферальная система
-- 5 уровней партнёров (10-20% комиссии)
+- 5 уровней партнёров (10-20% комиссии от GGR)
 - Автоматическая генерация реферального кода
+- **Админ-панель рефералов** (`/admin/referrals`): таблица рефереров, детальный просмотр, установка индивидуального процента (`custom_referral_percent`)
+- Комиссия считается от **чистого проигрыша** рефералов (ставки - выигрыши), не от депозитов
+- Еженедельная обработка (крон, понедельник 00:00)
 
 ---
 
@@ -407,13 +417,16 @@ java -jar OWClientTest_v2.14.jar \
 - `cashback_records` — кэшбэк
 - `loyalty_purchases` — покупки VIP
 - `user_boosts` — активные бусты
-- `tickets` — тикеты поддержки (включая live_chat из веб-чата, status: open/in_progress/resolved)
-- `ticket_messages` — сообщения в тикетах (sender_type: user/staff/system, sender_name)
+- `tickets` — тикеты поддержки (включая live_chat из веб-чата, status: open/in_progress/resolved, `assigned_operator_name`, `operator_telegram_id`)
+- `ticket_messages` — сообщения в тикетах (sender_type: user/staff/system, sender_name, `file_url`, `file_name`, `file_type`)
+- `promocode_usages` — отслеживание использования промокодов (user_id, promocode_id)
 - `promocodes` — промокоды
 - `tournaments` — турниры
 
 ### Миграции
 - `001_init.sql` — `008_social_auth.sql` (все применены)
+- `016_ticket_operator_telegram_id.sql` — колонка `operator_telegram_id BIGINT` в `tickets` (для персистентности оператора)
+- `017_ticket_messages_files.sql` — колонки `file_url`, `file_name`, `file_type` в `ticket_messages`, `message DROP NOT NULL`
 
 ---
 
@@ -444,9 +457,10 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/chat/message` | AI чат Стефани (POST) |
 | `/api/chat/ticket` | Live Support: создать тикет из чата (POST, auth) |
 | `/api/chat/ticket/:id/messages` | Live Support: polling сообщений (GET, auth) |
-| `/api/chat/ticket/:id/message` | Live Support: отправка сообщения оператору (POST, auth) |
-| `/api/chat/internal/ticket/:id/*` | Internal: reply, assign, close (INTERNAL_API_KEY) |
+| `/api/chat/ticket/:id/message` | Live Support: отправка сообщения оператору + PDF файлов (POST, auth, multipart) |
+| `/api/chat/internal/ticket/:id/*` | Internal: reply, reply-file, assign, close (INTERNAL_API_KEY) |
 | `/api/admin/*` | Админ-панель |
+| `/api/admin/referrals` | Админ: список рефереров, детали, изменение процента (GET/PUT) |
 | `/api/diag` | Диагностика (IP, конфиг) |
 | `/api/health` | Health check |
 
@@ -483,8 +497,12 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/pages/wallet.tsx` | Кошелёк: депозит/вывод через AVE PAY + Nirvana Pay + Expay. Крипта скрыта |
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
+| `frontend/pages/admin/referrals.tsx` | Админ-панель рефералов (таблица, детали, инд. процент) |
+| `frontend/components/AdminLayout.tsx` | Layout админки (навигация: Промокоды, Кешбэк, Рефералка) |
+| `frontend/components/Header.tsx` | Хедер (мобильное меню вынесено за header для backdrop-filter фикса) |
+| `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/store/settingsStore.ts` | Настройки (язык, валюта отображения) |
-| `frontend/next.config.js` | Rewrites (/api → backend), headers |
+| `frontend/next.config.js` | Rewrites (/api + /uploads → backend), headers |
 | `frontend/pages/_app.tsx` | Viewport meta (viewport-fit=cover для iOS) |
 
 ---
@@ -503,9 +521,11 @@ java -jar OWClientTest_v2.14.jar \
 Менеджеры получают уведомления о запросах оператора из веб-чата и могут:
 - **Взять тикет** (`take_web:ID`) — получить карточку клиента (баланс, депозиты, VIP, верификация)
 - **Отвечать** — текст менеджера отправляется в backend → пользователь видит в чате на сайте (polling каждые 3 сек)
+- **Отправлять файлы** — фото из Telegram скачиваются и загружаются на backend через `/internal/ticket/:id/reply-file`
 - **Закрыть тикет** (`close_web:ID`) — тикет закрывается, пользователь получает системное сообщение
 - Маршрутизация: `managerWebTickets` Map (отдельно от Telegram `managerReplies`)
 - Приоритет: веб-тикет проверяется перед Telegram-тикетом в обработчике сообщений
+- **Персистентность:** `operator_telegram_id` сохраняется в БД → при перезапуске бота маппинг восстанавливается через `db.getActiveWebTicketForOperator()`
 
 ---
 
@@ -548,6 +568,13 @@ java -jar OWClientTest_v2.14.jar \
 | `POST` | `/api/chat/internal/ticket/:id/reply` | INTERNAL_API_KEY | Ответ оператора из Telegram |
 | `PATCH` | `/api/chat/internal/ticket/:id/assign` | INTERNAL_API_KEY | Оператор берёт тикет |
 | `PATCH` | `/api/chat/internal/ticket/:id/close` | INTERNAL_API_KEY | Закрыть тикет |
+
+**Файлы в чате:**
+- Пользователь может отправить **PDF** через скрепку в чате → файл загружается на backend (multer → `/uploads/chat/`)
+- Оператор получает PDF как документ в Telegram (`sendDocument`)
+- Оператор может отправить фото из Telegram → бот скачивает и загружает через `/internal/ticket/:id/reply-file`
+- Frontend проксирует `/uploads/:path*` через Next.js rewrite на backend
+- **Ограничение:** только PDF (фото-аплоад отключён из-за Safari-бага с `accept="image/*"`)
 
 **Карточка клиента (для менеджеров в Telegram):**
 - Логин, Email, Телефон, ID, дата регистрации, верификация
@@ -1222,6 +1249,8 @@ CARDRUBP2P: 0 (value)
 - Webhook HMAC-SHA256 — обязательная подпись
 - Database transactions с `FOR UPDATE` — защита от race conditions
 - `GREATEST(0, bonus_balance - bet)` — защита от отрицательного бонусного баланса
+- `ADMIN_PIN` — доп. защита админ-панели (env var на Railway, rate limit 5 попыток / 15 мин)
+- Тестовые/демо аккаунты удалены из seed-скрипта и прод-базы
 
 ---
 
@@ -1285,6 +1314,21 @@ CARDRUBP2P: 0 (value)
 - [x] Live Support — real-time polling сообщений (каждые 3 сек)
 - [x] Live Support — internal API с INTERNAL_API_KEY для связи Telegram-бот ↔ Backend
 - [x] Live Support — 3 режима UI в чате (AI/ожидание/оператор) с цветовой индикацией
+- [x] Live Support — PDF-файлы в чате (пользователь → оператор в Telegram, оператор → пользователь на сайте)
+- [x] Live Support — персистентность оператора через `operator_telegram_id` (переживает перезапуск бота)
+- [x] Live Support — отправка файлов из Telegram бота на сайт (`/internal/ticket/:id/reply-file`)
+- [x] Google/Telegram Login — мультидоменная поддержка (aurex.casino + aurex1.casino одновременно)
+- [x] Админ-панель рефералов (`/admin/referrals`) — таблица рефереров, детальный просмотр, установка индивидуального процента
+- [x] Реферальная система — фикс подсчёта рефералов (subqueries вместо JOIN, исправлено раздутие COUNT)
+- [x] Реферальная ссылка — мультидоменная (приоритет `x-forwarded-host` → `origin` → `referer` → `aurex1.casino`)
+- [x] Промокоды — фикс начисления баланса (убран скрытый вейджер x35 для balance-типа)
+- [x] Промокоды — отслеживание использования через `promocode_usages` (1 раз на аккаунт)
+- [x] Мобильное меню — фикс гамбургера при скролле (`backdrop-filter` создавал containing block для `fixed`)
+- [x] Кешбэк админка — исправлены текст (понедельники, 5-15%, x5 вейджер)
+- [x] Next.js rewrite `/uploads/:path*` → backend (для статических файлов чата)
+- [x] Платёжки — динамический `returnUrl` из `Origin` заголовка (работает на любом зеркале)
+- [x] Все упоминания `aurex.io` заменены на `aurex.casino`
+- [x] Тестовые аккаунты (`testuser`, `demo`) удалены из seed-скрипта и прод-базы
 
 ### В процессе
 - [x] Переход на продакшн Fundist — **ЛАЙВ! 76 провайдеров активны** (24.02.2026, включая Kiron 974, InOut 816, Endorphina 973)
@@ -1368,13 +1412,16 @@ CARDRUBP2P: 0 (value)
 - `users.referral_code` — VARCHAR(50) UNIQUE, генерируется при регистрации
 - `users.referred_by` — VARCHAR(50) — ID реферера
 - `users.referral_earnings` — DECIMAL(15,2) — накопленная комиссия
+- `users.custom_referral_percent` — DECIMAL(5,2) — индивидуальный процент (NULL = стандартный по тиру)
 - `transactions.type = 'referral_commission'` — начисление GGR комиссии
 - `transactions.type = 'referral_bonus'` — вывод на баланс
 
 ### Файлы
 - `backend/routes/referral.js` — stats, list, claim, process-weekly-ggr
+- `backend/routes/admin.js` — GET/PUT /api/admin/referrals (список, детали, инд. процент)
 - `backend/routes/config.js` — defaultReferralConfig (тиры, bloggerContact)
 - `frontend/pages/referral.tsx` — UI реферальной программы
+- `frontend/pages/admin/referrals.tsx` — админ-панель рефералов (таблица, поиск, инд. процент)
 - `backend/server.js` — автоматическая еженедельная обработка (processWeeklyReferralAuto)
 
 ---
@@ -1387,4 +1434,4 @@ CARDRUBP2P: 0 (value)
 
 ---
 
-*Последнее обновление: 25 февраля 2026 — Live Support система (эскалация AI→оператор через Telegram-бот, карточка клиента, INTERNAL_API_KEY, real-time polling, 3 режима UI), VPS-прокси Россия 89.221.203.205 (Nginx 1.28.2), динамические return URL и реферальные ссылки для всех зеркал*
+*Последнее обновление: 11 января 2026 — PDF-файлы в чате, персистентность оператора (operator_telegram_id), мультидомен Google/Telegram OAuth (aurex.casino + aurex1.casino), админ-панель рефералов (/admin/referrals, инд. процент), фикс промокодов (начисление баланса), фикс мобильного меню, фикс подсчёта рефералов (subqueries), тестовые аккаунты удалены, PDF-only аплоад в чате*
