@@ -557,7 +557,7 @@ export default function LiveChatWidget() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept=".jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.pdf,.mp4,.mov"
+                accept=".pdf"
                 onChange={handleFileSelect}
                 className="hidden"
               />
@@ -569,7 +569,7 @@ export default function LiveChatWidget() {
                     whileHover={{ scale: 1.05 }}
                     whileTap={{ scale: 0.95 }}
                     className="p-3 rounded-xl bg-aurex-obsidian-800 text-aurex-platinum-400 hover:text-aurex-gold-500 hover:bg-aurex-obsidian-700 transition-colors disabled:opacity-50"
-                    title="Прикрепить файл"
+                    title="Прикрепить PDF"
                   >
                     {isUploading ? (
                       <div className="w-5 h-5 border-2 border-aurex-gold-500 border-t-transparent rounded-full animate-spin" />
