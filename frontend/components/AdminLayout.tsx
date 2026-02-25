@@ -24,7 +24,8 @@ import {
   Wallet,
 
   Lock,
-  KeyRound
+  KeyRound,
+  UserPlus
 } from 'lucide-react';
 import Image from 'next/image';
 import toast from 'react-hot-toast';
@@ -104,7 +105,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { href: '/admin/transactions', label: 'Транзакции', icon: CreditCard },
     { href: '/admin/cashback', label: 'Кэшбэк', icon: Crown },
     { href: '/admin/tournaments', label: 'Турниры', icon: Trophy },
-    { href: '/admin/referrals', label: 'Рефералка', icon: Users },
+    { href: '/admin/referrals', label: 'Рефералка', icon: UserPlus },
     { href: '/admin/promocodes', label: 'Промокоды', icon: Tag },
     { href: '/admin/bonuses', label: 'Бонусы', icon: Gift },
     { href: '/admin/freerounds', label: 'Фриспины', icon: Gamepad2 },
