@@ -599,12 +599,14 @@ router.post('/forgot-password/reset', async (req, res) => {
 
 // ===== GOOGLE OAUTH 2.0 =====
 
-// Build Google callback URL — use GOOGLE_CALLBACK_URL or derive from frontend URL
-const getGoogleCallbackUrl = () => {
+// Build Google callback URL dynamically from the request origin
+const getGoogleCallbackUrl = (req) => {
+  const origin = req.headers['x-forwarded-host'] || req.headers.origin?.replace(/^https?:\/\//, '') || req.headers.host;
+  if (origin && !origin.includes('railway.app') && !origin.includes('localhost')) {
+    return `https://${origin}/api/auth/google/callback`;
+  }
   const { callbackUrl } = config.google || {};
-  // If explicitly configured as full URL, use it
   if (callbackUrl && callbackUrl.startsWith('http')) return callbackUrl;
-  // Otherwise build from frontend URL
   const frontendUrl = (config.server.frontendUrl || '').replace(/\/$/, '');
   return `${frontendUrl}/api/auth/google/callback`;
 };
@@ -616,12 +618,11 @@ router.get('/google', (req, res) => {
     return res.status(500).json({ success: false, error: 'Google OAuth не настроен' });
   }
 
-  // Save referral code in cookie so it survives the OAuth redirect
   if (req.query.ref) {
     res.cookie('aurex_ref', req.query.ref, { maxAge: 30 * 60 * 1000, httpOnly: true, sameSite: 'lax' });
   }
 
-  const fullCallbackUrl = getGoogleCallbackUrl();
+  const fullCallbackUrl = getGoogleCallbackUrl(req);
 
   const params = new URLSearchParams({
     client_id: clientId,
@@ -637,7 +638,10 @@ router.get('/google', (req, res) => {
 
 // Step 2: Google callback — exchange code for tokens, find/create user
 router.get('/google/callback', async (req, res) => {
-  const frontendUrl = config.server.frontendUrl;
+  const origin = req.headers['x-forwarded-host'] || req.headers.host;
+  const frontendUrl = (origin && !origin.includes('railway.app') && !origin.includes('localhost'))
+    ? `https://${origin}`
+    : config.server.frontendUrl;
   try {
     const { code } = req.query;
     if (!code) {
@@ -649,7 +653,7 @@ router.get('/google/callback', async (req, res) => {
       return res.redirect(`${frontendUrl}/login?error=oauth_not_configured`);
     }
 
-    const fullCallbackUrl = getGoogleCallbackUrl();
+    const fullCallbackUrl = getGoogleCallbackUrl(req);
 
     // Exchange code for tokens
     const https = require('https');
@@ -883,9 +887,11 @@ router.post('/telegram', async (req, res) => {
 });
 
 // GET /auth/telegram/callback — redirect-based flow (like Google)
-// Telegram widget sends data as query params: ?id=xxx&first_name=xxx&hash=xxx
 router.get('/telegram/callback', async (req, res) => {
-  const frontendUrl = config.server.frontendUrl;
+  const tgOrigin = req.headers['x-forwarded-host'] || req.headers.host;
+  const frontendUrl = (tgOrigin && !tgOrigin.includes('railway.app') && !tgOrigin.includes('localhost'))
+    ? `https://${tgOrigin}`
+    : config.server.frontendUrl;
   try {
     // Pass referral code from cookie to processTelegramAuth
     const refCode = req.cookies?.aurex_ref;
