@@ -557,7 +557,7 @@ export default function LiveChatWidget() {
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*,.pdf,.mp4,.mov"
+                accept=".jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.pdf,.mp4,.mov"
                 onChange={handleFileSelect}
                 className="hidden"
               />
