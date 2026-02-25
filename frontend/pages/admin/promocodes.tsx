@@ -53,6 +53,7 @@ export default function AdminPromocodesPage() {
     code: '',
     type: 'balance' as 'balance' | 'bonus' | 'freespins' | 'deposit_bonus',
     value: '',
+    wager: '0',
     minDeposit: '0',
     maxUses: '',
     expiresAt: '',
@@ -104,6 +105,7 @@ export default function AdminPromocodesPage() {
       code: formData.code.toUpperCase(),
       type: formData.type,
       value: parseFloat(formData.value),
+      wager: parseInt(formData.wager) || 0,
       minDeposit: parseFloat(formData.minDeposit) || 0,
       usageLimit: parseInt(formData.maxUses) || 100,
       expiresAt: formData.expiresAt || null,
@@ -191,6 +193,7 @@ export default function AdminPromocodesPage() {
       code: '',
       type: 'balance' as 'balance' | 'bonus' | 'freespins' | 'deposit_bonus',
       value: '',
+      wager: '0',
       minDeposit: '0',
       maxUses: '',
       expiresAt: '',
@@ -204,6 +207,7 @@ export default function AdminPromocodesPage() {
       code: promo.code,
       type: promo.type,
       value: String(promo.value),
+      wager: String((promo as any).wager || 0),
       minDeposit: String(promo.minDeposit),
       maxUses: String(promo.usageLimit),
       expiresAt: promo.expiresAt ? promo.expiresAt.split('T')[0] : '',
@@ -589,6 +593,26 @@ export default function AdminPromocodesPage() {
                         className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white focus:border-aurex-gold-500/50 focus:outline-none"
                       />
                     </div>
+
+                    {/* Wager */}
+                    {formData.type !== 'balance' && (
+                      <div>
+                        <label className="block text-sm text-aurex-platinum-400 mb-2">Вейджер (множитель отыгрыша)</label>
+                        <div className="flex items-center gap-3">
+                          <span className="text-aurex-platinum-500 text-lg font-bold">x</span>
+                          <input
+                            type="number"
+                            value={formData.wager}
+                            onChange={(e) => setFormData(prev => ({ ...prev, wager: e.target.value }))}
+                            placeholder="3"
+                            min="0"
+                            max="100"
+                            className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white focus:border-aurex-gold-500/50 focus:outline-none"
+                          />
+                        </div>
+                        <p className="text-xs text-aurex-platinum-500 mt-1">0 = без отыгрыша, сразу на баланс</p>
+                      </div>
+                    )}
 
                     {/* Min Deposit */}
                     <div>
