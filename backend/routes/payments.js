@@ -397,8 +397,10 @@ router.post('/withdraw', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
-    if (amount < 1000) {
-      return res.status(400).json({ success: false, message: 'Минимальная сумма вывода: 1 000 ₽' });
+    const avepayMethods = ['P2P_SBP', 'P2P_CARD'];
+    const minWithdraw = avepayMethods.includes(paymentMethod) ? 5000 : 1000;
+    if (amount < minWithdraw) {
+      return res.status(400).json({ success: false, message: `Минимальная сумма вывода: ${minWithdraw.toLocaleString('ru-RU')} ₽` });
     }
 
     const feePercent = 5;
