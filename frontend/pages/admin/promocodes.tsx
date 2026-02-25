@@ -213,8 +213,8 @@ export default function AdminPromocodesPage() {
   };
 
   const filteredPromocodes = (promocodes || []).filter(p => 
-    p.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.description.toLowerCase().includes(searchTerm.toLowerCase())
+    p.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    (p.description || '').toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const getTypeIcon = (type: string) => {
@@ -251,7 +251,7 @@ export default function AdminPromocodesPage() {
   const stats = {
     total: (promocodes || []).length,
     active: (promocodes || []).filter(p => p.isActive).length,
-    totalUsed: (promocodes || []).reduce((sum, p) => sum + p.usedCount, 0),
+    totalUsed: (promocodes || []).reduce((sum, p) => sum + (p.usedCount || 0), 0),
     expired: (promocodes || []).filter(p => p.expiresAt && new Date(p.expiresAt) < new Date()).length
   };
 

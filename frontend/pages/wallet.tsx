@@ -1419,7 +1419,12 @@ export default function WalletPage() {
                             const credited = data.data?.creditedAmount || data.data?.value || 0;
                             const typeLabel = data.data?.type === 'freespins' ? `+${credited} фриспинов` : `+₽${credited.toLocaleString('ru-RU')}`;
                             toast.success(`Промокод активирован! ${typeLabel}`, { icon: '🎁' });
-                            refreshUser?.();
+                            if (data.data?.type === 'balance' || data.data?.type === 'fixed') {
+                              updateUser({ balance: (user?.balance || 0) + credited });
+                            } else if (data.data?.type === 'bonus') {
+                              updateUser({ bonusBalance: (user?.bonusBalance || 0) + credited });
+                            }
+                            await refreshUser();
                             setPromoCode('');
                           } else {
                             toast.error(data.message || 'Неверный промокод');

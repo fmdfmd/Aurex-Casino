@@ -74,14 +74,7 @@ router.post('/activate', auth, async (req, res) => {
              VALUES ($1, 'promo_bonus', $2, 'completed', $3)`,
             [req.user.id, creditedAmount, `Промокод ${promo.code}`]
           );
-          const balanceWager = promo.wager || 0;
-          if (balanceWager > 0) {
-            await client.query(
-              `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-               VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
-              [req.user.id, `promo_${promo.code}`, creditedAmount, creditedAmount * balanceWager]
-            );
-          }
+          console.log(`[PROMO] User ${req.user.id} activated ${promo.code} (balance type): +${creditedAmount} RUB`);
         }
       } else if (promoType === 'bonus') {
         creditedAmount = parseFloat(promo.value);
@@ -99,11 +92,14 @@ router.post('/activate', auth, async (req, res) => {
             [req.user.id, creditedAmount, `Промокод ${promo.code} (бонус)`]
           );
           const wagerMultiplier = promo.wager || 20;
-          await client.query(
-            `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
-             VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
-            [req.user.id, `promo_${promo.code}`, creditedAmount, creditedAmount * wagerMultiplier]
-          );
+          if (wagerMultiplier > 0) {
+            await client.query(
+              `INSERT INTO bonuses (user_id, bonus_type, amount, wagering_requirement, wagering_completed, status, expires_at)
+               VALUES ($1, $2, $3, $4, 0, 'active', NOW() + INTERVAL '30 days')`,
+              [req.user.id, `promo_${promo.code}`, creditedAmount, creditedAmount * wagerMultiplier]
+            );
+          }
+          console.log(`[PROMO] User ${req.user.id} activated ${promo.code} (bonus type): +${creditedAmount} bonus, wager x${wagerMultiplier}`);
         }
       } else if (promoType === 'percent' || promoType === 'deposit_bonus') {
         await client.query(
@@ -152,16 +148,17 @@ router.get('/', adminAuth, async (req, res) => {
       id: p.id.toString(),
       code: p.code,
       type: p.type,
-      value: parseFloat(p.value),
-      valueType: p.value_type,
+      value: parseFloat(p.value) || 0,
+      valueType: p.value_type || 'fixed',
       maxBonus: p.max_bonus ? parseFloat(p.max_bonus) : null,
-      minDeposit: p.min_deposit ? parseFloat(p.min_deposit) : null,
-      wager: p.wager,
-      usageLimit: p.usage_limit,
-      usedCount: p.used_count,
+      minDeposit: p.min_deposit ? parseFloat(p.min_deposit) : 0,
+      wager: p.wager || 0,
+      usageLimit: p.usage_limit || 0,
+      usedCount: p.used_count || 0,
       isActive: p.is_active,
       expiresAt: p.expires_at,
       createdAt: p.created_at,
+      description: p.description || '',
     }));
     
     res.json({ success: true, data: promocodes });
