@@ -14,9 +14,12 @@ const STEFANI_PHOTO_PATH = path.join(__dirname, 'assets', 'stefani_aurex_support
 
 const bot = new Telegraf(config.botToken);
 
+const axios = require('axios');
+
 // User state management (in-memory for speed, tickets in DB)
 const userState = new Map(); // { odTelegramId: { state: 'awaiting_ticket_reason' } }
 const managerReplies = new Map(); // { managerTelegramId: ticketId }
+const managerWebTickets = new Map(); // { managerTelegramId: webTicketId } — web chat tickets from the site
 
 // ==================== HELPERS ====================
 
@@ -501,6 +504,92 @@ bot.action(/close_ticket:(\d+)/, async (ctx) => {
     );
   } catch (e) {
     console.error('Failed to notify user:', e.message);
+  }
+});
+
+// ==================== WEB CHAT TICKET HANDLERS ====================
+
+bot.action(/take_web:(\d+)/, async (ctx) => {
+  if (!await isManager(ctx)) {
+    await ctx.answerCbQuery('Вы не менеджер');
+    return;
+  }
+
+  const ticketId = parseInt(ctx.match[1]);
+  const operatorName = ctx.from.first_name || ctx.from.username || 'Оператор';
+
+  try {
+    const response = await axios.patch(
+      `${config.backendUrl}/api/chat/internal/ticket/${ticketId}/assign`,
+      { operatorName },
+      { headers: { 'x-internal-key': config.internalApiKey }, timeout: 10000 }
+    );
+
+    if (!response.data.success) {
+      await ctx.answerCbQuery('❌ Тикет уже взят!');
+      try { await ctx.editMessageText('❌ Этот тикет уже взят другим оператором.'); } catch (e) {}
+      return;
+    }
+
+    managerWebTickets.set(ctx.from.id, ticketId);
+    // Clear any existing Telegram ticket assignment for this manager
+    managerReplies.delete(ctx.from.id);
+
+    const u = response.data.userInfo;
+    const regDate = u?.created_at ? new Date(u.created_at).toLocaleDateString('ru-RU') : '—';
+
+    await ctx.answerCbQuery('✅ Тикет ваш!');
+    await ctx.editMessageText(
+      `✅ <b>Веб-тикет #${ticketId}</b> назначен вам.
+
+👤 <b>Клиент:</b>
+├ ${escapeHtml(u?.username || '—')} (ID: ${u?.id || '—'})
+├ Email: ${escapeHtml(u?.email || '—')}
+├ Баланс: ${parseFloat(u?.balance || 0).toFixed(2)} ₽
+├ Депозиты: ${parseFloat(u?.total_deposits || 0).toFixed(2)} ₽ (${u?.deposit_count || 0})
+├ VIP: ${(u?.vip_level || 'none').toUpperCase()}
+└ Рег.: ${regDate}
+
+<i>Просто напишите ответ — он отобразится у пользователя в чате на сайте.</i>`,
+      {
+        parse_mode: 'HTML',
+        ...Markup.inlineKeyboard([
+          [Markup.button.callback('❌ Закрыть веб-тикет', `close_web:${ticketId}`)]
+        ])
+      }
+    );
+  } catch (error) {
+    console.error('take_web error:', error.response?.data || error.message);
+    if (error.response?.status === 409) {
+      await ctx.answerCbQuery('❌ Тикет уже взят!');
+      try { await ctx.editMessageText('❌ Этот тикет уже взят другим оператором.'); } catch (e) {}
+    } else {
+      await ctx.answerCbQuery('❌ Ошибка сервера');
+    }
+  }
+});
+
+bot.action(/close_web:(\d+)/, async (ctx) => {
+  if (!await isManager(ctx)) {
+    await ctx.answerCbQuery('Вы не менеджер');
+    return;
+  }
+
+  const ticketId = parseInt(ctx.match[1]);
+
+  try {
+    await axios.patch(
+      `${config.backendUrl}/api/chat/internal/ticket/${ticketId}/close`,
+      {},
+      { headers: { 'x-internal-key': config.internalApiKey }, timeout: 10000 }
+    );
+
+    managerWebTickets.delete(ctx.from.id);
+    await ctx.answerCbQuery('Тикет закрыт');
+    await ctx.editMessageText(`✅ Веб-тикет <b>#${ticketId}</b> закрыт.`, { parse_mode: 'HTML' });
+  } catch (error) {
+    console.error('close_web error:', error.response?.data || error.message);
+    await ctx.answerCbQuery('❌ Ошибка при закрытии');
   }
 });
 
@@ -1160,7 +1249,30 @@ ${result.error}
     return;
   }
   
-  // ===== Check if manager is replying to ticket =====
+  // ===== Check if manager is replying to a WEB ticket =====
+  if (await isManager(ctx)) {
+    const webTicketId = managerWebTickets.get(userId);
+    if (webTicketId) {
+      try {
+        await axios.post(
+          `${config.backendUrl}/api/chat/internal/ticket/${webTicketId}/reply`,
+          { message: text, operatorName: ctx.from.first_name || 'Оператор' },
+          { headers: { 'x-internal-key': config.internalApiKey }, timeout: 10000 }
+        );
+        await ctx.reply(`✅ Сообщение отправлено в веб-чат (тикет #${webTicketId}).`, {
+          ...Markup.inlineKeyboard([
+            [Markup.button.callback('❌ Закрыть веб-тикет', `close_web:${webTicketId}`)]
+          ])
+        });
+      } catch (error) {
+        console.error('Web ticket reply error:', error.response?.data || error.message);
+        await ctx.reply('❌ Не удалось отправить сообщение в веб-чат.');
+      }
+      return;
+    }
+  }
+
+  // ===== Check if manager is replying to a Telegram ticket =====
   if (await isManager(ctx)) {
     const managerTicketId = managerReplies.get(userId);
     if (managerTicketId) {

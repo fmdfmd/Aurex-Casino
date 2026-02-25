@@ -157,6 +157,90 @@ ${this.escapeHtml(replyText)}
   }
   
   /**
+   * Уведомить менеджеров о новом тикете из LIVE CHAT виджета
+   */
+  async notifyNewChatTicket(ticket, userInfo) {
+    const managers = await this.getActiveManagers();
+    if (managers.length === 0) {
+      console.warn('No active managers for live chat ticket');
+      return;
+    }
+
+    const regDate = userInfo.created_at ? new Date(userInfo.created_at).toLocaleDateString('ru-RU') : '—';
+    const vipLabel = (userInfo.vip_level || 'none').toUpperCase();
+
+    const message = `🔔 <b>Запрос оператора из чата!</b>
+
+📋 <b>Тикет #${ticket.id}</b>
+
+👤 <b>Клиент:</b>
+├ Логин: ${this.escapeHtml(userInfo.username || '—')}
+├ Email: ${this.escapeHtml(userInfo.email || '—')}
+├ Телефон: ${userInfo.phone || '—'}
+├ ID: ${userInfo.id}
+├ Регистрация: ${regDate}
+└ Верификация: ${userInfo.is_verified ? '✅ Да' : '❌ Нет'}
+
+💰 <b>Финансы:</b>
+├ Баланс: ${parseFloat(userInfo.balance || 0).toFixed(2)} ₽
+├ Депозиты: ${parseFloat(userInfo.total_deposits || 0).toFixed(2)} ₽ (${userInfo.deposit_count || 0} шт.)
+├ Выводы: ${parseFloat(userInfo.total_withdrawals || 0).toFixed(2)} ₽
+└ VIP: ${vipLabel}
+
+💬 <b>Сообщение:</b>
+${this.escapeHtml((ticket.message || '').substring(0, 500))}
+
+<i>Нажмите "Взять" чтобы начать чат</i>`;
+
+    const keyboard = {
+      inline_keyboard: [[
+        { text: '✅ Взять тикет', callback_data: `take_web:${ticket.id}` }
+      ]]
+    };
+
+    for (const managerId of managers) {
+      await this.sendMessage(managerId, message, { reply_markup: keyboard });
+    }
+
+    console.log(`Live chat ticket #${ticket.id} sent to ${managers.length} managers`);
+  }
+
+  /**
+   * Переслать сообщение из чата привязанному менеджеру
+   */
+  async notifyChatMessage(ticket, user, messageText) {
+    if (!ticket.assigned_to) {
+      const managers = await this.getActiveManagers();
+      const msg = `💬 <b>Новое сообщение в чат-тикете #${ticket.id}</b>
+
+👤 ${this.escapeHtml(user.username || user.email || 'User')}
+
+${this.escapeHtml(messageText.substring(0, 500))}`;
+      for (const managerId of managers) {
+        await this.sendMessage(managerId, msg);
+      }
+      return;
+    }
+
+    // Try to find the manager's telegram_id by assigned_to
+    try {
+      const result = await pool.query(
+        `SELECT telegram_id FROM support_managers WHERE is_active = true`
+      );
+      // Broadcast to all active managers — the bot tracks which manager has the ticket
+      const msg = `💬 <b>Чат-тикет #${ticket.id}</b>
+👤 ${this.escapeHtml(user.username || user.email || 'User')}:
+
+${this.escapeHtml(messageText.substring(0, 500))}`;
+      for (const row of result.rows) {
+        await this.sendMessage(row.telegram_id, msg);
+      }
+    } catch (err) {
+      console.error('notifyChatMessage error:', err.message);
+    }
+  }
+
+  /**
    * Отправить файл всем менеджерам
    */
   async sendFileToManagers(ticket, file, user) {

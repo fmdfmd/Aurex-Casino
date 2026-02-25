@@ -69,8 +69,7 @@ export default function App({ Component, pageProps }: AppProps) {
         <meta name="description" content="AUREX - премиальное онлайн-казино. Слоты от лучших провайдеров, Live Casino, турниры с призами до ₽1,000,000. Мгновенные выплаты, VIP программа, щедрые бонусы до ₽140,000." />
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         
-        {/* Canonical URL */}
-        <link rel="canonical" href="https://aurex.casino" />
+        {/* Canonical URL - не хардкодим домен, работает на любом зеркале */}
         
         {/* Favicon */}
         <link rel="icon" type="image/png" href="/favicon.png" />

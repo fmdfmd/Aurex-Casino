@@ -12,6 +12,10 @@ module.exports = {
   // Database
   databaseUrl: process.env.DATABASE_URL,
   
+  // Backend API for web ticket integration
+  backendUrl: process.env.BACKEND_URL || 'https://aurex-casino-production.up.railway.app',
+  internalApiKey: process.env.INTERNAL_API_KEY || 'aurex-internal-key-2026',
+
   // Links
   websiteUrl: process.env.WEBSITE_URL || 'https://zonal-insight-production-32f9.up.railway.app',
   channelUrl: process.env.CHANNEL_URL || 'https://t.me/aurex_casino',

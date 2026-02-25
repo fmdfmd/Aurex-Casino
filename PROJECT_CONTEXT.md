@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 10 февраля 2026**
+> **Последнее обновление: 25 февраля 2026**
 
 ---
 
@@ -18,8 +18,9 @@
 
 | Сервис | URL |
 |---|---|
-| Домен (основной) | https://aurex.casino |
-| Зеркала (резерв) | aurex1.casino — aurex10.casino (DNS не привязан, в резерве) |
+| Домен (основной) | https://aurex.casino (заблокирован РКН, работает только через VPN в РФ) |
+| Зеркало РФ (рабочее) | https://aurex1.casino (не в реестре РКН, работает в РФ без VPN) |
+| Зеркала (резерв) | aurex2.casino — aurex10.casino (DNS не привязан, в резерве) |
 | Backend (Railway) | https://aurex-casino-production.up.railway.app |
 | Railway Internal | xtjxpx6j.up.railway.app (используется в nginx proxy_pass) |
 | Диагностика сервера | https://aurex.casino/api/diag |
@@ -29,13 +30,15 @@
 | Telegram канал | https://t.me/aurex_casino |
 | Telegram бот | @aurex_support_bot |
 
-### Архитектура трафика (через Cloudflare)
+### Архитектура трафика
 ```
-Пользователь → Cloudflare (скрывает IP) → VPS 185.236.20.24 (nginx) → Railway (бэкенд)
+aurex.casino:  Пользователь → Cloudflare → VPS 185.236.20.24 (nginx, NL) → Railway
+aurex1.casino: Пользователь (РФ) → Cloudflare (серое облако) → VPS 89.221.203.205 (nginx, Москва) → Railway
 ```
 - **Cloudflare:** DNS-прокси, SSL (Edge + Origin), DDoS защита, скрытие IP VPS
 - **Cloudflare NS:** `aron.ns.cloudflare.com`, `bruce.ns.cloudflare.com`
-- **Cloudflare SSL:** Full (Strict) — шифрование end-to-end
+- **Cloudflare SSL:** Full (aurex.casino, aurex1.casino). TLS 1.3 **выключен** на обоих доменах (РКН блокирует ECH)
+- **ВАЖНО:** при добавлении нового зеркала — обязательно выключать TLS 1.3 в Cloudflare Edge Certificates
 - **Cloudflare Zone ID:** `127e1fd2ca27bfcd4b466467d11ce9a9`
 - **Регистратор:** Namecheap (NS перенаправлены на Cloudflare)
 
@@ -51,23 +54,59 @@
 - ВАЖНО: если VPS упадёт — aurex.casino не работает, но Railway URL работает
 - **История:** Предыдущий VPS (Aeza, 62.60.149.199) заблокирован 24.02.2026 за размещение казино. Миграция на 4VPS.su выполнена 24.02.2026.
 
-### Зеркала — стратегия при блокировке
-- **Резервные домены:** aurex1.casino — aurex10.casino (оплачены на Namecheap, DNS НЕ привязан)
-- **Не привязывать заранее!** Если все домены указывают на один IP — РКН забанит все сразу
-- **Зеркала держать "холодными"** — без A-записей, невидимы для РКН
-- **При блокировке домена:**
-  1. РКН банит `aurex.casino`
-  2. Добавить `aurex1.casino` в Cloudflare (тот же аккаунт)
-  3. Прописать A-запись на VPS `185.236.20.24` с оранжевым облаком (Proxied)
-  4. Обновить nginx `server_name` + certbot для нового домена
-  5. Готово за 10-15 минут
-- **При блокировке IP VPS:**
+### VPS-прокси (4VPS.su — Россия, Москва) — для aurex1.casino
+- IP: 89.221.203.205 (DNS A-запись Cloudflare, **серое облако** — трафик идёт напрямую)
+- Доступ: root / J0TBdI3uO3245
+- Хостер: 4VPS.su, Россия/Москва
+- ОС: Ubuntu 22.04
+- Nginx: 1.28.2 (обновлён с 1.18.0, исправлен баг HTTP/2 proxying)
+- Назначение: nginx reverse proxy → Railway (для aurex1.casino, внутри-РФ трафик)
+- SSL Origin: Let's Encrypt (certbot, сертификат выпущен 25.02.2026)
+- **Зачем:** Cloudflare серое облако + российский VPS = трафик не пересекает границу РФ → нет DPI/TSPU блокировки, быстрее загрузка
+- Nginx конфиг: `listen 443 ssl; http2 on;` (синтаксис Nginx 1.28+)
+- Проксирует: `proxy_pass https://xtjxpx6j.up.railway.app` с `Host: aurex1.casino`
+- Forwards: `Origin`, `Referer`, `Upgrade`, `Connection` headers
+- **ВАЖНО:** если этот VPS упадёт — aurex1.casino не работает, но aurex.casino (через NL VPS) и Railway URL продолжат работать
+
+### Домены и блокировки
+
+#### aurex.casino (основной бренд)
+- **Статус:** заблокирован РКН (реестр Роскомнадзора) — не работает в РФ без VPN
+- **Cloudflare:** активен, оранжевое облако, NS: Cloudflare
+- **SSL/TLS:** TLS 1.3 **выключен** (РКН блокирует ECH), режим Full
+- **Работает:** из-за рубежа + из РФ через VPN
+- **Причина блокировки:** вероятно, Aeza репортнули домен при обнаружении казино на сервере
+
+#### aurex1.casino (зеркало для РФ)
+- **Статус:** НЕ в реестре РКН — работает в РФ без VPN
+- **Cloudflare:** добавлен 24.02.2026, NS: `aron.ns.cloudflare.com` / `bruce.ns.cloudflare.com`
+- **DNS:** A → `89.221.203.205` (DNS only, серое облако — трафик напрямую на российский VPS)
+- **SSL/TLS:** TLS 1.3 **выключен**, Always HTTPS вкл
+- **Railway:** домен `aurex1.casino` добавлен в Aurex Front, TXT верификация `_railway-verify` в Cloudflare DNS
+- **VPS nginx:** российский VPS `89.221.203.205`, конфиг `/etc/nginx/sites-enabled/aurex1.casino`, Nginx 1.28.2
+- **VPS SSL:** Let's Encrypt сертификат выпущен 25.02.2026 (истекает 26.05.2026)
+- **Платёжки:** return URL берётся динамически из `Origin` заголовка — работает на любом домене
+- **Реферальная ссылка:** бэкенд берёт домен из `Host` (приоритет), `Origin` (fallback), `aurex1.casino` (default) — работает на любом зеркале
+
+#### Резервные домены
+- **aurex2.casino — aurex10.casino** (оплачены на Namecheap, DNS НЕ привязан)
+- **Держать "холодными"** — без DNS записей, невидимы для РКН
+- **SoftGamings:** все 11 доменов уже согласованы для прода
+
+#### При блокировке зеркала
+  1. Добавить следующий домен (aurex2.casino) в Cloudflare
+  2. A-запись на российский VPS `89.221.203.205` (серое облако, DNS only)
+  3. Обновить nginx `server_name` + certbot на российском VPS
+  4. Добавить домен в Railway (Settings → Networking)
+  5. TLS 1.3 выключить в Cloudflare
+  6. Готово за 15 минут
+
+#### При блокировке IP VPS
   1. Купить новый VPS (новый IP!)
   2. В Cloudflare поменять A-запись на новый IP
   3. Скопировать nginx конфиг + certbot
   4. Готово за 15-20 минут
 - **Railway (бэкенд) в безопасности всегда** — его IP скрыт за Cloudflare → VPS
-- **SoftGamings:** все 11 доменов уже согласованы для прода
 
 ### Fundist IP вайтлист (nginx на VPS)
 - Callback `/api/callback/softgamings` доступен ТОЛЬКО с IP Fundist:
@@ -368,7 +407,8 @@ java -jar OWClientTest_v2.14.jar \
 - `cashback_records` — кэшбэк
 - `loyalty_purchases` — покупки VIP
 - `user_boosts` — активные бусты
-- `tickets` — тикеты поддержки
+- `tickets` — тикеты поддержки (включая live_chat из веб-чата, status: open/in_progress/resolved)
+- `ticket_messages` — сообщения в тикетах (sender_type: user/staff/system, sender_name)
 - `promocodes` — промокоды
 - `tournaments` — турниры
 
@@ -402,6 +442,10 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/referral/*` | Реферальная программа |
 | `/api/tickets/*` | Тикеты |
 | `/api/chat/message` | AI чат Стефани (POST) |
+| `/api/chat/ticket` | Live Support: создать тикет из чата (POST, auth) |
+| `/api/chat/ticket/:id/messages` | Live Support: polling сообщений (GET, auth) |
+| `/api/chat/ticket/:id/message` | Live Support: отправка сообщения оператору (POST, auth) |
+| `/api/chat/internal/ticket/:id/*` | Internal: reply, assign, close (INTERNAL_API_KEY) |
 | `/api/admin/*` | Админ-панель |
 | `/api/diag` | Диагностика (IP, конфиг) |
 | `/api/health` | Health check |
@@ -419,7 +463,8 @@ java -jar OWClientTest_v2.14.jar \
 | `backend/routes/slotsApi.js` | Каталог игр, сортировка, прокси, game-frame |
 | `backend/routes/softgamingsCallback.js` | OneWallet: balance, debit, credit, rollback |
 | `backend/routes/auth.js` | Авторизация (регистрация, логин, соцсети) |
-| `backend/routes/chat.js` | AI чат (OpenRouter → Claude 3.5 Sonnet) |
+| `backend/routes/chat.js` | AI чат + Live Support (эскалация к оператору, internal endpoints) |
+| `backend/services/telegramNotify.js` | Telegram-уведомления (тикеты, live chat, карточка клиента) |
 | `backend/routes/otp.js` | Верификация телефона (uCaller) |
 | `backend/middleware/auth.js` | JWT middleware (req.user с balance, currency) |
 | `backend/services/nirvanaPayService.js` | Nirvana Pay API (H2H + Payment Form), депозиты/выводы |
@@ -434,7 +479,7 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/pages/games/index.tsx` | Страница игр (категории, фильтры, провайдеры) |
 | `frontend/components/GameModal.tsx` | Модал запуска игры (iframe + document.write) |
 | `frontend/components/GameCard.tsx` | Карточка игры (картинка, RTP, провайдер) |
-| `frontend/components/LiveChatWidget.tsx` | Виджет AI чата (Стефани) |
+| `frontend/components/LiveChatWidget.tsx` | Виджет AI чата + Live Support (3 режима: AI/ожидание/оператор) |
 | `frontend/pages/wallet.tsx` | Кошелёк: депозит/вывод через AVE PAY + Nirvana Pay + Expay. Крипта скрыта |
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
@@ -446,25 +491,78 @@ java -jar OWClientTest_v2.14.jar \
 
 ## Telegram бот (@aurex_support_bot)
 - AI-ассистент Стефани (OpenRouter API, Claude 3.5 Sonnet)
-- Тикет-система с менеджерами
+- Тикет-система с менеджерами (Telegram-тикеты через `support_tickets`)
+- **Веб-тикеты из чата сайта** — менеджеры берут и отвечают прямо из Telegram (через `tickets` таблицу)
 - Используется для Telegram Login Widget
 - Папка: `/telegram-bot/`
 - OpenRouter ключ: в `telegram-bot/.env` (OPENROUTER_API_KEY)
+- **INTERNAL_API_KEY:** `aurex-internal-key-2026` (для безопасной связи бота с backend API)
+- **Backend URL:** `https://aurex-casino-production.up.railway.app` (в `telegram-bot/config.js`)
+
+### Веб-тикеты (Live Support из чата сайта)
+Менеджеры получают уведомления о запросах оператора из веб-чата и могут:
+- **Взять тикет** (`take_web:ID`) — получить карточку клиента (баланс, депозиты, VIP, верификация)
+- **Отвечать** — текст менеджера отправляется в backend → пользователь видит в чате на сайте (polling каждые 3 сек)
+- **Закрыть тикет** (`close_web:ID`) — тикет закрывается, пользователь получает системное сообщение
+- Маршрутизация: `managerWebTickets` Map (отдельно от Telegram `managerReplies`)
+- Приоритет: веб-тикет проверяется перед Telegram-тикетом в обработчике сообщений
 
 ---
 
-## AI поддержка на сайте (LiveChat)
+## AI поддержка + Live Support на сайте (LiveChat)
 
-### Статус: РАБОТАЕТ (с 20.02.2026)
+### Статус: РАБОТАЕТ (AI с 20.02.2026, Live Support с 25.02.2026)
 - **Персонаж:** Стефани — AI-ассистент AUREX
 - **Модель:** Claude 3.5 Sonnet через OpenRouter API
-- **Backend:** `backend/routes/chat.js` → `POST /api/chat/message`
+- **Backend:** `backend/routes/chat.js` → AI чат + Live Support endpoints
 - **Frontend:** `frontend/components/LiveChatWidget.tsx`
 - **Сессии:** in-memory (Map), автоочистка через 30 мин неактивности
 - **История:** последние 10 сообщений в контексте
 - **Fallback:** если API недоступен — предлагает создать тикет или написать в Telegram
 - **Переменная Railway:** `OPENROUTER_API_KEY` — ОБЯЗАТЕЛЬНО добавить!
 - **Ключ:** `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`
+
+### Live Support (эскалация к оператору из чата)
+**Архитектура:**
+```
+Пользователь (чат на сайте) → "Позвать оператора" → POST /api/chat/ticket
+→ Backend создаёт тикет в `tickets` (category: live_chat) → telegramNotify
+→ Менеджеры в Telegram получают карточку клиента + кнопку "Взять"
+→ Менеджер берёт тикет → отвечает текстом → ответ сохраняется в `ticket_messages`
+→ Пользователь видит ответ через polling (каждые 3 сек)
+```
+
+**Режимы чата (frontend):**
+| Режим | Описание | Цвет header |
+|-------|----------|-------------|
+| `ai` | Стефани AI (по умолчанию) | Золотой |
+| `waiting` | Ожидание оператора (тикет создан, не взят) | Оранжевый |
+| `operator` | Оператор подключён, live-чат | Синий |
+
+**API endpoints (Live Support):**
+| Метод | URL | Авторизация | Описание |
+|-------|-----|-------------|----------|
+| `POST` | `/api/chat/ticket` | JWT (user) | Создать тикет из чата (уведомляет менеджеров) |
+| `GET` | `/api/chat/ticket/:id/messages` | JWT (user) | Polling сообщений (?after=timestamp) |
+| `POST` | `/api/chat/ticket/:id/message` | JWT (user) | Отправить сообщение оператору |
+| `POST` | `/api/chat/internal/ticket/:id/reply` | INTERNAL_API_KEY | Ответ оператора из Telegram |
+| `PATCH` | `/api/chat/internal/ticket/:id/assign` | INTERNAL_API_KEY | Оператор берёт тикет |
+| `PATCH` | `/api/chat/internal/ticket/:id/close` | INTERNAL_API_KEY | Закрыть тикет |
+
+**Карточка клиента (для менеджеров в Telegram):**
+- Логин, Email, Телефон, ID, дата регистрации, верификация
+- Баланс, сумма депозитов (кол-во), сумма выводов, VIP-уровень
+
+**Переменные Railway (INTERNAL_API_KEY):**
+- `INTERNAL_API_KEY` — `aurex-internal-key-2026` (одинаковый для backend и telegram-bot)
+- Используется для защиты internal endpoints от внешнего доступа
+
+**Файлы:**
+- `backend/routes/chat.js` — AI чат + Live Support endpoints (user-facing + internal)
+- `backend/services/telegramNotify.js` — `notifyNewChatTicket()` + `notifyChatMessage()`
+- `frontend/components/LiveChatWidget.tsx` — 3 режима (ai/waiting/operator), polling, стили
+- `telegram-bot/bot.js` — `take_web:ID`, `close_web:ID`, reply routing через `managerWebTickets`
+- `telegram-bot/config.js` — `backendUrl`, `internalApiKey`
 
 ---
 
@@ -1151,6 +1249,11 @@ CARDRUBP2P: 0 (value)
 - [x] Бонусная система — приветственный пакет x30 вейджер, отслеживание отыгрыша, блокировка вывода, экспирация 30 дней
 - [x] Тестовый webhook endpoint для ручного зачисления (admin)
 - [x] AI чат Стефани (Claude 3.5 Sonnet через OpenRouter)
+- [x] Live Support — эскалация из AI чата к оператору (кнопка "Позвать оператора")
+- [x] Live Support — тикеты из веб-чата приходят в Telegram-бот менеджерам с карточкой клиента
+- [x] Live Support — менеджеры берут/отвечают/закрывают тикеты прямо из Telegram
+- [x] Live Support — real-time polling (3 сек), 3 режима UI (AI/ожидание/оператор)
+- [x] Live Support — internal API endpoints с INTERNAL_API_KEY для безопасной связи бот↔backend
 - [x] AML/KYC страница (/aml, 10 разделов)
 - [x] Security hardening — 9 уязвимостей закрыто (deposit confirm, update-wager, webhook подпись, diag, adminAuth, race conditions, SELECT *, error leaks, pagination limit)
 - [x] Trust meta-теги: JSON-LD (Organization + WebSite), canonical URL, author/publisher/copyright, rating, referrer policy
@@ -1176,6 +1279,12 @@ CARDRUBP2P: 0 (value)
 - [x] Expay — полная интеграция (HMAC-SHA512, P2P payform для депозитов, P2P API для выводов)
 - [x] Expay — 4 метода оплаты для России (СБП, Карта, Сбербанк, НСПК QR)
 - [x] Expay — callback обработчик (POST/GET /api/payments/expay/callback)
+- [x] Live Support система — эскалация из AI-чата к оператору (25.02.2026)
+- [x] Live Support — карточка клиента для менеджеров (баланс, депозиты, VIP, верификация)
+- [x] Live Support — кнопки «Взять тикет» / «Закрыть» в Telegram для менеджеров
+- [x] Live Support — real-time polling сообщений (каждые 3 сек)
+- [x] Live Support — internal API с INTERNAL_API_KEY для связи Telegram-бот ↔ Backend
+- [x] Live Support — 3 режима UI в чате (AI/ожидание/оператор) с цветовой индикацией
 
 ### В процессе
 - [x] Переход на продакшн Fundist — **ЛАЙВ! 76 провайдеров активны** (24.02.2026, включая Kiron 974, InOut 816, Endorphina 973)
@@ -1228,7 +1337,7 @@ CARDRUBP2P: 0 (value)
 ### Проблемы (выявлены провайдером, 20.02.2026):
 1. **Регистрация через телефон** — звонки uCaller не доходят (РКН блок) → решение: новый аккаунт uCaller или переход на SMS
 2. **Кнопка депозита** — **РЕШЕНО (21.02.2026):** AVE PAY полностью интегрирована, вебхуки работают, баланс зачисляется
-3. **Тех. поддержка на сайте** — **РЕШЕНО:** подключена AI Стефани (Claude 3.5 Sonnet)
+3. **Тех. поддержка на сайте** — **РЕШЕНО:** AI Стефани + Live Support с эскалацией к оператору (25.02.2026)
 4. **AML размытый** → **РЕШЕНО:** создана полная AML/KYC страница `/aml` с 10 разделами
 
 ---
@@ -1278,4 +1387,4 @@ CARDRUBP2P: 0 (value)
 
 ---
 
-*Последнее обновление: 10 февраля 2026 — Интегрирован Expay (третий платёжный провайдер), HMAC-SHA512 подпись, 4 метода RUB (СБП, Карта, Сбербанк, НСПК QR), payform redirect для депозитов, P2P API для выводов*
+*Последнее обновление: 25 февраля 2026 — Live Support система (эскалация AI→оператор через Telegram-бот, карточка клиента, INTERNAL_API_KEY, real-time polling, 3 режима UI), VPS-прокси Россия 89.221.203.205 (Nginx 1.28.2), динамические return URL и реферальные ссылки для всех зеркал*
