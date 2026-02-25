@@ -804,30 +804,24 @@ router.get('/referrals', adminAuth, async (req, res) => {
         u.id, u.username, u.email, u.odid, u.referral_code,
         u.referral_earnings, u.custom_referral_percent,
         u.created_at, u.is_active,
-        COUNT(ref.id) as total_referrals,
-        COUNT(ref.id) FILTER (WHERE ref.deposit_count > 0) as active_referrals,
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as referrals_total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as referrals_total_wins,
+        (SELECT COUNT(*) FROM users WHERE referred_by = u.id::text) as total_referrals,
+        (SELECT COUNT(*) FROM users WHERE referred_by = u.id::text AND deposit_count > 0) as active_referrals,
+        COALESCE((SELECT SUM(ABS(t.amount)) FROM transactions t JOIN users ref ON t.user_id = ref.id WHERE ref.referred_by = u.id::text AND t.type = 'bet'), 0) as referrals_total_bets,
+        COALESCE((SELECT SUM(ABS(t.amount)) FROM transactions t JOIN users ref ON t.user_id = ref.id WHERE ref.referred_by = u.id::text AND t.type = 'win'), 0) as referrals_total_wins,
         COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.id AND type = 'referral_commission'), 0) as total_earned
       FROM users u
-      LEFT JOIN users ref ON ref.referred_by = u.id::text
-      LEFT JOIN transactions t ON t.user_id = ref.id AND t.type IN ('bet', 'win')
       WHERE u.referral_code IS NOT NULL
+        AND ((SELECT COUNT(*) FROM users WHERE referred_by = u.id::text) > 0 OR u.custom_referral_percent IS NOT NULL)
         ${search ? `AND (u.username ILIKE $3 OR u.email ILIKE $3 OR u.odid ILIKE $3 OR u.referral_code ILIKE $3)` : ''}
-      GROUP BY u.id
-      HAVING COUNT(ref.id) > 0 OR u.custom_referral_percent IS NOT NULL
       ORDER BY ${sortBy === 'total_earned' ? 'total_earned' : sortBy === 'ggr' ? '(referrals_total_bets - referrals_total_wins)' : 'total_referrals'} ${sortOrder === 'asc' ? 'ASC' : 'DESC'}
       LIMIT $1 OFFSET $2
     `, search ? [parseInt(limit), offset, `%${search}%`] : [parseInt(limit), offset]);
 
     const countResult = await pool.query(`
-      SELECT COUNT(DISTINCT u.id) as total
-      FROM users u
-      LEFT JOIN users ref ON ref.referred_by = u.id::text
+      SELECT COUNT(*) as total FROM users u
       WHERE u.referral_code IS NOT NULL
+        AND ((SELECT COUNT(*) FROM users WHERE referred_by = u.id::text) > 0 OR u.custom_referral_percent IS NOT NULL)
         ${search ? `AND (u.username ILIKE $1 OR u.email ILIKE $1 OR u.odid ILIKE $1)` : ''}
-      GROUP BY u.id
-      HAVING COUNT(ref.id) > 0 OR u.custom_referral_percent IS NOT NULL
     `, search ? [`%${search}%`] : []);
 
     const referrers = result.rows.map(r => {
@@ -856,8 +850,8 @@ router.get('/referrals', adminAuth, async (req, res) => {
         pagination: {
           page: parseInt(page),
           limit: parseInt(limit),
-          total: countResult.rows.length,
-          pages: Math.ceil(countResult.rows.length / parseInt(limit))
+          total: parseInt(countResult.rows[0]?.total) || 0,
+          pages: Math.ceil((parseInt(countResult.rows[0]?.total) || 0) / parseInt(limit))
         }
       }
     });
