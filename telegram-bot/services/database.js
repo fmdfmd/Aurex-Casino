@@ -73,6 +73,16 @@ module.exports = {
       [telegramId]
     );
   },
+
+  async getActiveWebTicketForOperator(operatorTelegramId) {
+    const result = await pool.query(
+      `SELECT id FROM tickets 
+       WHERE operator_telegram_id = $1 AND status = 'in_progress' 
+       ORDER BY updated_at DESC LIMIT 1`,
+      [operatorTelegramId]
+    );
+    return result.rows[0]?.id || null;
+  },
   
   // ==================== TICKETS ====================
   

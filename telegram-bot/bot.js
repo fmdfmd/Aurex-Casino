@@ -521,7 +521,7 @@ bot.action(/take_web:(\d+)/, async (ctx) => {
   try {
     const response = await axios.patch(
       `${config.backendUrl}/api/chat/internal/ticket/${ticketId}/assign`,
-      { operatorName },
+      { operatorName, operatorTelegramId: ctx.from.id },
       { headers: { 'x-internal-key': config.internalApiKey }, timeout: 10000 }
     );
 
@@ -1251,7 +1251,14 @@ ${result.error}
   
   // ===== Check if manager is replying to a WEB ticket =====
   if (await isManager(ctx)) {
-    const webTicketId = managerWebTickets.get(userId);
+    let webTicketId = managerWebTickets.get(userId);
+    if (!webTicketId) {
+      const dbTicketId = await db.getActiveWebTicketForOperator(userId);
+      if (dbTicketId) {
+        managerWebTickets.set(userId, dbTicketId);
+        webTicketId = dbTicketId;
+      }
+    }
     if (webTicketId) {
       try {
         await axios.post(
