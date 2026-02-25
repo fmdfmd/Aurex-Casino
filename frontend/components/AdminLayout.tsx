@@ -105,6 +105,7 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { href: '/admin/cashback', label: 'Кэшбэк', icon: Crown },
     { href: '/admin/tournaments', label: 'Турниры', icon: Trophy },
     { href: '/admin/referrals', label: 'Рефералка', icon: Share2 },
+    { href: '/admin/referrals', label: 'Рефералка', icon: Users },
     { href: '/admin/promocodes', label: 'Промокоды', icon: Tag },
     { href: '/admin/bonuses', label: 'Бонусы', icon: Gift },
     { href: '/admin/freerounds', label: 'Фриспины', icon: Gamepad2 },
