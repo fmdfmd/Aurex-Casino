@@ -142,6 +142,7 @@ interface RegisterData {
   firstName?: string;
   lastName?: string;
   referralCode?: string;
+  clickId?: string;
 }
 
 // Не используем baseURL - запросы идут через Next.js proxy (/api/* -> backend)
