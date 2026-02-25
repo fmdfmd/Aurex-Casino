@@ -296,12 +296,12 @@ router.post('/internal/ticket/:id/reply', internalAuth, async (req, res) => {
 router.patch('/internal/ticket/:id/assign', internalAuth, async (req, res) => {
   try {
     const { id } = req.params;
-    const { operatorName } = req.body;
+    const { operatorName, operatorTelegramId } = req.body;
 
     const result = await pool.query(
-      `UPDATE tickets SET status = 'in_progress', assigned_operator_name = $2, updated_at = CURRENT_TIMESTAMP
+      `UPDATE tickets SET status = 'in_progress', assigned_operator_name = $2, operator_telegram_id = $3, updated_at = CURRENT_TIMESTAMP
        WHERE id = $1 AND status = 'open' RETURNING *`,
-      [id, operatorName || 'Оператор']
+      [id, operatorName || 'Оператор', operatorTelegramId || null]
     );
 
     if (result.rows.length === 0) {
@@ -350,6 +350,20 @@ router.patch('/internal/ticket/:id/close', internalAuth, async (req, res) => {
     res.json({ success: true });
   } catch (error) {
     console.error('Internal close error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// ===== INTERNAL: Get active web ticket for operator by telegram ID =====
+router.get('/internal/active-ticket/:telegramId', internalAuth, async (req, res) => {
+  try {
+    const { telegramId } = req.params;
+    const result = await pool.query(
+      `SELECT id FROM tickets WHERE operator_telegram_id = $1 AND status = 'in_progress' ORDER BY updated_at DESC LIMIT 1`,
+      [telegramId]
+    );
+    res.json({ success: true, ticketId: result.rows[0]?.id || null });
+  } catch (error) {
     res.status(500).json({ success: false, message: error.message });
   }
 });
