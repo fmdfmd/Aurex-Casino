@@ -58,8 +58,9 @@ export default function AdminTransactionsPage() {
       });
       const data = await res.json();
       
-      if (data.success && data.data.transactions) {
-        setTransactions((data.data.transactions || []).map((t: any) => ({
+      const txList = Array.isArray(data.data) ? data.data : (data.data?.transactions || []);
+      if (data.success && txList.length >= 0) {
+        setTransactions(txList.map((t: any) => ({
           id: t.id || t._id,
           odid: t.odid || t.userOdid || 'N/A',
           username: t.username || t.user?.username || 'Unknown',

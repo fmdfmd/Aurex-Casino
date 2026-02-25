@@ -528,9 +528,15 @@ router.get('/transactions', adminAuth, async (req, res) => {
     query += ` OFFSET $${values.length}`;
     
     const result = await pool.query(query, values);
+
+    // Count total
+    let countQuery = `SELECT COUNT(*) FROM transactions t JOIN users u ON t.user_id = u.id`;
+    if (conditions.length > 0) countQuery += ' WHERE ' + conditions.join(' AND ');
+    const countResult = await pool.query(countQuery, values.slice(0, values.length - 2));
     
     res.json({
       success: true,
+      total: parseInt(countResult.rows[0].count),
       data: result.rows.map(t => ({
         id: t.id,
         odid: t.odid,
