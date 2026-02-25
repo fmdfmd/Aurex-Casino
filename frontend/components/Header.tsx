@@ -71,6 +71,7 @@ export default function Header() {
   ];
 
   return (
+    <>
     <header
       className={`fixed top-0 left-0 right-0 z-[9999] transition-all duration-300 ${
         scrolled 
@@ -210,18 +211,20 @@ export default function Header() {
             </button>
           </div>
         </div>
+      </div>
+    </header>
 
-        {/* Mobile Menu - AUREX Premium */}
-        <AnimatePresence>
-          {isMobileMenuOpen && (
-            <motion.div
-              initial={{ opacity: 0, y: -20 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -20 }}
-              transition={{ duration: 0.2 }}
-              className="lg:hidden fixed left-0 right-0 top-16 bottom-0 bg-aurex-obsidian-900 backdrop-blur-xl z-[99999] overflow-y-auto"
-              style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
-            >
+    {/* Mobile Menu — rendered outside header to avoid backdrop-filter breaking fixed positioning */}
+    <AnimatePresence>
+      {isMobileMenuOpen && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          transition={{ duration: 0.2 }}
+          className="lg:hidden fixed left-0 right-0 top-16 bottom-0 bg-aurex-obsidian-900 backdrop-blur-xl z-[99999] overflow-y-auto"
+          style={{ paddingBottom: 'env(safe-area-inset-bottom, 20px)' }}
+        >
               <nav className="p-4 space-y-2">
                 {/* Navigation Items */}
                 {navigationItems.map((item, index) => (
@@ -391,7 +394,6 @@ export default function Header() {
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
-    </header>
+    </>
   );
 }
