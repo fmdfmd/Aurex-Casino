@@ -791,6 +791,196 @@ router.get('/freerounds/:userId', adminAuth, async (req, res) => {
   }
 });
 
+// ============ REFERRAL MANAGEMENT ============
+
+// List all referrers with stats
+router.get('/referrals', adminAuth, async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search, sortBy = 'total_referrals', sortOrder = 'desc' } = req.query;
+    const offset = (parseInt(page) - 1) * parseInt(limit);
+
+    const result = await pool.query(`
+      SELECT 
+        u.id, u.username, u.email, u.odid, u.referral_code,
+        u.referral_earnings, u.custom_referral_percent,
+        u.created_at, u.is_active,
+        COUNT(ref.id) as total_referrals,
+        COUNT(ref.id) FILTER (WHERE ref.deposit_count > 0) as active_referrals,
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as referrals_total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as referrals_total_wins,
+        COALESCE((SELECT SUM(amount) FROM transactions WHERE user_id = u.id AND type = 'referral_commission'), 0) as total_earned
+      FROM users u
+      LEFT JOIN users ref ON ref.referred_by = u.id::text
+      LEFT JOIN transactions t ON t.user_id = ref.id AND t.type IN ('bet', 'win')
+      WHERE u.referral_code IS NOT NULL
+        ${search ? `AND (u.username ILIKE $3 OR u.email ILIKE $3 OR u.odid ILIKE $3 OR u.referral_code ILIKE $3)` : ''}
+      GROUP BY u.id
+      HAVING COUNT(ref.id) > 0 OR u.custom_referral_percent IS NOT NULL
+      ORDER BY ${sortBy === 'total_earned' ? 'total_earned' : sortBy === 'ggr' ? '(referrals_total_bets - referrals_total_wins)' : 'total_referrals'} ${sortOrder === 'asc' ? 'ASC' : 'DESC'}
+      LIMIT $1 OFFSET $2
+    `, search ? [parseInt(limit), offset, `%${search}%`] : [parseInt(limit), offset]);
+
+    const countResult = await pool.query(`
+      SELECT COUNT(DISTINCT u.id) as total
+      FROM users u
+      LEFT JOIN users ref ON ref.referred_by = u.id::text
+      WHERE u.referral_code IS NOT NULL
+        ${search ? `AND (u.username ILIKE $1 OR u.email ILIKE $1 OR u.odid ILIKE $1)` : ''}
+      GROUP BY u.id
+      HAVING COUNT(ref.id) > 0 OR u.custom_referral_percent IS NOT NULL
+    `, search ? [`%${search}%`] : []);
+
+    const referrers = result.rows.map(r => {
+      const ggr = Math.max(0, parseFloat(r.referrals_total_bets) - parseFloat(r.referrals_total_wins));
+      return {
+        id: r.id,
+        username: r.username,
+        email: r.email,
+        odid: r.odid,
+        referralCode: r.referral_code,
+        pendingEarnings: parseFloat(r.referral_earnings) || 0,
+        customPercent: r.custom_referral_percent != null ? parseFloat(r.custom_referral_percent) : null,
+        totalReferrals: parseInt(r.total_referrals),
+        activeReferrals: parseInt(r.active_referrals),
+        referralsGGR: ggr,
+        totalEarned: parseFloat(r.total_earned) || 0,
+        isActive: r.is_active,
+        createdAt: r.created_at,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        referrers,
+        pagination: {
+          page: parseInt(page),
+          limit: parseInt(limit),
+          total: countResult.rows.length,
+          pages: Math.ceil(countResult.rows.length / parseInt(limit))
+        }
+      }
+    });
+  } catch (error) {
+    console.error('Get admin referrals error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get referrals' });
+  }
+});
+
+// View specific referrer's referrals
+router.get('/referrals/:userId', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+
+    const userResult = await pool.query(
+      'SELECT id, username, email, odid, referral_code, referral_earnings, custom_referral_percent, created_at FROM users WHERE id = $1',
+      [userId]
+    );
+    if (userResult.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+    const referrer = userResult.rows[0];
+
+    const referralsResult = await pool.query(`
+      SELECT 
+        u.id, u.username, u.email, u.odid, u.created_at, u.deposit_count, u.balance,
+        u.vip_level, u.is_active,
+        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
+        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins,
+        COALESCE(SUM(t.amount) FILTER (WHERE t.type = 'deposit' AND t.status = 'completed'), 0) as total_deposits
+      FROM users u
+      LEFT JOIN transactions t ON t.user_id = u.id
+      WHERE u.referred_by = $1::text
+      GROUP BY u.id
+      ORDER BY u.created_at DESC
+    `, [userId]);
+
+    const commissions = await pool.query(`
+      SELECT amount, created_at, description
+      FROM transactions
+      WHERE user_id = $1 AND type = 'referral_commission'
+      ORDER BY created_at DESC
+      LIMIT 50
+    `, [userId]);
+
+    const referrals = referralsResult.rows.map(r => {
+      const ggr = Math.max(0, parseFloat(r.total_bets) - parseFloat(r.total_wins));
+      return {
+        id: r.id,
+        username: r.username,
+        email: r.email,
+        odid: r.odid,
+        registeredAt: r.created_at,
+        depositCount: r.deposit_count,
+        balance: parseFloat(r.balance),
+        vipLevel: r.vip_level,
+        isActive: r.is_active,
+        totalDeposits: parseFloat(r.total_deposits),
+        ggr,
+        status: r.deposit_count > 0 ? 'active' : 'inactive',
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        referrer: {
+          id: referrer.id,
+          username: referrer.username,
+          email: referrer.email,
+          odid: referrer.odid,
+          referralCode: referrer.referral_code,
+          pendingEarnings: parseFloat(referrer.referral_earnings) || 0,
+          customPercent: referrer.custom_referral_percent != null ? parseFloat(referrer.custom_referral_percent) : null,
+          createdAt: referrer.created_at,
+        },
+        referrals,
+        commissions: commissions.rows.map(c => ({
+          amount: parseFloat(c.amount),
+          date: c.created_at,
+          description: c.description,
+        })),
+      }
+    });
+  } catch (error) {
+    console.error('Get referrer details error:', error);
+    res.status(500).json({ success: false, error: 'Failed to get referrer details' });
+  }
+});
+
+// Update referrer's custom commission percent
+router.put('/referrals/:userId/percent', adminAuth, async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { percent } = req.body;
+
+    const pct = percent === null || percent === '' ? null : parseFloat(percent);
+    if (pct !== null && (isNaN(pct) || pct < 0 || pct > 50)) {
+      return res.status(400).json({ success: false, error: 'Процент должен быть от 0 до 50' });
+    }
+
+    const result = await pool.query(
+      'UPDATE users SET custom_referral_percent = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING username, custom_referral_percent',
+      [pct, userId]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'User not found' });
+    }
+
+    const msg = pct !== null
+      ? `Процент для ${result.rows[0].username} установлен: ${pct}%`
+      : `Процент для ${result.rows[0].username} сброшен на стандартный`;
+
+    console.log(`[REFERRAL-ADMIN] ${msg} (by admin ${req.user.id})`);
+
+    res.json({ success: true, message: msg, data: { customPercent: pct } });
+  } catch (error) {
+    console.error('Update referral percent error:', error);
+    res.status(500).json({ success: false, error: 'Failed to update percent' });
+  }
+});
+
 // ============ SUPPORT MANAGERS ============
 
 router.get('/support-managers', adminAuth, async (req, res) => {
