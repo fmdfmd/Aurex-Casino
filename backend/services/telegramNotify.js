@@ -208,7 +208,7 @@ ${this.escapeHtml((ticket.message || '').substring(0, 500))}
   /**
    * Переслать сообщение из чата привязанному менеджеру
    */
-  async notifyChatMessage(ticket, user, messageText, fileUrl) {
+  async notifyChatMessage(ticket, user, messageText, fileUrl, fileType) {
     const caption = `💬 <b>Чат-тикет #${ticket.id}</b>\n👤 ${this.escapeHtml(user.username || user.email || 'User')}:\n\n${this.escapeHtml((messageText || '').substring(0, 500))}`;
 
     let targetManagers = [];
@@ -227,7 +227,8 @@ ${this.escapeHtml((ticket.message || '').substring(0, 500))}
     for (const managerId of targetManagers) {
       if (fileUrl) {
         const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${process.env.BACKEND_URL || 'https://aurex-casino-production.up.railway.app'}${fileUrl}`;
-        if (fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+        const isImage = (fileType && fileType.startsWith('image/')) || fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i);
+        if (isImage) {
           await this.sendTelegramFile(managerId, 'sendPhoto', 'photo', fullUrl, caption);
         } else {
           await this.sendTelegramFile(managerId, 'sendDocument', 'document', fullUrl, caption);

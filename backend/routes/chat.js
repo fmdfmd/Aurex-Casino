@@ -25,8 +25,7 @@ const chatUpload = multer({
     }
   }),
   fileFilter: (req, file, cb) => {
-    const allowed = /jpeg|jpg|png|gif|webp|pdf|mp4|mov/;
-    if (allowed.test(path.extname(file.originalname).toLowerCase()) || allowed.test(file.mimetype.split('/')[1])) {
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'application/pdf' || file.mimetype.startsWith('video/')) {
       cb(null, true);
     } else {
       cb(new Error('Недопустимый тип файла'), false);
@@ -297,7 +296,7 @@ router.post('/ticket/:id/message', auth, chatUpload.single('file'), async (req, 
 
     const ticket = ticketCheck.rows[0];
     const notifyMsg = file ? `📎 ${fileName}${message ? '\n' + message : ''}` : message;
-    telegramNotify.notifyChatMessage(ticket, req.user, notifyMsg, fileUrl).catch(err => {
+    telegramNotify.notifyChatMessage(ticket, req.user, notifyMsg, fileUrl, fileType).catch(err => {
       console.error('Telegram chat message notify error:', err.message);
     });
 
