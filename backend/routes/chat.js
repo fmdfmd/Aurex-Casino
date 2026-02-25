@@ -265,7 +265,15 @@ router.get('/ticket/:id/messages', auth, async (req, res) => {
 });
 
 // ===== LIVE SUPPORT: User sends message in operator mode =====
-router.post('/ticket/:id/message', auth, chatUpload.single('file'), async (req, res) => {
+router.post('/ticket/:id/message', auth, (req, res, next) => {
+  chatUpload.single('file')(req, res, (err) => {
+    if (err) {
+      console.error('Chat file upload error:', err.message);
+      return res.status(400).json({ success: false, message: `Ошибка загрузки: ${err.message}` });
+    }
+    next();
+  });
+}, async (req, res) => {
   try {
     const { id } = req.params;
     const { message } = req.body;
@@ -286,6 +294,7 @@ router.post('/ticket/:id/message', auth, chatUpload.single('file'), async (req, 
       fileUrl = `/uploads/chat/${file.filename}`;
       fileName = file.originalname;
       fileType = file.mimetype;
+      console.log(`[Chat] File uploaded: ${fileName} (${fileType}) → ${fileUrl}`);
     }
 
     await pool.query(

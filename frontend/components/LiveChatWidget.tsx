@@ -160,20 +160,21 @@ export default function LiveChatWidget() {
     }
   };
 
-  const sendToOperator = async (text: string, file?: File) => {
-    if (!ticketId || !token) return;
+  const sendToOperator = async (text: string, file?: File): Promise<boolean> => {
+    if (!ticketId || !token) return false;
     try {
+      let res: Response;
       if (file) {
         const formData = new FormData();
         if (text) formData.append('message', text);
         formData.append('file', file);
-        await fetch(`/api/chat/ticket/${ticketId}/message`, {
+        res = await fetch(`/api/chat/ticket/${ticketId}/message`, {
           method: 'POST',
           headers: { Authorization: `Bearer ${token}` },
           body: formData
         });
       } else {
-        await fetch(`/api/chat/ticket/${ticketId}/message`, {
+        res = await fetch(`/api/chat/ticket/${ticketId}/message`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -182,8 +183,14 @@ export default function LiveChatWidget() {
           body: JSON.stringify({ message: text })
         });
       }
+      if (!res.ok) {
+        console.error('Send to operator failed:', res.status);
+        return false;
+      }
+      return true;
     } catch (err) {
       console.error('Send to operator error:', err);
+      return false;
     }
   };
 
@@ -287,8 +294,16 @@ export default function LiveChatWidget() {
     setMessages(prev => [...prev, userMessage]);
 
     setIsUploading(true);
-    await sendToOperator(inputText.trim(), file);
+    const ok = await sendToOperator(inputText.trim(), file);
     setIsUploading(false);
+    if (!ok) {
+      setMessages(prev => [...prev, {
+        id: (Date.now() + 1).toString(),
+        type: 'system',
+        text: '❌ Не удалось отправить файл. Попробуйте ещё раз.',
+        timestamp: new Date(),
+      }]);
+    }
     setInputText('');
 
     if (fileInputRef.current) fileInputRef.current.value = '';
