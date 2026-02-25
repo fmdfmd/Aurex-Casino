@@ -225,28 +225,32 @@ ${this.escapeHtml((ticket.message || '').substring(0, 500))}
     }
 
     for (const managerId of targetManagers) {
-      if (fileUrl && fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
-        await this.sendPhoto(managerId, fileUrl, caption);
+      if (fileUrl) {
+        const fullUrl = fileUrl.startsWith('http') ? fileUrl : `${process.env.BACKEND_URL || 'https://aurex-casino-production.up.railway.app'}${fileUrl}`;
+        if (fileUrl.match(/\.(jpg|jpeg|png|gif|webp)$/i)) {
+          await this.sendTelegramFile(managerId, 'sendPhoto', 'photo', fullUrl, caption);
+        } else {
+          await this.sendTelegramFile(managerId, 'sendDocument', 'document', fullUrl, caption);
+        }
       } else {
         await this.sendMessage(managerId, caption);
       }
     }
   }
 
-  async sendPhoto(chatId, fileUrl, caption) {
+  async sendTelegramFile(chatId, method, fieldName, fileUrl, caption) {
     if (!BOT_TOKEN) return;
     try {
-      const photoUrl = fileUrl.startsWith('http') ? fileUrl : `${process.env.BACKEND_URL || 'https://aurex-casino-production.up.railway.app'}${fileUrl}`;
       const axios = require('axios');
-      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/sendPhoto`, {
+      await axios.post(`https://api.telegram.org/bot${BOT_TOKEN}/${method}`, {
         chat_id: chatId,
-        photo: photoUrl,
+        [fieldName]: fileUrl,
         caption: caption?.substring(0, 1024),
         parse_mode: 'HTML'
       });
     } catch (err) {
-      console.error('sendPhoto error, falling back to text:', err.message);
-      await this.sendMessage(chatId, `${caption}\n\n📎 Фото: ${fileUrl}`);
+      console.error(`${method} error, falling back to text:`, err.message);
+      await this.sendMessage(chatId, `${caption}\n\n📎 Файл: ${fileUrl}`);
     }
   }
 
