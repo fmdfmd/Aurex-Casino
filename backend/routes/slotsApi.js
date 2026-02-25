@@ -378,6 +378,7 @@ router.get('/games', async (req, res) => {
         ['Popiplay', ['Oktobearfest', 'Detective Donut Kickback', 'Wild Piggy Bank', 'Emotions', 'Bison Horizon Hold and Win', 'RoxDogs', 'Zoodiac', 'Ruby Royal']],
         ['Peter & Sons', ['DCirque']],
         ['Push Gaming', ['The Great Banker', 'Olympus Unleashed', 'Big Bamboo', 'Fire Hopper', 'Razor Shark', "Jammin' Jars 2", 'Mad Blast', 'Dragon Hopper']],
+        ['Onlyplay', ['Coin Storm', 'Hit the Vampire', 'Crazy Streamer', 'Aztec Gemstones', 'Wild Coins', 'Retro Tokyo', 'Coin Flynn', 'Rich Bankrupt']],
       ];
 
       const findGame = (list, name, prov) => {
