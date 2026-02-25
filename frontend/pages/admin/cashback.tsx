@@ -137,7 +137,7 @@ export default function AdminCashbackPage() {
                 <span>Еженедельный Кэшбэк</span>
               </h1>
               <p className="text-aurex-platinum-400 mt-1">
-                8% обычным (x10 вейджер) • 15% VIP (x3 вейджер) • По субботам
+                5–15% в зависимости от VIP (x5 вейджер) • Каждый понедельник
               </p>
             </div>
 
@@ -204,7 +204,7 @@ export default function AdminCashbackPage() {
                   <TrendingUp className="w-6 h-6 text-white" />
                 </div>
               </div>
-              <div className="text-2xl font-black text-white">8-15%</div>
+              <div className="text-2xl font-black text-white">5-15%</div>
               <div className="text-sm text-white/80">Ставки кэшбэка</div>
             </div>
           </div>
@@ -328,25 +328,28 @@ export default function AdminCashbackPage() {
             </h3>
             <div className="grid md:grid-cols-2 gap-6 text-sm text-aurex-platinum-400">
               <div>
-                <h4 className="font-bold text-white mb-2">Обычные игроки</h4>
+                <h4 className="font-bold text-white mb-2">Ставки по VIP</h4>
                 <ul className="space-y-1">
-                  <li>• 8% от недельных потерь</li>
-                  <li>• Вейджер x10</li>
-                  <li>• Максимум ₽30,000</li>
+                  <li>• Bronze — 5%</li>
+                  <li>• Silver — 7%</li>
+                  <li>• Gold — 10%</li>
+                  <li>• Platinum — 12%</li>
+                  <li>• Emperor — 15%</li>
                 </ul>
               </div>
               <div>
-                <h4 className="font-bold text-white mb-2">VIP игроки (уровень 3+)</h4>
+                <h4 className="font-bold text-white mb-2">Условия</h4>
                 <ul className="space-y-1">
-                  <li>• 15% от недельных потерь</li>
-                  <li>• Вейджер x3</li>
-                  <li>• Максимум ₽150,000</li>
+                  <li>• Вейджер x5 на все уровни</li>
+                  <li>• Минимум ₽10 для начисления</li>
+                  <li>• Начисляется на бонусный баланс</li>
+                  <li>• Срок отыгрыша — 7 дней</li>
                 </ul>
               </div>
             </div>
             <p className="mt-4 text-aurex-platinum-500 text-sm">
-              Кэшбэк начисляется только игрокам с отрицательным балансом за неделю (потери {">"} выигрыши).
-              Рекомендуется запускать обработку каждую субботу.
+              Кэшбэк начисляется автоматически каждый понедельник игрокам с чистым проигрышем за неделю (ставки {">"} выигрыши).
+              Также можно начислить вручную кнопкой выше.
             </p>
           </div>
         </div>
