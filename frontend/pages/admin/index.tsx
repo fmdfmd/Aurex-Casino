@@ -111,8 +111,8 @@ export default function AdminDashboard() {
             todaySessions: data.data.games?.todaySessions || 0 
           },
           bonuses: { 
-            totalIssued: data.data.bonuses?.totalIssued || 0, 
-            activeWagers: data.data.bonuses?.activeWagers || 0 
+            totalIssued: data.data.bonuses?.activeAmount || data.data.bonuses?.totalIssued || 0, 
+            activeWagers: data.data.bonuses?.activeCount || data.data.bonuses?.activeWagers || 0 
           }
         });
 

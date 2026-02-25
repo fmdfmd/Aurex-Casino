@@ -103,12 +103,12 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       FROM users
     `);
 
-    // Game sessions statistics
+    // Game sessions statistics (active = played today, not status field which is unreliable)
     const gamesResult = await pool.query(`
       SELECT 
         COUNT(*) as total_sessions,
         COUNT(*) FILTER (WHERE started_at >= CURRENT_DATE) as today_sessions,
-        COUNT(*) FILTER (WHERE status = 'active') as active_sessions
+        COUNT(DISTINCT user_id) FILTER (WHERE started_at >= NOW() - INTERVAL '30 minutes') as active_sessions
       FROM game_sessions
     `);
 
@@ -148,10 +148,21 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       LIMIT 10
     `);
 
+    // Bonuses statistics
+    const bonusesResult = await pool.query(`
+      SELECT 
+        COUNT(*) FILTER (WHERE status = 'active') as active_count,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0) as active_amount,
+        COUNT(*) FILTER (WHERE status = 'active' AND created_at >= CURRENT_DATE) as today_count,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'active' AND created_at >= CURRENT_DATE), 0) as today_amount
+      FROM bonuses
+    `);
+
     const users = usersResult.rows[0];
     const games = gamesResult.rows[0];
     const finance = financeResult.rows[0];
     const revenue = revenueResult.rows[0];
+    const bonuses = bonusesResult.rows[0];
 
     res.json({
       success: true,
@@ -165,6 +176,12 @@ router.get('/dashboard', adminAuth, async (req, res) => {
           totalSessions: parseInt(games.total_sessions),
           todaySessions: parseInt(games.today_sessions),
           activeSessions: parseInt(games.active_sessions)
+        },
+        bonuses: {
+          activeCount: parseInt(bonuses.active_count),
+          activeAmount: parseFloat(bonuses.active_amount),
+          todayCount: parseInt(bonuses.today_count),
+          todayAmount: parseFloat(bonuses.today_amount)
         },
         finance: {
           totalDeposits: parseFloat(finance.total_deposits),
