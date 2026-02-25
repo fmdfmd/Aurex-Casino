@@ -1329,6 +1329,9 @@ CARDRUBP2P: 0 (value)
 - [x] Платёжки — динамический `returnUrl` из `Origin` заголовка (работает на любом зеркале)
 - [x] Все упоминания `aurex.io` заменены на `aurex.casino`
 - [x] Тестовые аккаунты (`testuser`, `demo`) удалены из seed-скрипта и прод-базы
+- [x] Промокоды — поле вейджера в админке (создание/редактирование), отображение x3/x5/etc в таблице
+- [x] Постбэк-трекинг для арбитражников (reg + FTD) — `click_id` из URL → cookie → БД → HTTP GET на trackhta.com
+- [x] Чат — загрузка файлов ограничена PDF-only (Safari-баг с `image/*`)
 
 ### В процессе
 - [x] Переход на продакшн Fundist — **ЛАЙВ! 76 провайдеров активны** (24.02.2026, включая Kiron 974, InOut 816, Endorphina 973)
@@ -1434,4 +1437,41 @@ CARDRUBP2P: 0 (value)
 
 ---
 
-*Последнее обновление: 11 января 2026 — PDF-файлы в чате, персистентность оператора (operator_telegram_id), мультидомен Google/Telegram OAuth (aurex.casino + aurex1.casino), админ-панель рефералов (/admin/referrals, инд. процент), фикс промокодов (начисление баланса), фикс мобильного меню, фикс подсчёта рефералов (subqueries), тестовые аккаунты удалены, PDF-only аплоад в чате*
+## Постбэк-трекинг (affiliate / арбитраж)
+
+### Статус: РАБОТАЕТ
+
+**Ссылка для трафика:**
+```
+https://aurex1.casino/?click_id={макрос_трекера}
+```
+Поддерживаемые параметры: `click_id`, `clickid`, `sub_id`
+
+**Постбэки (trackhta.com):**
+| Событие | URL |
+|---------|-----|
+| Регистрация (reg) | `https://trackhta.com/close/?token={click_id}&advertiserId=360552&label=reg` |
+| Первый депозит (FTD) | `https://trackhta.com/close/?token={click_id}&advertiserId=360552` |
+
+**Механика:**
+1. Юзер приходит с `?click_id=XXX` → фронтенд сохраняет в cookie (`aurex_click_id`, 30 дней)
+2. При регистрации → cookie передаётся на бэкенд → `users.click_id` в БД
+3. После создания аккаунта → HTTP GET на reg постбэк (non-blocking)
+4. При первом депозите (`deposit_count = 1`) → HTTP GET на FTD постбэк (non-blocking)
+5. Дедупликация: флаги `postback_reg_sent` / `postback_ftd_sent` в БД
+
+**БД колонки (миграция 018):**
+- `users.click_id` — VARCHAR(500)
+- `users.postback_reg_sent` — BOOLEAN DEFAULT FALSE
+- `users.postback_ftd_sent` — BOOLEAN DEFAULT FALSE
+
+**Файлы:**
+- `backend/services/postbackService.js` — `fireRegPostback()`, `fireFtdPostback()`
+- `backend/routes/auth.js` — сохранение click_id, вызов reg постбэка
+- `backend/routes/avePayCallback.js` — вызов FTD постбэка
+- `frontend/pages/_app.tsx` — захват click_id из URL в cookie
+- `frontend/pages/register.tsx` — передача click_id на бэкенд
+
+---
+
+*Последнее обновление: 11 января 2026 — постбэк-трекинг (reg+FTD, trackhta.com), промокоды с вейджером в админке, PDF-файлы в чате, мультидомен OAuth, админ-панель рефералов, тестовые аккаунты удалены*
