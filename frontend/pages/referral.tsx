@@ -92,7 +92,7 @@ export default function ReferralPage() {
           availableWithdraw: statsData.data.availableWithdraw || 0,
           thisMonthEarnings: statsData.data.thisMonthEarnings || 0,
           referralCode: statsData.data.referralCode || `REF-${user?.odid}`,
-          referralLink: statsData.data.referralLink || `${window.location.origin}/register?ref=${user?.odid}`,
+          referralLink: `${window.location.origin}/register?ref=${statsData.data.referralCode || user?.odid}`,
           monthGGR: statsData.data.monthGGR || 0,
           monthPotentialEarnings: statsData.data.monthPotentialEarnings || 0,
           commissionPercent: statsData.data.commissionPercent || 10,
@@ -139,7 +139,7 @@ export default function ReferralPage() {
   };
 
   const referralCode = stats.referralCode || user?.odid || 'AUREX123';
-  const referralLink = stats.referralLink || `${typeof window !== 'undefined' ? window.location.origin : 'https://aurex.casino'}/register?ref=${referralCode}`;
+  const referralLink = typeof window !== 'undefined' ? `${window.location.origin}/register?ref=${referralCode}` : `https://aurex1.casino/register?ref=${referralCode}`;
 
   // Default tier fallback
   const defaultTier: ReferralTier = {

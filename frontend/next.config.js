@@ -6,7 +6,7 @@ const nextConfig = {
     domains: [
       'int.apichannel.cloud',
       'icdnchannel.com',
-      'api.aurex.io',
+      'api.aurex.casino',
       'lh3.googleusercontent.com',
       't.me',
       'img.cdn-fundist.com',

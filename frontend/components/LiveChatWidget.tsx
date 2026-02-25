@@ -482,7 +482,7 @@ export default function LiveChatWidget() {
             </div>
 
             <div className="px-4 pb-4 flex justify-center gap-6 text-xs text-aurex-platinum-500">
-              <a href="mailto:support@aurex.io" className="flex items-center gap-1 hover:text-aurex-gold-500 transition-colors">
+              <a href="mailto:support@aurex.casino" className="flex items-center gap-1 hover:text-aurex-gold-500 transition-colors">
                 <Mail className="w-3 h-3" /> Email
               </a>
               <a href="https://t.me/aurex_support_bot" target="_blank" rel="noopener" className="flex items-center gap-1 hover:text-aurex-gold-500 transition-colors">

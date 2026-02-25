@@ -196,7 +196,7 @@ const defaultReferralConfig = {
 };
 
 const defaultSupportConfig = {
-  contacts: { email: 'support@aurex.io', telegram: '@aurex_support', liveChat: true },
+  contacts: { email: 'support@aurex.casino', telegram: '@aurex_support', liveChat: true },
   schedule: { chat: '24/7', email: 'Пн-Вс, ответ до 24ч' }
 };
 

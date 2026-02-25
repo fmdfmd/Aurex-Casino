@@ -439,8 +439,8 @@ export default function SupportPage() {
                   </div>
                   <h3 className="text-lg font-bold text-white mb-2">{t('support.email')}</h3>
                   <p className="text-aurex-platinum-400 text-sm mb-4">{t('support.reply24h')}</p>
-                  <a href="mailto:support@aurex.io" className="block w-full py-3 bg-blue-500 text-white font-bold rounded-xl">
-                    support@aurex.io
+                  <a href="mailto:support@aurex.casino" className="block w-full py-3 bg-blue-500 text-white font-bold rounded-xl">
+                    support@aurex.casino
                   </a>
                 </div>
 

@@ -354,11 +354,11 @@ export default function FAQPage() {
               </p>
               <div className="flex flex-col sm:flex-row gap-4 justify-center">
                 <a
-                  href="mailto:support@aurex.io"
+                  href="mailto:support@aurex.casino"
                   className="flex items-center justify-center space-x-2 px-6 py-3 bg-aurex-obsidian-700 text-aurex-platinum-300 rounded-xl border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all"
                 >
                   <Mail className="w-5 h-5" />
-                  <span>support@aurex.io</span>
+                  <span>support@aurex.casino</span>
                 </a>
                 <button className="flex items-center justify-center space-x-2 px-6 py-3 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl">
                   <MessageCircle className="w-5 h-5" />

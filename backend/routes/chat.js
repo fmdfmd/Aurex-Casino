@@ -57,7 +57,7 @@ const SYSTEM_PROMPT = `Ты — Стефани, официальный AI-асс
 КОНТАКТЫ:
 - Telegram бот поддержки: @aurex_support_bot
 - Telegram канал: @aurex_casino
-- Email: support@aurex.io
+- Email: support@aurex.casino
 
 Если не можешь помочь — предложи создать тикет в разделе "Поддержка" на сайте или написать в Telegram @aurex_support_bot.`;
 

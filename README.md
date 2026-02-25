@@ -276,7 +276,7 @@ Supports 5 languages:
 ## 📧 Support
 
 For issues and questions:
-- Email: admin@aurex.io
+- Email: admin@aurex.casino
 - Telegram: @aurex_support (setup required)
 
 ## 📄 License

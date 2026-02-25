@@ -21,7 +21,7 @@ async function seedDatabase() {
           vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
           referral_code
         ) VALUES (
-          'AUREX-000001', 'ADMIN', 'admin@aurex.io', $1, 100000, 0, 'RUB',
+          'AUREX-000001', 'ADMIN', 'admin@aurex.casino', $1, 100000, 0, 'RUB',
           5, 999999, true, true, true, 'aurex_admin_001', 'ADMIN001'
         ) ON CONFLICT (username) DO UPDATE SET password = $1, is_admin = true
       `, [adminPassword]);
@@ -37,7 +37,7 @@ async function seedDatabase() {
         vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
         referral_code
       ) VALUES (
-        'AUREX-000002', 'testuser', 'test@aurex.io', $1, 50000, 0, 'RUB',
+        'AUREX-000002', 'testuser', 'test@aurex.casino', $1, 50000, 0, 'RUB',
         3, 15000, true, false, true, 'aurex_user_001', 'TEST001'
       ) ON CONFLICT (username) DO NOTHING
     `, [testPassword]);
@@ -50,7 +50,7 @@ async function seedDatabase() {
         vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
         referral_code
       ) VALUES (
-        'AUREX-000003', 'demo', 'demo@aurex.io', $1, 10000, 0, 'RUB',
+        'AUREX-000003', 'demo', 'demo@aurex.casino', $1, 10000, 0, 'RUB',
         1, 500, true, false, true, 'aurex_demo_001', 'DEMO001'
       ) ON CONFLICT (username) DO NOTHING
     `, [demoPassword]);

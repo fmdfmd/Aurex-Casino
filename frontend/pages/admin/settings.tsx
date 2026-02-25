@@ -31,8 +31,8 @@ export default function AdminSettingsPage() {
   
   const [generalSettings, setGeneralSettings] = useState({
     siteName: 'AUREX',
-    siteUrl: 'https://aurex.io',
-    supportEmail: 'support@aurex.io',
+    siteUrl: 'https://aurex.casino',
+    supportEmail: 'support@aurex.casino',
     defaultLanguage: 'ru',
     defaultCurrency: 'RUB',
     maintenanceMode: false,

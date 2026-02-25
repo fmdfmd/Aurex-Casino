@@ -130,10 +130,10 @@ export default function Footer() {
               <div>
                 <p className="text-aurex-gold-500 font-bold mb-2 tracking-wide">VIP Email</p>
                 <a 
-                  href="mailto:vip@aurex.io"
+                  href="mailto:vip@aurex.casino"
                   className="text-aurex-platinum-400 hover:text-aurex-gold-500 text-sm transition-colors"
                 >
-                  vip@aurex.io
+                  vip@aurex.casino
                 </a>
               </div>
             </div>

@@ -443,11 +443,11 @@ export default function ResponsibleGamingPage() {
                     Наша команда поддержки готова помочь вам 24/7.
                   </p>
                   <a
-                    href="mailto:support@aurex.io"
+                    href="mailto:support@aurex.casino"
                     className="flex items-center space-x-2 text-green-400 hover:text-green-300"
                   >
                     <Mail className="w-5 h-5" />
-                    <span>support@aurex.io</span>
+                    <span>support@aurex.casino</span>
                   </a>
                 </motion.div>
               </div>

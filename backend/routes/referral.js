@@ -78,7 +78,7 @@ router.get('/stats', auth, async (req, res) => {
       success: true,
       data: {
         referralCode: user.referral_code,
-        referralLink: `https://${req.headers.host || req.headers.origin?.replace(/^https?:\/\//, '') || 'aurex1.casino'}/register?ref=${user.referral_code}`,
+        referralLink: `https://${req.headers['x-forwarded-host'] || req.headers.origin?.replace(/^https?:\/\//, '') || req.headers.referer?.match(/https?:\/\/([^/]+)/)?.[1] || 'aurex1.casino'}/register?ref=${user.referral_code}`,
         totalReferrals,
         activeReferrals: parseInt(refStats.active_referrals),
         totalEarnings,
