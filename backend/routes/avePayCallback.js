@@ -226,6 +226,12 @@ async function handleDepositCompleted(txId, avePayId, payload) {
     }
 
     console.log(`[AvePay] Deposit ${txId} completed: +${depositAmount} ${tx.currency} for user ${userId}`);
+
+    // Fire FTD postback on first deposit (non-blocking)
+    if (newDepositCount === 1) {
+      const { fireFtdPostback } = require('../services/postbackService');
+      fireFtdPostback(userId).catch(err => console.error('[AvePay] FTD postback error:', err.message));
+    }
   });
 }
 

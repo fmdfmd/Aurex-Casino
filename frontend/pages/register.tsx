@@ -71,13 +71,15 @@ export default function RegisterPage() {
 
   const onSubmit = async (data: RegisterForm) => {
     try {
+      const clickId = document.cookie.match(/aurex_click_id=([^;]+)/)?.[1];
       await registerUser({
         username: data.username,
         phone: data.phone,
         password: data.password,
         firstName: data.firstName,
         lastName: data.lastName,
-        referralCode: data.referralCode
+        referralCode: data.referralCode,
+        clickId: clickId ? decodeURIComponent(clickId) : undefined
       });
       router.push('/');
     } catch (error) {

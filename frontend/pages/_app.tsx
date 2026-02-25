@@ -40,7 +40,15 @@ export default function App({ Component, pageProps }: AppProps) {
     setIsClient(true);
     initializeAuth();
     
-    // Check if splash was already shown in this session
+    // Capture click_id from affiliate traffic URL params
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const clickId = params.get('click_id') || params.get('clickid') || params.get('sub_id');
+      if (clickId) {
+        document.cookie = `aurex_click_id=${encodeURIComponent(clickId)};path=/;max-age=${60 * 60 * 24 * 30};SameSite=Lax`;
+      }
+    }
+
     const splashShown = sessionStorage.getItem('aurex_splash_shown');
     if (splashShown) {
       setShowSplash(false);

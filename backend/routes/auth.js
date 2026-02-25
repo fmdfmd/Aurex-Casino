@@ -88,7 +88,7 @@ router.post('/register', [
       });
     }
 
-    const { username, email, password, referralCode, phone, firstName, lastName } = req.body;
+    const { username, email, password, referralCode, phone, firstName, lastName, clickId } = req.body;
     const normalizedPhone = normalizePhone(phone);
     const normalizedEmail = email ? String(email).trim().toLowerCase() : null;
 
@@ -152,9 +152,9 @@ router.post('/register', [
 
     // Create user
     const result = await pool.query(
-      `INSERT INTO users (odid, username, email, password, phone, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true) RETURNING *`,
-      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, firstName || null, lastName || null, userReferralCode, referredBy]
+      `INSERT INTO users (odid, username, email, password, phone, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active, click_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true, $10) RETURNING *`,
+      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, firstName || null, lastName || null, userReferralCode, referredBy, clickId || null]
     );
 
     const user = result.rows[0];
@@ -164,6 +164,12 @@ router.post('/register', [
       ip: req.ip || '0.0.0.0',
       language: 'ru'
     }).catch(err => console.log('[reg] Fundist user creation deferred:', err.message));
+
+    // Fire registration postback (non-blocking)
+    if (clickId) {
+      const { fireRegPostback } = require('../services/postbackService');
+      fireRegPostback(user.id).catch(err => console.error('[reg] Postback error:', err.message));
+    }
 
     // Generate token
     const token = generateToken(user.id);
