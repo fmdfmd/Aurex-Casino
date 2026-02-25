@@ -547,7 +547,7 @@ bot.action(/take_web:(\d+)/, async (ctx) => {
 ├ Email: ${escapeHtml(u?.email || '—')}
 ├ Баланс: ${parseFloat(u?.balance || 0).toFixed(2)} ₽
 ├ Депозиты: ${parseFloat(u?.total_deposits || 0).toFixed(2)} ₽ (${u?.deposit_count || 0})
-├ VIP: ${(u?.vip_level || 'none').toUpperCase()}
+├ VIP: ${String(u?.vip_level || 'none').toUpperCase()}
 └ Рег.: ${regDate}
 
 <i>Просто напишите ответ — он отобразится у пользователя в чате на сайте.</i>`,
