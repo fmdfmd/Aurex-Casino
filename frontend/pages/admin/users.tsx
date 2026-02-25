@@ -54,6 +54,10 @@ export default function AdminUsersPage() {
   const [users, setUsers] = useState<User[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUsers, setTotalUsers] = useState(0);
+  const PAGE_SIZE = 50;
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
   const [showBalanceModal, setShowBalanceModal] = useState(false);
   const [balanceAmount, setBalanceAmount] = useState('');
@@ -72,14 +76,16 @@ export default function AdminUsersPage() {
   // Fetch users
   useEffect(() => {
     if (token) {
-      fetchUsers();
+      fetchUsers(currentPage);
     }
-  }, [token]);
+  }, [token, currentPage]);
 
-  const fetchUsers = async () => {
+  const fetchUsers = async (page = 1) => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/admin/users', {
+      const params = new URLSearchParams({ page: String(page), limit: String(PAGE_SIZE) });
+      if (searchTerm) params.set('search', searchTerm);
+      const response = await fetch(`/api/admin/users?${params}`, {
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
@@ -88,7 +94,11 @@ export default function AdminUsersPage() {
       if (response.ok) {
         const data = await response.json();
         const usersArray = data.data?.users || (Array.isArray(data.data) ? data.data : (Array.isArray(data) ? data : []));
+        const total = data.data?.pagination?.total || data.data?.total || usersArray.length;
+        const pages = data.data?.pagination?.pages || Math.max(1, Math.ceil(total / PAGE_SIZE));
         setUsers(usersArray);
+        setTotalUsers(total);
+        setTotalPages(pages);
       } else {
         console.error('Failed to fetch users: API error');
         setUsers([]);
@@ -252,13 +262,13 @@ export default function AdminUsersPage() {
                 <span>Управление пользователями</span>
               </h1>
               <p className="text-aurex-platinum-400 mt-1">
-                Всего: {users.length} пользователей
+                Всего: {totalUsers} пользователей · Страница {currentPage} из {totalPages}
               </p>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={fetchUsers}
+                onClick={() => fetchUsers(currentPage)}
                 className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-700 text-aurex-platinum-300 rounded-lg border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all"
               >
                 <RefreshCw className="w-4 h-4" />
@@ -280,6 +290,7 @@ export default function AdminUsersPage() {
                 placeholder="Поиск по имени, email или ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter') { setCurrentPage(1); fetchUsers(1); } }}
                 className="w-full pl-12 pr-4 py-3 bg-aurex-obsidian-800 border border-aurex-gold-500/20 rounded-xl text-white placeholder-aurex-platinum-500 focus:border-aurex-gold-500/50 focus:outline-none"
               />
             </div>
@@ -407,6 +418,66 @@ export default function AdminUsersPage() {
               </table>
             </div>
           </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-center gap-2 mt-6">
+              <button
+                onClick={() => setCurrentPage(1)}
+                disabled={currentPage === 1}
+                className="px-3 py-2 rounded-lg bg-aurex-obsidian-800 border border-aurex-gold-500/20 text-aurex-platinum-300 disabled:opacity-40 hover:border-aurex-gold-500/50 transition-all text-sm"
+              >
+                «
+              </button>
+              <button
+                onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                disabled={currentPage === 1}
+                className="px-3 py-2 rounded-lg bg-aurex-obsidian-800 border border-aurex-gold-500/20 text-aurex-platinum-300 disabled:opacity-40 hover:border-aurex-gold-500/50 transition-all text-sm"
+              >
+                ‹ Назад
+              </button>
+
+              {Array.from({ length: totalPages }, (_, i) => i + 1)
+                .filter(p => p === 1 || p === totalPages || Math.abs(p - currentPage) <= 2)
+                .reduce<(number | string)[]>((acc, p, idx, arr) => {
+                  if (idx > 0 && (p as number) - (arr[idx - 1] as number) > 1) acc.push('...');
+                  acc.push(p);
+                  return acc;
+                }, [])
+                .map((p, idx) =>
+                  p === '...' ? (
+                    <span key={`dots-${idx}`} className="px-2 text-aurex-platinum-500">…</span>
+                  ) : (
+                    <button
+                      key={p}
+                      onClick={() => setCurrentPage(p as number)}
+                      className={`px-3 py-2 rounded-lg border text-sm transition-all ${
+                        currentPage === p
+                          ? 'bg-aurex-gold-500 text-aurex-obsidian-900 border-aurex-gold-500 font-bold'
+                          : 'bg-aurex-obsidian-800 border-aurex-gold-500/20 text-aurex-platinum-300 hover:border-aurex-gold-500/50'
+                      }`}
+                    >
+                      {p}
+                    </button>
+                  )
+                )}
+
+              <button
+                onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 rounded-lg bg-aurex-obsidian-800 border border-aurex-gold-500/20 text-aurex-platinum-300 disabled:opacity-40 hover:border-aurex-gold-500/50 transition-all text-sm"
+              >
+                Вперёд ›
+              </button>
+              <button
+                onClick={() => setCurrentPage(totalPages)}
+                disabled={currentPage === totalPages}
+                className="px-3 py-2 rounded-lg bg-aurex-obsidian-800 border border-aurex-gold-500/20 text-aurex-platinum-300 disabled:opacity-40 hover:border-aurex-gold-500/50 transition-all text-sm"
+              >
+                »
+              </button>
+            </div>
+          )}
 
           {/* View User Modal */}
           <AnimatePresence>
