@@ -29,31 +29,8 @@ async function seedDatabase() {
     // Clean up duplicate ADMIN users (case variations)
     await pool.query("DELETE FROM users WHERE LOWER(username) = 'admin' AND id != (SELECT MIN(id) FROM users WHERE LOWER(username) = 'admin')").catch(() => {});
     
-    // Create test user
-    const testPassword = await bcrypt.hash('test123', 12);
-    await pool.query(`
-      INSERT INTO users (
-        odid, username, email, password, balance, bonus_balance, currency,
-        vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
-        referral_code
-      ) VALUES (
-        'AUREX-000002', 'testuser', 'test@aurex.casino', $1, 50000, 0, 'RUB',
-        3, 15000, true, false, true, 'aurex_user_001', 'TEST001'
-      ) ON CONFLICT (username) DO NOTHING
-    `, [testPassword]);
-    
-    // Create demo user
-    const demoPassword = await bcrypt.hash('demo123', 12);
-    await pool.query(`
-      INSERT INTO users (
-        odid, username, email, password, balance, bonus_balance, currency,
-        vip_level, vip_points, is_verified, is_admin, is_active, b2b_user_id,
-        referral_code
-      ) VALUES (
-        'AUREX-000003', 'demo', 'demo@aurex.casino', $1, 10000, 0, 'RUB',
-        1, 500, true, false, true, 'aurex_demo_001', 'DEMO001'
-      ) ON CONFLICT (username) DO NOTHING
-    `, [demoPassword]);
+    // Delete test/demo accounts if they exist
+    await pool.query("DELETE FROM users WHERE LOWER(username) IN ('testuser', 'demo')").catch(() => {});
     
     // Initialize site settings
     await pool.query(`
@@ -95,9 +72,7 @@ async function seedDatabase() {
     
     console.log('✅ Database seeded successfully');
     console.log('👤 Users created:');
-    console.log('   🔑 admin / admin123 (VIP Emperor)');
-    console.log('   🔑 testuser / test123 (VIP Gold)');
-    console.log('   🔑 demo / demo123 (VIP Bronze)');
+    console.log('   🔑 ADMIN (VIP Emperor)');
     
     process.exit(0);
   } catch (error) {
