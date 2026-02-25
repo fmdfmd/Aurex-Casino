@@ -30,6 +30,7 @@ interface Promocode {
   code: string;
   type: 'balance' | 'bonus' | 'freespins' | 'deposit_bonus';
   value: number;
+  wager: number;
   minDeposit: number;
   usageLimit: number;
   usedCount: number;
@@ -207,7 +208,7 @@ export default function AdminPromocodesPage() {
       code: promo.code,
       type: promo.type,
       value: String(promo.value),
-      wager: String((promo as any).wager || 0),
+      wager: String(promo.wager || 0),
       minDeposit: String(promo.minDeposit),
       maxUses: String(promo.usageLimit),
       expiresAt: promo.expiresAt ? promo.expiresAt.split('T')[0] : '',
@@ -424,6 +425,9 @@ export default function AdminPromocodesPage() {
                           </td>
                           <td className="px-6 py-4">
                             <span className="text-xl font-bold text-white">{getValueDisplay(promo)}</span>
+                            {promo.type !== 'balance' && promo.wager > 0 && (
+                              <span className="ml-2 text-sm text-aurex-gold-500 font-medium">x{promo.wager}</span>
+                            )}
                           </td>
                           <td className="px-6 py-4">
                             <span className="text-aurex-platinum-300">
