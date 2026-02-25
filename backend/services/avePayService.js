@@ -40,9 +40,9 @@ class AvePayService {
    * @param {Object} [params.customer] - { email, firstName, lastName, phone }
    * @returns {Promise<Object>} AVE PAY payment response with redirectUrl
    */
-  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer, userId, bankCode }) {
+  async createDeposit({ amount, currency, transactionId, paymentMethod = 'P2P_CARD', description, customer, userId, bankCode, originUrl }) {
     const callbackBase = config.avePay.callbackUrl || `${config.server.frontendUrl}/api/payments/avepay/callback`;
-    const returnBase = config.avePay.returnUrl || `${config.server.frontendUrl}/wallet`;
+    const returnBase = originUrl ? `${originUrl}/wallet` : (config.avePay.returnUrl || `${config.server.frontendUrl}/wallet`);
 
     const payload = {
       paymentType: 'DEPOSIT',

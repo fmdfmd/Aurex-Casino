@@ -259,7 +259,8 @@ router.post('/deposit', auth, async (req, res) => {
       transactionId: transaction.id,
       paymentMethod: avePayMethod,
       userId: req.user.id,
-      customer: Object.keys(customer).length > 0 ? customer : undefined
+      customer: Object.keys(customer).length > 0 ? customer : undefined,
+      originUrl: req.headers.origin || req.headers.referer?.replace(/\/[^/]*$/, '') || undefined
     });
 
     const paymentResult = avePayResponse?.result || avePayResponse;

@@ -45,7 +45,7 @@ module.exports = {
     apiKey: process.env.AVEPAY_API_KEY || 'XPozUj2CezbUCXz0rS7xVNfFJNCfaQBd',
     webhookSecret: process.env.AVEPAY_WEBHOOK_SECRET || 'Ss1C1ibuEHvU',
     callbackUrl: process.env.AVEPAY_CALLBACK_URL || 'https://aurex.casino/api/payments/avepay/callback',
-    returnUrl: process.env.AVEPAY_RETURN_URL || 'https://aurex.casino/wallet'
+    returnUrl: process.env.AVEPAY_RETURN_URL || 'https://aurex1.casino/wallet'
   },
 
   // Expay Payment System

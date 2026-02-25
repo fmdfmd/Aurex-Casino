@@ -82,7 +82,7 @@ class NirvanaPayService {
 
     const payload = {
       amount,
-      redirectURL: returnUrl || config.avePay.returnUrl || 'https://aurex.casino/wallet',
+      redirectURL: returnUrl || config.avePay.returnUrl || `${config.server.frontendUrl}/wallet`,
       siteName: 'AUREX Casino',
       callbackURL: `${callbackBase}?txId=${transactionId}&type=deposit`,
       externalID,
