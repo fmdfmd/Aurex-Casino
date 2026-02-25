@@ -167,7 +167,7 @@ ${this.escapeHtml(replyText)}
     }
 
     const regDate = userInfo.created_at ? new Date(userInfo.created_at).toLocaleDateString('ru-RU') : '—';
-    const vipLabel = (userInfo.vip_level || 'none').toUpperCase();
+    const vipLabel = String(userInfo.vip_level || 'none').toUpperCase();
 
     const message = `🔔 <b>Запрос оператора из чата!</b>
 
