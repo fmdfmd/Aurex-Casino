@@ -22,7 +22,7 @@ import {
   Tag,
   Trophy,
   Wallet,
-  Share2,
+
   Lock,
   KeyRound
 } from 'lucide-react';
@@ -104,7 +104,6 @@ export default function AdminLayout({ children }: AdminLayoutProps) {
     { href: '/admin/transactions', label: 'Транзакции', icon: CreditCard },
     { href: '/admin/cashback', label: 'Кэшбэк', icon: Crown },
     { href: '/admin/tournaments', label: 'Турниры', icon: Trophy },
-    { href: '/admin/referrals', label: 'Рефералка', icon: Share2 },
     { href: '/admin/referrals', label: 'Рефералка', icon: Users },
     { href: '/admin/promocodes', label: 'Промокоды', icon: Tag },
     { href: '/admin/bonuses', label: 'Бонусы', icon: Gift },
