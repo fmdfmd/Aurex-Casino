@@ -437,8 +437,11 @@ router.get('/transactions', auth, async (req, res) => {
     const { page = 1, limit = 20, type } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
-    let query = 'SELECT * FROM transactions WHERE user_id = $1';
-    const values = [req.user.id];
+    // Only show financial transactions (not game bets/wins)
+    const financialTypes = ['deposit', 'withdrawal', 'promo_bonus', 'cashback', 'referral_bonus', 'admin_adjustment'];
+    
+    let query = `SELECT * FROM transactions WHERE user_id = $1 AND type = ANY($2)`;
+    const values = [req.user.id, financialTypes];
     
     if (type && type !== 'all') {
       values.push(type);
@@ -453,8 +456,8 @@ router.get('/transactions', auth, async (req, res) => {
     const result = await pool.query(query, values);
     
     const countResult = await pool.query(
-      'SELECT COUNT(*) FROM transactions WHERE user_id = $1',
-      [req.user.id]
+      `SELECT COUNT(*) FROM transactions WHERE user_id = $1 AND type = ANY($2)`,
+      [req.user.id, financialTypes]
     );
     
     res.json({
