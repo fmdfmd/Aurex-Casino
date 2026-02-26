@@ -150,11 +150,29 @@ router.post('/register', [
       }
     }
 
+    // Multi-account check by IP
+    const registrationIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+    let isSuspicious = false;
+    let suspiciousReason = null;
+    const skipIps = ['127.0.0.1', '::1', '0.0.0.0'];
+    if (!skipIps.includes(registrationIp)) {
+      const ipCheckResult = await pool.query(
+        `SELECT id, username, odid FROM users WHERE registration_ip = $1 AND is_active = true LIMIT 3`,
+        [registrationIp]
+      );
+      if (ipCheckResult.rows.length > 0) {
+        isSuspicious = true;
+        const existingUsernames = ipCheckResult.rows.map(u => u.username).join(', ');
+        suspiciousReason = `Мультиакк: тот же IP ${registrationIp}, уже есть аккаунт(ы): ${existingUsernames}`;
+        console.warn(`[MultiAcc] New reg from IP ${registrationIp} — existing accounts: ${existingUsernames}`);
+      }
+    }
+
     // Create user
     const result = await pool.query(
-      `INSERT INTO users (odid, username, email, password, phone, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active, click_id)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true, $10) RETURNING *`,
-      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, firstName || null, lastName || null, userReferralCode, referredBy, clickId || null]
+      `INSERT INTO users (odid, username, email, password, phone, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active, click_id, registration_ip, last_ip, is_suspicious, suspicious_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true, $10, $11, $11, $12, $13) RETURNING *`,
+      [odid, username, normalizedEmail, hashedPassword, normalizedPhone || null, firstName || null, lastName || null, userReferralCode, referredBy, clickId || null, registrationIp, isSuspicious, suspiciousReason]
     );
 
     const user = result.rows[0];

@@ -47,6 +47,9 @@ interface User {
   depositCount: number;
   lastLogin: string;
   createdAt: string;
+  isSuspicious: boolean;
+  suspiciousReason: string | null;
+  registrationIp: string | null;
 }
 
 export default function AdminUsersPage() {
@@ -171,9 +174,51 @@ export default function AdminUsersPage() {
     }
   };
 
+  const handleToggleSuspicious = async (user: User) => {
+    const newVal = !user.isSuspicious;
+    const reason = newVal ? `Помечен вручную администратором` : null;
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/suspicious`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isSuspicious: newVal, reason })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(newVal ? '⚠️ Мультиакк флаг поставлен — бонусы заблокированы' : '✅ Флаг мультиакк снят');
+        fetchUsers();
+      } else {
+        toast.error(data.error || 'Ошибка');
+      }
+    } catch {
+      toast.error('Ошибка сервера');
+    }
+  };
+
   const handleViewUser = (user: User) => {
     setSelectedUser(user);
     setShowViewModal(true);
+  };
+
+  const handleToggleSuspicious = async (user: User) => {
+    const newVal = !user.isSuspicious;
+    const reason = newVal ? `Помечен вручную администратором` : null;
+    try {
+      const res = await fetch(`/api/admin/users/${user.id}/suspicious`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ isSuspicious: newVal, reason })
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success(newVal ? '⚠️ Помечен как мультиакк' : '✅ Флаг снят');
+        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isSuspicious: newVal, suspiciousReason: reason } : u));
+      } else {
+        toast.error('Ошибка');
+      }
+    } catch {
+      toast.error('Ошибка сервера');
+    }
   };
 
   const handleEditUser = (user: User) => {
@@ -333,10 +378,15 @@ export default function AdminUsersPage() {
                         <tr key={user.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
                           <td className="px-6 py-4">
                             <div className="flex flex-col">
-                              <div className="flex items-center space-x-2">
+                              <div className="flex items-center space-x-2 flex-wrap gap-y-1">
                                 <span className="text-white font-medium">{user.username}</span>
                                 {user.isAdmin && (
                                   <span className="px-2 py-0.5 bg-red-500/20 text-red-400 text-xs rounded-full">Admin</span>
+                                )}
+                                {user.isSuspicious && (
+                                  <span title={user.suspiciousReason || 'Мультиакк'} className="px-2 py-0.5 bg-orange-500/20 text-orange-400 text-xs rounded-full flex items-center gap-1 cursor-help">
+                                    <AlertTriangle className="w-3 h-3" />Мультиакк
+                                  </span>
                                 )}
                               </div>
                               <span className="text-sm text-aurex-platinum-500">{user.email}</span>
@@ -402,11 +452,25 @@ export default function AdminUsersPage() {
                                 <Eye className="w-4 h-4" />
                               </button>
                               <button
+                                onClick={() => handleToggleSuspicious(user)}
+                                className={`p-2 rounded-lg transition-colors ${user.isSuspicious ? 'bg-orange-500/20 text-orange-400 hover:bg-orange-500/30' : 'bg-aurex-obsidian-700 text-aurex-platinum-500 hover:bg-aurex-obsidian-600'}`}
+                                title={user.isSuspicious ? 'Снять флаг мультиакк' : 'Пометить как мультиакк'}
+                              >
+                                <AlertTriangle className="w-4 h-4" />
+                              </button>
+                              <button
                                 onClick={() => handleEditUser(user)}
                                 className="p-2 bg-aurex-obsidian-700 text-aurex-platinum-400 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
                                 title="Редактировать"
                               >
                                 <Edit2 className="w-4 h-4" />
+                              </button>
+                              <button
+                                onClick={() => toggleSuspicious(user)}
+                                className={`p-2 rounded-lg transition-colors ${user.isSuspicious ? 'bg-orange-500/30 text-orange-400 hover:bg-orange-500/50' : 'bg-aurex-obsidian-700 text-aurex-platinum-500 hover:bg-orange-500/20 hover:text-orange-400'}`}
+                                title={user.isSuspicious ? 'Снять флаг мультиакк' : 'Пометить мультиакк'}
+                              >
+                                <AlertTriangle className="w-4 h-4" />
                               </button>
                             </div>
                           </td>
@@ -520,6 +584,8 @@ export default function AdminUsersPage() {
                       { label: 'Реф. процент', value: selectedUser.customReferralPercent != null ? `${selectedUser.customReferralPercent}% (кастом)` : 'По умолчанию (5%)' },
                       { label: 'Статус', value: selectedUser.isActive ? 'Активен' : 'Заблокирован' },
                       { label: 'Администратор', value: selectedUser.isAdmin ? 'Да' : 'Нет' },
+                      { label: 'IP регистрации', value: selectedUser.registrationIp || '—' },
+                      { label: 'Мультиакк', value: selectedUser.isSuspicious ? `⚠️ Да — ${selectedUser.suspiciousReason || 'подозрение'}` : '✅ Нет' },
                       { label: 'Последний вход', value: selectedUser.lastLogin ? new Date(selectedUser.lastLogin).toLocaleString('ru-RU') : '—' },
                       { label: 'Регистрация', value: selectedUser.createdAt ? new Date(selectedUser.createdAt).toLocaleString('ru-RU') : '—' },
                     ].map((row) => (

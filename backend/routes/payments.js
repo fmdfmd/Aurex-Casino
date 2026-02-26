@@ -338,8 +338,11 @@ router.post('/deposit/:id/confirm', adminAuth, async (req, res) => {
       
       const usedBonuses = updatedUser.used_bonuses || {};
       const selectedBonus = usedBonuses.selectedBonus;
-      
-      if (selectedBonus && selectedBonus.startsWith('deposit_')) {
+
+      // Блокируем бонусы для мультиакк-подозреваемых
+      if (updatedUser.is_suspicious) {
+        console.warn(`[MultiAcc] Bonus blocked for suspected multi-account user ${userId} (${updatedUser.username})`);
+      } else if (selectedBonus && selectedBonus.startsWith('deposit_')) {
         const depositNumber = parseInt(selectedBonus.replace('deposit_', ''));
         const bonusConfig = DEPOSIT_BONUSES[depositNumber];
         

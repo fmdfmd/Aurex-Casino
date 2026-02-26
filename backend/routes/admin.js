@@ -266,6 +266,10 @@ router.get('/users', adminAuth, async (req, res) => {
     } else if (role === 'user') {
       conditions.push('is_admin = false');
     }
+
+    if (status === 'suspicious') {
+      conditions.push('is_suspicious = true');
+    }
     
     if (conditions.length > 0) {
       query += ' WHERE ' + conditions.join(' AND ');
@@ -312,7 +316,10 @@ router.get('/users', adminAuth, async (req, res) => {
       customReferralPercent: u.custom_referral_percent != null ? parseFloat(u.custom_referral_percent) : null,
       depositCount: u.deposit_count,
       lastLogin: u.last_login,
-      createdAt: u.created_at
+      createdAt: u.created_at,
+      isSuspicious: u.is_suspicious || false,
+      suspiciousReason: u.suspicious_reason || null,
+      registrationIp: u.registration_ip || null
     }));
     
     res.json({
@@ -376,6 +383,21 @@ router.get('/users/:identifier', adminAuth, async (req, res) => {
   } catch (error) {
     console.error('Get user error:', error);
     res.status(500).json({ success: false, error: 'Failed to get user' });
+  }
+});
+
+// Toggle suspicious flag (multi-account)
+router.post('/users/:id/suspicious', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { isSuspicious, reason } = req.body;
+    await pool.query(
+      `UPDATE users SET is_suspicious = $1, suspicious_reason = $2 WHERE id = $3`,
+      [!!isSuspicious, reason || null, id]
+    );
+    res.json({ success: true, message: isSuspicious ? 'Пользователь помечен как подозрительный' : 'Флаг снят' });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
   }
 });
 
