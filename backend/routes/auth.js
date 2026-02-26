@@ -55,6 +55,23 @@ const generateToken = (userId) => {
   });
 };
 
+// Multi-account check helper
+const checkMultiAccount = async (req) => {
+  const ip = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
+  const skipIps = ['127.0.0.1', '::1', '0.0.0.0'];
+  if (skipIps.includes(ip)) return { isSuspicious: false, reason: null, ip };
+  const result = await pool.query(
+    `SELECT username FROM users WHERE registration_ip = $1 AND is_active = true LIMIT 3`,
+    [ip]
+  );
+  if (result.rows.length > 0) {
+    const names = result.rows.map(u => u.username).join(', ');
+    console.warn(`[MultiAcc] IP ${ip} already has accounts: ${names}`);
+    return { isSuspicious: true, reason: `Мультиакк: IP ${ip}, существующие аккаунты: ${names}`, ip };
+  }
+  return { isSuspicious: false, reason: null, ip };
+};
+
 // Register — поддерживает регистрацию по email ИЛИ по телефону (или оба)
 router.post('/register', [
   body('username')
@@ -151,22 +168,7 @@ router.post('/register', [
     }
 
     // Multi-account check by IP
-    const registrationIp = req.headers['cf-connecting-ip'] || req.headers['x-forwarded-for']?.split(',')[0]?.trim() || req.ip || '0.0.0.0';
-    let isSuspicious = false;
-    let suspiciousReason = null;
-    const skipIps = ['127.0.0.1', '::1', '0.0.0.0'];
-    if (!skipIps.includes(registrationIp)) {
-      const ipCheckResult = await pool.query(
-        `SELECT id, username, odid FROM users WHERE registration_ip = $1 AND is_active = true LIMIT 3`,
-        [registrationIp]
-      );
-      if (ipCheckResult.rows.length > 0) {
-        isSuspicious = true;
-        const existingUsernames = ipCheckResult.rows.map(u => u.username).join(', ');
-        suspiciousReason = `Мультиакк: тот же IP ${registrationIp}, уже есть аккаунт(ы): ${existingUsernames}`;
-        console.warn(`[MultiAcc] New reg from IP ${registrationIp} — existing accounts: ${existingUsernames}`);
-      }
-    }
+    const { isSuspicious, reason: suspiciousReason, ip: registrationIp } = await checkMultiAccount(req);
 
     // Create user
     const result = await pool.query(
@@ -788,10 +790,11 @@ router.get('/google/callback', async (req, res) => {
         res.clearCookie('aurex_ref');
       }
 
+      const { isSuspicious: gSusp, reason: gReason, ip: gIp } = await checkMultiAccount(req);
       const insertResult = await pool.query(
-        `INSERT INTO users (odid, username, email, google_id, google_email, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true) RETURNING *`,
-        [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode, referredBy]
+        `INSERT INTO users (odid, username, email, google_id, google_email, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active, registration_ip, last_ip, is_suspicious, suspicious_reason)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 0, 0, 1, true, $10, $10, $11, $12) RETURNING *`,
+        [odid, username, googleEmail, googleId, googleEmail, firstName, lastName, referralCode, referredBy, gIp, gSusp, gReason]
       );
       user = insertResult.rows[0];
 
@@ -879,10 +882,11 @@ async function processTelegramAuth(telegramData) {
       if (refResult.rows.length > 0) referredBy = refResult.rows[0].id;
     }
 
+    const { isSuspicious: tSusp, reason: tReason, ip: tIp } = await checkMultiAccount(req);
     const insertResult = await pool.query(
-      `INSERT INTO users (odid, username, telegram_id, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 1, true) RETURNING *`,
-      [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode, referredBy]
+      `INSERT INTO users (odid, username, telegram_id, first_name, last_name, referral_code, referred_by, balance, bonus_balance, vip_level, is_active, registration_ip, last_ip, is_suspicious, suspicious_reason)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 0, 0, 1, true, $8, $8, $9, $10) RETURNING *`,
+      [odid, finalUsername, telegramId, first_name || null, last_name || null, referralCode, referredBy, tIp, tSusp, tReason]
     );
     user = insertResult.rows[0];
 

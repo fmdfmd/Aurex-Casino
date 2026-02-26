@@ -44,6 +44,12 @@ router.post('/activate', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Вы уже использовали этот промокод' });
     }
 
+    // Блокируем бонусные промокоды для мультиакк-подозреваемых
+    const userCheck = await pool.query('SELECT is_suspicious FROM users WHERE id = $1', [req.user.id]);
+    if (userCheck.rows[0]?.is_suspicious && promo.type !== 'balance') {
+      return res.status(400).json({ success: false, message: 'Промокод недоступен' });
+    }
+
     // Проверяем минимальный депозит (если задан)
     if (promo.min_deposit && parseFloat(promo.min_deposit) > 0) {
       const minDep = parseFloat(promo.min_deposit);
