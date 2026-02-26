@@ -246,7 +246,13 @@ router.get('/users', adminAuth, async (req, res) => {
     
     if (search) {
       values.push(`%${search}%`);
-      conditions.push(`(username ILIKE $${values.length} OR email ILIKE $${values.length} OR odid ILIKE $${values.length})`);
+      const isNumeric = /^\d+$/.test(search.trim());
+      if (isNumeric) {
+        values.push(parseInt(search.trim()));
+        conditions.push(`(username ILIKE $${values.length - 1} OR email ILIKE $${values.length - 1} OR odid ILIKE $${values.length - 1} OR id = $${values.length})`);
+      } else {
+        conditions.push(`(username ILIKE $${values.length} OR email ILIKE $${values.length} OR odid ILIKE $${values.length})`);
+      }
     }
     
     if (status === 'active') {
