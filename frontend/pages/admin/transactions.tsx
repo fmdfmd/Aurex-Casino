@@ -279,14 +279,13 @@ export default function AdminTransactionsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-aurex-gold-500/20">
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">#ID</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Пользователь</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Тип</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Сумма</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Статус</th>
-                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Дата</th>
-                    <th className="text-right px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Действия</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">#ID</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Пользователь</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Сумма</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод / Реквизит</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Статус</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Дата</th>
+                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -306,40 +305,33 @@ export default function AdminTransactionsPage() {
                   ) : (
                     filteredTransactions.map((tx) => (
                       <tr key={tx.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-4">
                           <span className="font-mono text-aurex-gold-400 text-sm">#{tx.id}</span>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-4">
                           <div>
-                            <div className="text-white font-medium">{tx.username}</div>
+                            <div className="text-white font-medium text-sm">{tx.username}</div>
                             <div className="text-xs text-aurex-gold-500">{tx.odid}</div>
-                            <div className="text-xs text-aurex-platinum-500">{tx.email}</div>
                           </div>
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="flex items-center space-x-2">
-                            {getTypeIcon(tx.type)}
-                            <span className="text-white">{getTypeName(tx.type)}</span>
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <span className={`font-bold ${tx.type === 'withdrawal' ? 'text-red-500' : 'text-green-500'}`}>
+                        <td className="px-3 py-4">
+                          <span className={`font-bold ${tx.type === 'withdrawal' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'withdrawal' ? '-' : '+'}₽{tx.amount.toLocaleString('ru-RU')}
                           </span>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-4">
                           <div>
-                            <div className="text-white">{tx.method}</div>
+                            <div className="text-white text-sm">{tx.method}</div>
                             {tx.walletAddress && (
                               <div className="text-xs text-aurex-platinum-500 font-mono">{tx.walletAddress}</div>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-4">
+                        <td className="px-3 py-4">
                           {getStatusBadge(tx.status)}
                         </td>
-                        <td className="px-4 py-4">
-                          <div className="text-sm text-aurex-platinum-400">
+                        <td className="px-3 py-4">
+                          <div className="text-xs text-aurex-platinum-400">
                             {new Date(tx.createdAt).toLocaleString('ru-RU', { 
                               day: '2-digit', 
                               month: '2-digit', 
@@ -348,32 +340,28 @@ export default function AdminTransactionsPage() {
                             })}
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-right">
-                          <div className="flex items-center justify-end space-x-2">
+                        <td className="px-3 py-4">
+                          <div className="flex items-center space-x-2">
                             {tx.status === 'pending' && tx.type === 'withdrawal' && (
                               <>
                                 <button
                                   onClick={() => handleApprove(tx.id)}
-                                  className="p-2 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors"
-                                  title="Одобрить"
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-xs font-medium"
+                                  title="Одобрить и отправить в платёжку"
                                 >
-                                  <Check className="w-4 h-4" />
+                                  <Check className="w-3 h-3" />
+                                  Выплатить
                                 </button>
                                 <button
                                   onClick={() => handleReject(tx.id)}
-                                  className="p-2 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors"
-                                  title="Отклонить"
+                                  className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-xs font-medium"
+                                  title="Отклонить и вернуть деньги"
                                 >
-                                  <X className="w-4 h-4" />
+                                  <X className="w-3 h-3" />
+                                  Отменить
                                 </button>
                               </>
                             )}
-                            <button
-                              className="p-2 bg-blue-500/20 text-blue-400 rounded-lg hover:bg-blue-500/30 transition-colors"
-                              title="Детали"
-                            >
-                              <Eye className="w-4 h-4" />
-                            </button>
                           </div>
                         </td>
                       </tr>
