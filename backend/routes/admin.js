@@ -4,6 +4,9 @@ const pool = require('../config/database');
 const { adminAuth } = require('../middleware/auth');
 const crypto = require('crypto');
 const router = express.Router();
+const nirvanaPayService = require('../services/nirvanaPayService');
+const avePayService = require('../services/avePayService');
+const expayService = require('../services/expayService');
 
 // --- Admin PIN protection ---
 const ADMIN_PIN = process.env.ADMIN_PIN || null;
@@ -607,9 +610,7 @@ router.post('/transactions/:id/:action', adminAuth, async (req, res) => {
         // Lock user row
         await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [tx.user_id]);
         
-        if (action === 'approve') {
-          // Деньги уже списаны при создании заявки — ничего не делаем
-        } else {
+        if (action === 'reject') {
           // Rejected — возвращаем деньги
           await client.query(
             'UPDATE users SET balance = balance + $1 WHERE id = $2',
@@ -620,7 +621,48 @@ router.post('/transactions/:id/:action', adminAuth, async (req, res) => {
       
       return tx;
     });
-    
+
+    // After DB transaction — send payout to payment provider if needed
+    if (action === 'approve' && transaction.type === 'withdrawal') {
+      const method = transaction.payment_method || '';
+      const receiver = transaction.wallet_address || '';
+      const amount = Math.abs(parseFloat(transaction.amount));
+      const txId = transaction.id;
+
+      // Nirvana Pay — send to API if no trackerID yet (wallet_address looks like phone/card, not UUID)
+      const isNirvana = method.startsWith('NIRVANA_');
+      const looksLikeTrackerID = receiver.length > 15 || receiver.includes('-');
+
+      if (isNirvana && receiver && !looksLikeTrackerID) {
+        try {
+          const token = nirvanaPayService.getToken(method);
+          const isCard = ['NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(method);
+          const formattedReceiver = isCard ? receiver.replace(/\s/g, '') : (receiver.startsWith('7') ? receiver : `7${receiver}`);
+
+          const nirvanaResp = await nirvanaPayService.createWithdrawal({
+            amount,
+            transactionId: txId,
+            token,
+            currency: transaction.currency || 'RUB',
+            receiver: formattedReceiver,
+            bankName: token,
+            recipientName: ''
+          });
+
+          if (nirvanaResp.trackerID) {
+            await pool.query(
+              'UPDATE transactions SET wallet_address = $1 WHERE id = $2',
+              [nirvanaResp.trackerID, txId]
+            );
+          }
+          console.log(`[Admin Approve] Nirvana withdrawal sent for tx ${txId}, trackerID: ${nirvanaResp.trackerID}`);
+        } catch (err) {
+          console.error(`[Admin Approve] Nirvana withdrawal error for tx ${txId}:`, err.message);
+          // Don't fail the approve — just log
+        }
+      }
+    }
+
     res.json({ success: true, message: `Transaction ${action}d`, data: transaction });
   } catch (error) {
     if (error.status) return res.status(error.status).json({ success: false, error: error.message });
