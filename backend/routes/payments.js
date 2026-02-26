@@ -462,7 +462,7 @@ router.post('/withdraw', auth, async (req, res) => {
         `INSERT INTO transactions (user_id, type, amount, currency, status, payment_method, wallet_address, description)
          VALUES ($1, 'withdrawal', $2, $3, 'pending', $4, $5, $6)
          RETURNING *`,
-        [req.user.id, -totalDeducted, currency, paymentMethod, cardNumber || phone || walletAddress, `Вывод ${amount} ₽ (комиссия ${feePercent}%: ${feeAmount} ₽)`]
+        [req.user.id, -totalDeducted, currency, paymentMethod, cardNumber || phone || walletAddress, `Вывод ${amount} ₽${bankName ? ' — ' + bankName : ''} (комиссия ${feePercent}%: ${feeAmount} ₽)`]
       );
       
       return txResult.rows[0];

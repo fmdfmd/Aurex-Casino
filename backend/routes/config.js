@@ -107,7 +107,18 @@ const defaultPaymentMethodsConfig = {
   banks: [
     { code: 'nspk:100000000111', name: 'Сбербанк', iconUrl: '/images/payments/sber.svg' },
     { code: 'nspk:100000000004', name: 'Т-Банк', iconUrl: '/images/payments/tbank.svg' },
-    { code: 'nspk:100000000005', name: 'ВТБ', iconUrl: '/images/payments/vtb.svg' }
+    { code: 'nspk:100000000005', name: 'ВТБ', iconUrl: '/images/payments/vtb.svg' },
+    { code: 'nspk:100000000008', name: 'Альфа-Банк', iconUrl: '/images/payments/alfa.svg' },
+    { code: 'nspk:100000000015', name: 'Газпромбанк', iconUrl: '/images/payments/gazprom.svg' },
+    { code: 'nspk:100000000007', name: 'Открытие', iconUrl: '/images/payments/otkritie.svg' },
+    { code: 'nspk:100000000035', name: 'Росбанк', iconUrl: '/images/payments/rosbank.svg' },
+    { code: 'nspk:100000000006', name: 'Россельхозбанк', iconUrl: '/images/payments/rshb.svg' },
+    { code: 'nspk:100000000025', name: 'Промсвязьбанк', iconUrl: '/images/payments/psb.svg' },
+    { code: 'nspk:100000000013', name: 'Совкомбанк', iconUrl: '/images/payments/sovком.svg' },
+    { code: 'nspk:100000000022', name: 'Почта Банк', iconUrl: '/images/payments/pochta.svg' },
+    { code: 'nspk:100000000023', name: 'МКБ', iconUrl: '/images/payments/mkb.svg' },
+    { code: 'nspk:100000000012', name: 'Райффайзенбанк', iconUrl: '/images/payments/raiffeisen.svg' },
+    { code: 'nspk:100000000036', name: 'Уралсиб', iconUrl: '/images/payments/uralsib.svg' }
   ]
 };
 
