@@ -340,8 +340,8 @@ export default function WalletPage() {
       return;
     }
 
-    if (selectedMethod === 'P2P_SBP' && !bankCode) {
-      toast.error('Выберите банк');
+    if (['P2P_SBP', 'NIRVANA_SBP', 'EXPAY_SBP'].includes(selectedMethod) && !bankCode) {
+      toast.error('Выберите банк получателя');
       return;
     }
 
@@ -384,7 +384,8 @@ export default function WalletPage() {
         body.cardNumber = cardNumber.replace(/\s/g, '');
       } else if (isPhoneMethod) {
         body.phone = phone;
-        if (selectedMethod === 'P2P_SBP') body.bankCode = bankCode;
+        if (bankCode) body.bankCode = bankCode;
+        if (bankCode) body.bankName = paymentMethods.banks.find((b: any) => b.code === bankCode)?.name || '';
       } else if (selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) {
         body.walletAddress = withdrawAddress;
       }
@@ -1089,7 +1090,7 @@ export default function WalletPage() {
                               </div>
                             </div>
 
-                            {selectedMethod === 'P2P_SBP' && (
+                            {['P2P_SBP', 'NIRVANA_SBP', 'EXPAY_SBP'].includes(selectedMethod || '') && (
                             <div>
                               <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
                                 <Building2 className="w-4 h-4" />
@@ -1262,7 +1263,7 @@ export default function WalletPage() {
                           isProcessing ||
                           (['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB', 'EXPAY_SBER', 'EXPAY_CARD'].includes(selectedMethod) && cardNumber.replace(/\s/g, '').length !== 16) ||
                           (['P2P_SBP', 'NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP', 'EXPAY_SBP'].includes(selectedMethod) && phone.length !== 10) ||
-                          (selectedMethod === 'P2P_SBP' && !bankCode) ||
+                          (['P2P_SBP', 'NIRVANA_SBP', 'EXPAY_SBP'].includes(selectedMethod) && !bankCode) ||
                           ((selectedMethod === 'CRYPTO' || selectedMethod?.startsWith('CRYPTO_')) && !withdrawAddress) ||
                           (user?.wager?.active && (user.wager?.completed || 0) < (user.wager?.required || 0))
                         }

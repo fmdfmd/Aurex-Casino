@@ -393,7 +393,7 @@ router.post('/deposit/:id/confirm', adminAuth, async (req, res) => {
 // Создать заявку на вывод
 router.post('/withdraw', auth, async (req, res) => {
   try {
-    const { amount, paymentMethod = 'P2P_CARD', walletAddress, currency = 'RUB', cardNumber, phone, bankCode } = req.body;
+    const { amount, paymentMethod = 'P2P_CARD', walletAddress, currency = 'RUB', cardNumber, phone, bankCode, bankName } = req.body;
     
     if (!amount || amount <= 0) {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
@@ -480,7 +480,7 @@ router.post('/withdraw', auth, async (req, res) => {
           token,
           currency,
           receiver,
-          bankName: token,
+          bankName: bankName || token,
           recipientName: ''
         });
 
