@@ -291,6 +291,17 @@ module.exports = {
     return result.rows.map(r => r.telegram_id);
   },
   
+  // Get active Telegram ticket for a manager (DB fallback after restart)
+  async getActiveTicketForManager(managerTelegramId) {
+    const result = await pool.query(
+      `SELECT id FROM support_tickets 
+       WHERE manager_telegram_id = $1 AND status = 'assigned' 
+       ORDER BY assigned_at DESC LIMIT 1`,
+      [managerTelegramId]
+    );
+    return result.rows[0]?.id || null;
+  },
+
   // ==================== ATOMIC TICKET ASSIGNMENT ====================
   
   async tryAssignTicket(ticketId, managerTelegramId) {

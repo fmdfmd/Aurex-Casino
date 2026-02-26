@@ -845,7 +845,11 @@ bot.on('photo', async (ctx) => {
 
   // Check if manager is replying with photo to a Telegram ticket
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) managerReplies.set(userId, managerTicketId);
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
@@ -934,7 +938,11 @@ bot.on('document', async (ctx) => {
   
   // Check if manager is replying with document
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) managerReplies.set(userId, managerTicketId);
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
@@ -984,7 +992,11 @@ bot.on('video', async (ctx) => {
   
   // Check if manager is replying with video
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) managerReplies.set(userId, managerTicketId);
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
@@ -1033,7 +1045,11 @@ bot.on('video_note', async (ctx) => {
   
   // Check if manager is replying
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) managerReplies.set(userId, managerTicketId);
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
@@ -1082,7 +1098,11 @@ bot.on('voice', async (ctx) => {
   
   // Check if manager is replying
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) managerReplies.set(userId, managerTicketId);
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
@@ -1314,7 +1334,14 @@ ${result.error}
 
   // ===== Check if manager is replying to a Telegram ticket =====
   if (await isManager(ctx)) {
-    const managerTicketId = managerReplies.get(userId);
+    let managerTicketId = managerReplies.get(userId);
+    // DB fallback if in-memory map was cleared after restart
+    if (!managerTicketId) {
+      managerTicketId = await db.getActiveTicketForManager(userId);
+      if (managerTicketId) {
+        managerReplies.set(userId, managerTicketId); // restore in-memory
+      }
+    }
     if (managerTicketId) {
       const ticket = await db.getTicketById(managerTicketId);
       if (ticket && ticket.status === 'assigned') {
