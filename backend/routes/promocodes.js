@@ -21,7 +21,13 @@ router.post('/activate', auth, async (req, res) => {
     }
     
     const promo = promoResult.rows[0];
-    
+
+    // Блокируем промокоды для мультиакк-подозреваемых
+    const suspCheck = await pool.query('SELECT is_suspicious FROM users WHERE id = $1', [req.user.id]);
+    if (suspCheck.rows[0]?.is_suspicious) {
+      return res.status(403).json({ success: false, message: 'Активация промокода недоступна' });
+    }
+
     if (!promo.is_active) {
       return res.status(400).json({ success: false, message: 'Промокод неактивен' });
     }
