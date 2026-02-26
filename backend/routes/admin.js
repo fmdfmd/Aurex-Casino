@@ -158,6 +158,17 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       FROM bonuses
     `);
 
+    // Recent transactions
+    const recentTxResult = await pool.query(`
+      SELECT t.id, t.type, t.amount, t.status, t.payment_method, t.created_at,
+             u.username, u.odid
+      FROM transactions t
+      JOIN users u ON t.user_id = u.id
+      WHERE t.type IN ('deposit', 'withdrawal')
+      ORDER BY t.created_at DESC
+      LIMIT 10
+    `);
+
     const users = usersResult.rows[0];
     const games = gamesResult.rows[0];
     const finance = financeResult.rows[0];
@@ -201,6 +212,16 @@ router.get('/dashboard', adminAuth, async (req, res) => {
           revenue: parseFloat(g.revenue),
           totalBet: parseFloat(g.total_bet),
           totalWin: parseFloat(g.total_win)
+        })),
+        recentTransactions: recentTxResult.rows.map(t => ({
+          id: t.id,
+          type: t.type,
+          amount: parseFloat(t.amount),
+          status: t.status,
+          method: t.payment_method || 'N/A',
+          username: t.username,
+          odid: t.odid,
+          createdAt: t.created_at
         }))
       }
     });
