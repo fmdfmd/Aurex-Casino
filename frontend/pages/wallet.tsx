@@ -314,8 +314,8 @@ export default function WalletPage() {
       fetchActiveBonus();
       fetchAvailableBonus();
 
-    } catch (error) {
-      toast.error('Ошибка при обработке депозита');
+    } catch (error: any) {
+      toast.error(error?.message || 'Ошибка при обработке депозита');
     } finally {
       setIsProcessing(false);
     }
