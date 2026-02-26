@@ -160,7 +160,7 @@ export default function AdminDashboard() {
       subtitle: `Сегодня: ₽${stats.finance.todayWithdrawals.toLocaleString('ru-RU')}`,
       icon: <ArrowUpRight className="w-6 h-6" />,
       color: 'from-orange-500 to-red-500',
-      link: '/admin/withdrawals'
+      link: '/admin/transactions?type=withdrawal'
     },
     {
       title: 'Чистая прибыль',
@@ -338,7 +338,7 @@ export default function AdminDashboard() {
               <div className="bg-aurex-obsidian-800 border border-aurex-gold-500/20 rounded-2xl p-6">
                 <h3 className="text-lg font-bold text-white mb-4">Требуют внимания</h3>
                 <div className="space-y-3">
-                  <Link href="/admin/withdrawals" className="flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl hover:bg-orange-500/20 transition-colors">
+                  <Link href="/admin/transactions?type=withdrawal" className="flex items-center justify-between p-3 bg-orange-500/10 border border-orange-500/30 rounded-xl hover:bg-orange-500/20 transition-colors">
                     <div className="flex items-center space-x-3">
                       <AlertTriangle className="w-5 h-5 text-orange-500" />
                       <span className="text-white">Выводы на проверку</span>
@@ -374,11 +374,11 @@ export default function AdminDashboard() {
                     <Gift className="w-6 h-6 text-aurex-gold-500 mb-2" />
                     <span className="text-sm text-aurex-platinum-300">Бонусы</span>
                   </Link>
-                  <Link href="/admin/games" className="flex flex-col items-center p-4 bg-aurex-obsidian-700/50 rounded-xl hover:bg-aurex-obsidian-700 transition-colors">
+                  <Link href="/admin/bonuses" className="flex flex-col items-center p-4 bg-aurex-obsidian-700/50 rounded-xl hover:bg-aurex-obsidian-700 transition-colors">
                     <Gamepad2 className="w-6 h-6 text-aurex-gold-500 mb-2" />
                     <span className="text-sm text-aurex-platinum-300">Игры</span>
                   </Link>
-                  <Link href="/admin/analytics" className="flex flex-col items-center p-4 bg-aurex-obsidian-700/50 rounded-xl hover:bg-aurex-obsidian-700 transition-colors">
+                  <Link href="/admin/transactions" className="flex flex-col items-center p-4 bg-aurex-obsidian-700/50 rounded-xl hover:bg-aurex-obsidian-700 transition-colors">
                     <BarChart3 className="w-6 h-6 text-aurex-gold-500 mb-2" />
                     <span className="text-sm text-aurex-platinum-300">Аналитика</span>
                   </Link>
