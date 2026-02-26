@@ -46,10 +46,11 @@ export default function AdminTicketsPage() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    if (!token) return;
     fetchTickets();
     const interval = setInterval(fetchTickets, 15000);
     return () => clearInterval(interval);
-  }, []);
+  }, [token]);
 
   useEffect(() => {
     if (selected) fetchMessages(selected.id);
@@ -65,9 +66,13 @@ export default function AdminTicketsPage() {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
-      if (data.success) setTickets(data.data || []);
+      if (data.success) {
+        setTickets(data.data || []);
+      } else {
+        console.error('Support tickets error:', data);
+      }
     } catch (e) {
-      console.error(e);
+      console.error('Fetch tickets failed:', e);
     } finally {
       setLoading(false);
     }
