@@ -818,18 +818,33 @@ export default function WalletPage() {
                               </div>
                             </div>
 
-                            <div className="flex justify-between items-center p-3 bg-aurex-obsidian-900/60 rounded-lg">
-                              <div>
-                                <div className="text-xs text-aurex-platinum-500">{nirvanaPaymentDetails.bankName}</div>
-                                <div className="text-white font-bold font-mono text-lg tracking-wider">{nirvanaPaymentDetails.receiver}</div>
+                            {nirvanaPaymentDetails.receiver?.startsWith('http') ? (
+                              <div className="p-3 bg-aurex-obsidian-900/60 rounded-lg">
+                                <div className="text-xs text-aurex-platinum-500 mb-3">{nirvanaPaymentDetails.bankName || 'QR-код для оплаты'}</div>
+                                <a
+                                  href={nirvanaPaymentDetails.receiver}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="flex items-center justify-center space-x-2 w-full py-3 bg-gradient-to-r from-aurex-gold-500 to-aurex-gold-600 text-aurex-obsidian-900 font-bold rounded-xl hover:shadow-aurex-gold transition-all"
+                                >
+                                  <span>Открыть QR-код для оплаты</span>
+                                </a>
+                                <p className="text-xs text-aurex-platinum-500 text-center mt-2">Откроется страница с QR-кодом. Оплатите через приложение банка.</p>
                               </div>
-                              <button
-                                onClick={() => copyToClipboard(nirvanaPaymentDetails.receiver)}
-                                className="p-2 bg-aurex-obsidian-700 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
-                              >
-                                <Copy className="w-4 h-4 text-aurex-gold-500" />
-                              </button>
-                            </div>
+                            ) : (
+                              <div className="flex justify-between items-center p-3 bg-aurex-obsidian-900/60 rounded-lg">
+                                <div>
+                                  <div className="text-xs text-aurex-platinum-500">{nirvanaPaymentDetails.bankName}</div>
+                                  <div className="text-white font-bold font-mono text-lg tracking-wider">{nirvanaPaymentDetails.receiver}</div>
+                                </div>
+                                <button
+                                  onClick={() => copyToClipboard(nirvanaPaymentDetails.receiver)}
+                                  className="p-2 bg-aurex-obsidian-700 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
+                                >
+                                  <Copy className="w-4 h-4 text-aurex-gold-500" />
+                                </button>
+                              </div>
+                            )}
 
                             {nirvanaPaymentDetails.recipientName && (
                               <div className="p-3 bg-aurex-obsidian-900/60 rounded-lg">
