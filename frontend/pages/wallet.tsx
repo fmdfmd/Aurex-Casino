@@ -350,8 +350,10 @@ export default function WalletPage() {
       return;
     }
 
-    if (depositAmount < 1000) {
-      toast.error('Минимальная сумма вывода: 1 000 ₽');
+    const selectedMethodConfig = paymentMethods?.fiat?.find((m: any) => m.id === selectedMethod);
+    const methodMinWithdraw = selectedMethodConfig?.minWithdraw || 1000;
+    if (depositAmount < methodMinWithdraw) {
+      toast.error(`Минимальная сумма вывода: ${methodMinWithdraw.toLocaleString('ru-RU')} ₽`);
       return;
     }
 
