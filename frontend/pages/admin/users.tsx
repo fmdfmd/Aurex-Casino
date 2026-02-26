@@ -445,7 +445,7 @@ export default function AdminUsersPage() {
                                 <Edit2 className="w-4 h-4" />
                               </button>
                               <button
-                                onClick={() => toggleSuspicious(user)}
+                                onClick={() => handleToggleSuspicious(user)}
                                 className={`p-2 rounded-lg transition-colors ${user.isSuspicious ? 'bg-orange-500/30 text-orange-400 hover:bg-orange-500/50' : 'bg-aurex-obsidian-700 text-aurex-platinum-500 hover:bg-orange-500/20 hover:text-orange-400'}`}
                                 title={user.isSuspicious ? 'Снять флаг мультиакк' : 'Пометить мультиакк'}
                               >
