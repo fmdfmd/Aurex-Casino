@@ -1149,4 +1149,205 @@ router.delete('/support-managers/:id', adminAuth, async (req, res) => {
   }
 });
 
+// ============ UNIFIED SUPPORT CHAT ============
+
+// Get all tickets (web + telegram) unified
+router.get('/support-tickets', adminAuth, async (req, res) => {
+  try {
+    // Web tickets (live chat + support)
+    const webResult = await pool.query(`
+      SELECT t.id, t.subject, t.status, t.category, t.priority,
+             t.created_at, t.updated_at,
+             u.username, u.odid, u.email,
+             (SELECT COUNT(*) FROM ticket_messages WHERE ticket_id = t.id) as message_count,
+             (SELECT tm.message FROM ticket_messages tm WHERE tm.ticket_id = t.id ORDER BY tm.created_at DESC LIMIT 1) as last_message
+      FROM tickets t
+      JOIN users u ON t.user_id = u.id
+      ORDER BY t.updated_at DESC
+      LIMIT 100
+    `);
+
+    // Telegram bot tickets
+    const tgResult = await pool.query(`
+      SELECT st.id, st.ticket_number, st.status, st.subject,
+             st.user_telegram_id, st.user_username, st.user_first_name,
+             st.created_at,
+             (SELECT COUNT(*) FROM support_ticket_messages WHERE ticket_id = st.id) as message_count,
+             (SELECT stm.text FROM support_ticket_messages stm WHERE stm.ticket_id = st.id ORDER BY stm.created_at DESC LIMIT 1) as last_message
+      FROM support_tickets st
+      ORDER BY st.created_at DESC
+      LIMIT 100
+    `);
+
+    const webTickets = webResult.rows.map(t => ({
+      id: `web_${t.id}`,
+      rawId: t.id,
+      source: 'web',
+      subject: t.subject || 'Без темы',
+      category: t.category || 'other',
+      status: t.status,
+      priority: t.priority || 'normal',
+      username: t.username,
+      odid: t.odid,
+      email: t.email,
+      messageCount: parseInt(t.message_count) || 0,
+      lastMessage: t.last_message || '',
+      createdAt: t.created_at,
+      updatedAt: t.updated_at || t.created_at
+    }));
+
+    const tgTickets = tgResult.rows.map(t => ({
+      id: `tg_${t.id}`,
+      rawId: t.id,
+      source: 'telegram',
+      subject: t.subject || 'Запрос через Telegram',
+      category: 'telegram',
+      status: t.status === 'assigned' ? 'pending' : t.status === 'closed' ? 'resolved' : 'open',
+      priority: 'normal',
+      username: t.user_username || t.user_first_name || `tg_${t.user_telegram_id}`,
+      odid: t.ticket_number,
+      email: '',
+      telegramId: t.user_telegram_id,
+      messageCount: parseInt(t.message_count) || 0,
+      lastMessage: t.last_message || '',
+      createdAt: t.created_at,
+      updatedAt: t.created_at
+    }));
+
+    const all = [...tgTickets, ...webTickets].sort((a, b) =>
+      new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+    );
+
+    res.json({ success: true, data: all });
+  } catch (error) {
+    console.error('Get support tickets error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Get messages for a ticket
+router.get('/support-tickets/:id/messages', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params; // format: web_123 or tg_456
+
+    if (id.startsWith('web_')) {
+      const ticketId = id.replace('web_', '');
+      const result = await pool.query(
+        `SELECT tm.id, tm.message as text, tm.is_staff, tm.created_at,
+                u.username
+         FROM ticket_messages tm
+         JOIN users u ON tm.user_id = u.id
+         WHERE tm.ticket_id = $1
+         ORDER BY tm.created_at ASC`,
+        [ticketId]
+      );
+      const messages = result.rows.map(m => ({
+        id: m.id,
+        text: m.text,
+        sender: m.is_staff ? 'support' : 'user',
+        username: m.username,
+        createdAt: m.created_at
+      }));
+      return res.json({ success: true, data: messages });
+    }
+
+    if (id.startsWith('tg_')) {
+      const ticketId = id.replace('tg_', '');
+      const result = await pool.query(
+        `SELECT id, sender, text, created_at
+         FROM support_ticket_messages
+         WHERE ticket_id = $1
+         ORDER BY created_at ASC`,
+        [ticketId]
+      );
+      return res.json({ success: true, data: result.rows.map(m => ({
+        id: m.id,
+        text: m.text,
+        sender: m.sender,
+        createdAt: m.created_at
+      })) });
+    }
+
+    res.status(400).json({ success: false, error: 'Invalid ticket ID' });
+  } catch (error) {
+    console.error('Get ticket messages error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Reply to a ticket (web or telegram)
+router.post('/support-tickets/:id/reply', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { message } = req.body;
+    if (!message?.trim()) return res.status(400).json({ success: false, error: 'Message is required' });
+
+    if (id.startsWith('web_')) {
+      const ticketId = id.replace('web_', '');
+      await pool.query(
+        `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff) VALUES ($1, $2, $3, true)`,
+        [ticketId, req.user.id, message]
+      );
+      await pool.query(
+        `UPDATE tickets SET status = 'pending', updated_at = NOW() WHERE id = $1`,
+        [ticketId]
+      );
+      return res.json({ success: true, message: 'Reply sent' });
+    }
+
+    if (id.startsWith('tg_')) {
+      const ticketId = id.replace('tg_', '');
+      const tgResult = await pool.query(
+        'SELECT user_telegram_id FROM support_tickets WHERE id = $1',
+        [ticketId]
+      );
+      if (!tgResult.rows[0]) return res.status(404).json({ success: false, error: 'Ticket not found' });
+
+      const telegramId = tgResult.rows[0].user_telegram_id;
+      const botToken = process.env.TELEGRAM_BOT_TOKEN;
+
+      if (botToken && telegramId) {
+        const axios = require('axios');
+        await axios.post(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+          chat_id: telegramId,
+          text: `💬 *Ответ поддержки AUREX:*\n\n${message}`,
+          parse_mode: 'Markdown'
+        }).catch(e => console.error('[TG Reply error]', e.message));
+      }
+
+      // Save message to DB
+      await pool.query(
+        `INSERT INTO support_ticket_messages (ticket_id, sender, text) VALUES ($1, 'support', $2)`,
+        [ticketId, message]
+      );
+
+      return res.json({ success: true, message: 'Reply sent to Telegram' });
+    }
+
+    res.status(400).json({ success: false, error: 'Invalid ticket ID' });
+  } catch (error) {
+    console.error('Reply ticket error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
+// Close a ticket
+router.patch('/support-tickets/:id/status', adminAuth, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+
+    if (id.startsWith('web_')) {
+      await pool.query('UPDATE tickets SET status = $1, updated_at = NOW() WHERE id = $2', [status, id.replace('web_', '')]);
+    } else if (id.startsWith('tg_')) {
+      const mappedStatus = status === 'resolved' ? 'closed' : status;
+      await pool.query('UPDATE support_tickets SET status = $1 WHERE id = $2', [mappedStatus, id.replace('tg_', '')]);
+    }
+
+    res.json({ success: true });
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+
 module.exports = router;
