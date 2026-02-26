@@ -968,7 +968,7 @@ export default function WalletPage() {
                                 )}
                                 <div className="text-left">
                                   <div className="text-white font-medium text-sm">{method.name}</div>
-                                  <div className="text-xs text-aurex-platinum-500">от 1 000 ₽ • {method.withdrawFee || 5}%</div>
+                                  <div className="text-xs text-aurex-platinum-500">от {(method.minWithdraw || 1000).toLocaleString('ru-RU')} ₽ • {method.withdrawFee || 5}%</div>
                                 </div>
                               </div>
                             </button>
