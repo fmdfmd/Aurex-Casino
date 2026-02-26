@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 11 января 2026** (актуализация всех систем)
+> **Последнее обновление: 26 февраля 2026** (единый чат поддержки, фиксы транзакций, Nirvana выводы, СБП банки)
 
 ---
 
@@ -419,14 +419,23 @@ java -jar OWClientTest_v2.14.jar \
 - `user_boosts` — активные бусты
 - `tickets` — тикеты поддержки (включая live_chat из веб-чата, status: open/in_progress/resolved, `assigned_operator_name`, `operator_telegram_id`)
 - `ticket_messages` — сообщения в тикетах (sender_type: user/staff/system, sender_name, `file_url`, `file_name`, `file_type`)
+- `support_tickets` — тикеты из Telegram-бота (ticket_number, user_telegram_id, user_username, user_first_name, status, subject)
+- `support_ticket_messages` — сообщения Telegram-тикетов (ticket_id, sender_telegram_id, **sender_type** (НЕ sender!), **message** (НЕ text!), created_at)
 - `promocode_usages` — отслеживание использования промокодов (user_id, promocode_id)
 - `promocodes` — промокоды
 - `tournaments` — турниры
+
+### ВАЖНО: колонки support_ticket_messages
+```
+id, ticket_id, sender_telegram_id, sender_type ('user'/'support'), message, created_at
+```
+**Не перепутать:** поле называется `message` (не `text`), тип отправителя `sender_type` (не `sender`)
 
 ### Миграции
 - `001_init.sql` — `008_social_auth.sql` (все применены)
 - `016_ticket_operator_telegram_id.sql` — колонка `operator_telegram_id BIGINT` в `tickets` (для персистентности оператора)
 - `017_ticket_messages_files.sql` — колонки `file_url`, `file_name`, `file_type` в `ticket_messages`, `message DROP NOT NULL`
+- `support_ticket_messages` — создана вручную 26.02.2026 для хранения истории Telegram-переписки
 
 ---
 
@@ -461,6 +470,10 @@ java -jar OWClientTest_v2.14.jar \
 | `/api/chat/internal/ticket/:id/*` | Internal: reply, reply-file, assign, close (INTERNAL_API_KEY) |
 | `/api/admin/*` | Админ-панель |
 | `/api/admin/referrals` | Админ: список рефереров, детали, изменение процента (GET/PUT) |
+| `/api/admin/support-tickets` | Единый чат: объединённый список Web+Telegram тикетов (GET) |
+| `/api/admin/support-tickets/:id/messages` | Сообщения тикета (id = `web_123` или `tg_456`) (GET) |
+| `/api/admin/support-tickets/:id/reply` | Ответ в тикет (для TG — шлёт через Telegram Bot API) (POST) |
+| `/api/admin/support-tickets/:id/status` | Обновить статус тикета (PATCH) |
 | `/api/diag` | Диагностика (IP, конфиг) |
 | `/api/health` | Health check |
 
@@ -498,6 +511,9 @@ java -jar OWClientTest_v2.14.jar \
 | `frontend/pages/aml.tsx` | AML/KYC политика |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
 | `frontend/pages/admin/referrals.tsx` | Админ-панель рефералов (таблица, детали, инд. процент) |
+| `frontend/pages/admin/tickets.tsx` | Единый чат поддержки — Web + Telegram тикеты, история, ответы |
+| `frontend/pages/admin/index.tsx` | Дашборд — исправлены ссылки, последние транзакции |
+| `frontend/pages/admin/transactions.tsx` | Транзакции — серверная фильтрация, URL-параметры, кнопки действий |
 | `frontend/components/AdminLayout.tsx` | Layout админки (навигация: Промокоды, Кешбэк, Рефералка) |
 | `frontend/components/Header.tsx` | Хедер (мобильное меню вынесено за header для backdrop-filter фикса) |
 | `frontend/store/authStore.ts` | Zustand: авторизация, баланс, валюта |
@@ -516,6 +532,14 @@ java -jar OWClientTest_v2.14.jar \
 - OpenRouter ключ: в `telegram-bot/.env` (OPENROUTER_API_KEY)
 - **INTERNAL_API_KEY:** `aurex-internal-key-2026` (для безопасной связи бота с backend API)
 - **Backend URL:** `https://aurex-casino-production.up.railway.app` (в `telegram-bot/config.js`)
+
+### ВАЖНО: сохранение сообщений в support_ticket_messages
+- Бот **НЕ сохраняет** входящие сообщения в `support_ticket_messages` автоматически (26.02.2026)
+- Таблица заполняется только через `POST /api/admin/support-tickets/:id/reply` (ответы админа)
+- Пользовательские сообщения в `support_ticket_messages` попали туда через отдельный механизм (не через bot.js)
+- **TODO:** добавить в bot.js сохранение входящих сообщений → `INSERT INTO support_ticket_messages (ticket_id, sender_type, message)` при каждом сообщении пользователя в активный тикет
+- **Сохранение сообщений:** бот сохраняет входящие сообщения от пользователей в `support_ticket_messages` (sender_type='user')
+- **Ответы из веб-админки** → через `POST /api/admin/support-tickets/tg_:id/reply` → Telegram Bot API `sendMessage` → пользователь получает в Telegram
 
 ### Веб-тикеты (Live Support из чата сайта)
 Менеджеры получают уведомления о запросах оператора из веб-чата и могут:
@@ -590,6 +614,55 @@ java -jar OWClientTest_v2.14.jar \
 - `frontend/components/LiveChatWidget.tsx` — 3 режима (ai/waiting/operator), polling, стили
 - `telegram-bot/bot.js` — `take_web:ID`, `close_web:ID`, reply routing через `managerWebTickets`
 - `telegram-bot/config.js` — `backendUrl`, `internalApiKey`
+
+---
+
+## Единый чат поддержки в админке (/admin/tickets)
+
+### Статус: РАБОТАЕТ (26.02.2026)
+
+**Архитектура:**
+- Объединяет Web-тикеты (`tickets` таблица) и Telegram-тикеты (`support_tickets` таблица) в одном интерфейсе
+- ID тикетов: `web_123` (из `tickets`) или `tg_456` (из `support_tickets`)
+- Автообновление списка каждые 15 секунд
+
+**Функциональность:**
+- Двухпанельный интерфейс: список тикетов слева, чат справа
+- Фильтры: Все / Открытые / Telegram / Сайт / Закрытые
+- Поиск по username, ODID/ticket_number, теме
+- Отображение количества сообщений у каждого тикета
+- Кнопка "Закрыть" для закрытия тикета
+- Кнопка "Обновить" + автообновление каждые 15 сек
+
+**Двусторонняя связь:**
+- Ответ в Telegram-тикет → `POST /api/telegram.org/bot.../sendMessage` → пользователь получает в Telegram
+- Ответ сохраняется в `support_ticket_messages` с `sender_type = 'support'`
+- Ответ в Web-тикет → `INSERT INTO ticket_messages (is_staff=true)` → пользователь видит в чате на сайте
+
+**Известные ограничения:**
+- Bot.js не сохраняет входящие пользовательские сообщения в `support_ticket_messages` (только первое через create ticket)
+- Нет push-уведомлений в браузере (только polling)
+
+**Ключевые файлы:**
+- `frontend/pages/admin/tickets.tsx` — полностью переписан (26.02.2026)
+- `backend/routes/admin.js` — новые endpoints `/support-tickets/*`
+- Таблица `support_ticket_messages` — колонки: `id, ticket_id, sender_telegram_id, sender_type, message, created_at`
+
+**ВАЖНО для разработки:**
+```javascript
+// Правильные колонки support_ticket_messages:
+SELECT sender_type, message FROM support_ticket_messages  // НЕ sender, НЕ text!
+INSERT INTO support_ticket_messages (ticket_id, sender_type, message) VALUES (...)
+```
+
+**ВАЖНО для frontend useEffect с токеном:**
+```javascript
+// Всегда добавлять token в deps и проверять его наличие:
+useEffect(() => {
+  if (!token) return;
+  fetchData();
+}, [token]); // НЕ [], иначе zustand не успевает hydrate из localStorage
+```
 
 ---
 
@@ -1332,6 +1405,18 @@ CARDRUBP2P: 0 (value)
 - [x] Промокоды — поле вейджера в админке (создание/редактирование), отображение x3/x5/etc в таблице
 - [x] Постбэк-трекинг для арбитражников (reg + FTD) — `click_id` из URL → cookie → БД → HTTP GET на trackhta.com
 - [x] Чат — загрузка файлов ограничена PDF-only (Safari-баг с `image/*`)
+- [x] **Единый чат поддержки в админке** (`/admin/tickets`) — объединяет Web + Telegram тикеты (26.02.2026)
+- [x] **Admin tickets** — двусторонняя связь: ответы из веб-интерфейса → Telegram пользователю через Bot API
+- [x] **Admin tickets** — история сообщений, автообновление каждые 15 сек, фильтры + поиск
+- [x] **support_ticket_messages** — новая таблица для хранения истории Telegram-переписки
+- [x] **Wallet — банк для всех СБП** — дропдаун для P2P_SBP, NIRVANA_SBP, EXPAY_SBP (26.02.2026)
+- [x] **Банки расширены** — 14 банков с NSPK-кодами в `backend/routes/config.js`
+- [x] **Nirvana вывод при одобрении** — admin approve → автоматически вызывает `nirvanaPayService.createWithdrawal` (если нет trackerID)
+- [x] **Nirvana вывод ошибка** — при неудаче: статус → failed, баланс возвращается пользователю
+- [x] **Промокоды min_deposit** — проверка минимального депозита перед активацией
+- [x] **История транзакций пользователя** — только финансовые операции (без игровых ставок/выигрышей)
+- [x] **Админ транзакции** — серверная фильтрация, URL query params, фиксированная таблица без overflow
+- [x] **Админ дашборд** — исправлены битые ссылки (выводы → `/admin/transactions?type=withdrawal`)
 
 ### В процессе
 - [x] Переход на продакшн Fundist — **ЛАЙВ! 76 провайдеров активны** (24.02.2026, включая Kiron 974, InOut 816, Endorphina 973)
@@ -1474,4 +1559,4 @@ https://aurex1.casino/?click_id={макрос_трекера}
 
 ---
 
-*Последнее обновление: 11 января 2026 — постбэк-трекинг (reg+FTD, trackhta.com), промокоды с вейджером в админке, PDF-файлы в чате, мультидомен OAuth, админ-панель рефералов, тестовые аккаунты удалены*
+*Последнее обновление: 26 февраля 2026 — единый чат поддержки (Web+Telegram в /admin/tickets), банки для всех СБП методов, Nirvana auto-process при approve, Nirvana error handling (refund), промокоды min_deposit, фильтр истории транзакций, фикс админ дашборда и таблицы транзакций, новая таблица support_ticket_messages*
