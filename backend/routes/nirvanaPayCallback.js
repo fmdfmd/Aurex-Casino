@@ -5,10 +5,9 @@ const nirvanaPayService = require('../services/nirvanaPayService');
 const { withTransaction } = require('../utils/dbTransaction');
 const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
-// GET /api/payments/nirvana/callback — Nirvana Pay sends GET when status changes to SUCCESS or ERROR
-router.get('/', async (req, res) => {
+async function handleCallback(req, res) {
   try {
-    const { txId, type } = req.query;
+    const { txId, type } = { ...req.query, ...req.body };
 
     console.log(`[NirvanaPay Callback] Received: txId=${txId}, type=${type}`);
 
@@ -44,20 +43,26 @@ router.get('/', async (req, res) => {
       return res.status(200).send('OK');
     }
 
-    console.log(`[NirvanaPay Callback] Final status for tx ${txIdNum}:`, JSON.stringify(statusData).slice(0, 400));
+    console.log(`[NirvanaPay Callback] Full statusData for tx ${txIdNum}:`, JSON.stringify(statusData).slice(0, 600));
 
-    if (statusData.status === 'SUCCESS') {
+    const status = (statusData.status || '').toUpperCase();
+    const isSuccess = ['SUCCESS', 'APPROVED', 'COMPLETED', 'PAID'].includes(status);
+    const isError = ['ERROR', 'FAILED', 'REJECTED', 'CANCELLED'].includes(status);
+
+    if (isSuccess) {
       if (tx.type === 'deposit') {
         await handleDepositCompleted(tx.id, statusData);
       } else if (tx.type === 'withdrawal') {
         await handleWithdrawalCompleted(tx.id, statusData);
       }
-    } else if (statusData.status === 'ERROR') {
+    } else if (isError) {
       if (tx.type === 'deposit') {
         await handleDepositFailed(tx.id, statusData);
       } else if (tx.type === 'withdrawal') {
         await handleWithdrawalFailed(tx.id, statusData);
       }
+    } else {
+      console.warn(`[NirvanaPay Callback] Unknown status '${status}' for tx ${txIdNum}`);
     }
 
     res.status(200).send('OK');
@@ -65,7 +70,10 @@ router.get('/', async (req, res) => {
     console.error('[NirvanaPay Callback] Error:', error);
     res.status(200).send('OK');
   }
-});
+}
+
+router.get('/', handleCallback);
+router.post('/', handleCallback);
 
 async function handleDepositCompleted(txId, statusData) {
   await withTransaction(pool, async (client) => {
@@ -80,7 +88,9 @@ async function handleDepositCompleted(txId, statusData) {
     }
 
     const tx = txResult.rows[0];
-    const depositAmount = parseFloat(statusData.amountFiatReceived || tx.amount);
+    const depositAmount = parseFloat(statusData.amountFiatReceived) > 0
+      ? parseFloat(statusData.amountFiatReceived)
+      : parseFloat(tx.amount);
     const userId = tx.user_id;
 
     await client.query(
