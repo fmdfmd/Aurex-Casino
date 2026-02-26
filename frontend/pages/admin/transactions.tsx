@@ -276,16 +276,16 @@ export default function AdminTransactionsPage() {
           {/* Transactions Table */}
           <div className="bg-aurex-obsidian-800 border border-aurex-gold-500/20 rounded-2xl overflow-hidden">
             <div className="overflow-x-auto">
-              <table className="w-full">
+              <table className="w-full table-fixed">
                 <thead>
                   <tr className="border-b border-aurex-gold-500/20">
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">#ID</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Пользователь</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Сумма</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод / Реквизит</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Статус</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Дата</th>
-                    <th className="text-left px-3 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Действия</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-16">#ID</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-36">Пользователь</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-24">Сумма</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод / Реквизит</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-28">Статус</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-20">Дата</th>
+                    <th className="text-left px-2 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500 w-44">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -305,64 +305,57 @@ export default function AdminTransactionsPage() {
                   ) : (
                     filteredTransactions.map((tx) => (
                       <tr key={tx.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
-                        <td className="px-3 py-4">
-                          <span className="font-mono text-aurex-gold-400 text-sm">#{tx.id}</span>
+                        <td className="px-2 py-3">
+                          <span className="font-mono text-aurex-gold-400 text-xs">#{tx.id}</span>
                         </td>
-                        <td className="px-3 py-4">
-                          <div>
-                            <div className="text-white font-medium text-sm">{tx.username}</div>
-                            <div className="text-xs text-aurex-gold-500">{tx.odid}</div>
+                        <td className="px-2 py-3">
+                          <div className="truncate">
+                            <div className="text-white font-medium text-xs truncate">{tx.username}</div>
+                            <div className="text-xs text-aurex-gold-500 truncate">{tx.odid}</div>
                           </div>
                         </td>
-                        <td className="px-3 py-4">
-                          <span className={`font-bold ${tx.type === 'withdrawal' ? 'text-red-400' : 'text-green-400'}`}>
+                        <td className="px-2 py-3">
+                          <span className={`font-bold text-sm ${tx.type === 'withdrawal' ? 'text-red-400' : 'text-green-400'}`}>
                             {tx.type === 'withdrawal' ? '-' : '+'}₽{tx.amount.toLocaleString('ru-RU')}
                           </span>
                         </td>
-                        <td className="px-3 py-4">
-                          <div>
-                            <div className="text-white text-sm">{tx.method}</div>
+                        <td className="px-2 py-3">
+                          <div className="truncate">
+                            <div className="text-white text-xs">{tx.method}</div>
                             {tx.walletAddress && (
-                              <div className="text-xs text-aurex-platinum-500 font-mono">{tx.walletAddress}</div>
+                              <div className="text-xs text-aurex-platinum-500 font-mono truncate">{tx.walletAddress}</div>
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-4">
+                        <td className="px-2 py-3">
                           {getStatusBadge(tx.status)}
                         </td>
-                        <td className="px-3 py-4">
+                        <td className="px-2 py-3">
                           <div className="text-xs text-aurex-platinum-400">
-                            {new Date(tx.createdAt).toLocaleString('ru-RU', { 
-                              day: '2-digit', 
-                              month: '2-digit', 
-                              hour: '2-digit', 
-                              minute: '2-digit' 
-                            })}
+                            {new Date(tx.createdAt).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })}
                           </div>
                         </td>
-                        <td className="px-3 py-4">
-                          <div className="flex items-center space-x-2">
-                            {tx.status === 'pending' && tx.type === 'withdrawal' && (
-                              <>
-                                <button
-                                  onClick={() => handleApprove(tx.id)}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-xs font-medium"
-                                  title="Одобрить и отправить в платёжку"
-                                >
-                                  <Check className="w-3 h-3" />
-                                  Выплатить
-                                </button>
-                                <button
-                                  onClick={() => handleReject(tx.id)}
-                                  className="flex items-center gap-1 px-3 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-xs font-medium"
-                                  title="Отклонить и вернуть деньги"
-                                >
-                                  <X className="w-3 h-3" />
-                                  Отменить
-                                </button>
-                              </>
-                            )}
-                          </div>
+                        <td className="px-2 py-3">
+                          {tx.status === 'pending' && tx.type === 'withdrawal' && (
+                            <div className="flex items-center gap-1">
+                              <button
+                                onClick={() => handleApprove(tx.id)}
+                                className="flex items-center gap-1 px-2 py-1.5 bg-green-500/20 text-green-400 rounded-lg hover:bg-green-500/30 transition-colors text-xs font-medium whitespace-nowrap"
+                                title="Выплатить"
+                              >
+                                <Check className="w-3 h-3" />
+                                Выплатить
+                              </button>
+                              <button
+                                onClick={() => handleReject(tx.id)}
+                                className="flex items-center gap-1 px-2 py-1.5 bg-red-500/20 text-red-400 rounded-lg hover:bg-red-500/30 transition-colors text-xs font-medium whitespace-nowrap"
+                                title="Отменить"
+                              >
+                                <X className="w-3 h-3" />
+                                Отменить
+                              </button>
+                            </div>
+                          )}
                         </td>
                       </tr>
                     ))
