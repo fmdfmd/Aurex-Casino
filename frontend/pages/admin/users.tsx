@@ -200,27 +200,6 @@ export default function AdminUsersPage() {
     setShowViewModal(true);
   };
 
-  const handleToggleSuspicious = async (user: User) => {
-    const newVal = !user.isSuspicious;
-    const reason = newVal ? `Помечен вручную администратором` : null;
-    try {
-      const res = await fetch(`/api/admin/users/${user.id}/suspicious`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isSuspicious: newVal, reason })
-      });
-      const data = await res.json();
-      if (data.success) {
-        toast.success(newVal ? '⚠️ Помечен как мультиакк' : '✅ Флаг снят');
-        setUsers(prev => prev.map(u => u.id === user.id ? { ...u, isSuspicious: newVal, suspiciousReason: reason } : u));
-      } else {
-        toast.error('Ошибка');
-      }
-    } catch {
-      toast.error('Ошибка сервера');
-    }
-  };
-
   const handleEditUser = (user: User) => {
     setSelectedUser(user);
     setEditForm({
