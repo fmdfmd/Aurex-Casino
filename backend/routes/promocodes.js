@@ -43,6 +43,23 @@ router.post('/activate', auth, async (req, res) => {
     if (usageResult.rows.length > 0) {
       return res.status(400).json({ success: false, message: 'Вы уже использовали этот промокод' });
     }
+
+    // Проверяем минимальный депозит (если задан)
+    if (promo.min_deposit && parseFloat(promo.min_deposit) > 0) {
+      const minDep = parseFloat(promo.min_deposit);
+      const depositCheck = await pool.query(
+        `SELECT COALESCE(SUM(amount), 0) as total FROM transactions 
+         WHERE user_id = $1 AND type = 'deposit' AND status = 'completed'`,
+        [req.user.id]
+      );
+      const totalDeposited = parseFloat(depositCheck.rows[0].total);
+      if (totalDeposited < minDep) {
+        return res.status(400).json({ 
+          success: false, 
+          message: `Для активации этого промокода необходимо пополнить счёт на сумму от ${minDep.toLocaleString('ru-RU')} ₽` 
+        });
+      }
+    }
     
     const { withTransaction } = require('../utils/dbTransaction');
     await withTransaction(pool, async (client) => {
