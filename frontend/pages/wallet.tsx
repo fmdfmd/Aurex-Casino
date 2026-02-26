@@ -38,6 +38,7 @@ import toast from 'react-hot-toast';
 
 interface Transaction {
   id: string;
+  transactionId?: string | number;
   type: 'deposit' | 'withdrawal' | 'bonus' | 'bet' | 'win' | 'refund';
   amount: number;
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
@@ -174,7 +175,8 @@ export default function WalletPage() {
           amount: t.amount,
           status: t.status,
           method: t.method || t.description || 'N/A',
-          createdAt: t.createdAt
+          createdAt: t.createdAt,
+          transactionId: t.externalRef || t.id
         })));
       } else {
         // Пустой список если нет транзакций
@@ -1318,6 +1320,18 @@ export default function WalletPage() {
                                 <div className="flex items-center space-x-1 text-xs text-aurex-platinum-500">
                                   {getStatusIcon(tx.status)}
                                   <span>{new Date(tx.createdAt).toLocaleDateString()}</span>
+                                </div>
+                                <div
+                                  className="flex items-center gap-1 text-xs text-aurex-platinum-500 mt-1 cursor-pointer hover:text-aurex-gold-400 transition-colors group"
+                                  onClick={() => {
+                                    const txId = tx.transactionId || tx.id;
+                                    navigator.clipboard.writeText(`#${txId}`);
+                                    toast.success('ID транзакции скопирован', { duration: 1500 });
+                                  }}
+                                  title="Нажмите чтобы скопировать — передайте ID в поддержку"
+                                >
+                                  <Copy className="w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity" />
+                                  <span className="font-mono">#{tx.transactionId || tx.id}</span>
                                 </div>
                               </div>
                             </div>

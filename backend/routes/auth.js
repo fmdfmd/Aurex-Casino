@@ -468,6 +468,7 @@ router.get('/transactions', auth, async (req, res) => {
           status: t.status,
           method: t.payment_method || t.description || 'N/A',
           description: t.description,
+          externalRef: t.wallet_address || null,
           createdAt: t.created_at,
           updatedAt: t.updated_at
         })),

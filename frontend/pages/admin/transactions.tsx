@@ -69,7 +69,7 @@ export default function AdminTransactionsPage() {
           amount: Math.abs(t.amount),
           status: t.status,
           method: t.paymentMethod || t.method || t.description || 'N/A',
-          walletAddress: t.walletAddress || t.wallet_address,
+          walletAddress: t.externalRef || t.walletAddress || t.wallet_address,
           createdAt: t.createdAt || t.created_at,
           processedAt: t.processedAt || t.processed_at
         })));
@@ -84,17 +84,37 @@ export default function AdminTransactionsPage() {
   };
 
   const handleApprove = async (txId: string) => {
-    setTransactions(prev => prev.map(tx => 
-      tx.id === txId ? { ...tx, status: 'completed', processedAt: new Date().toISOString() } : tx
-    ));
-    toast.success('Транзакция одобрена');
+    try {
+      const res = await fetch(`/api/admin/transactions/${txId}/approve`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setTransactions(prev => prev.map(tx =>
+        tx.id === txId ? { ...tx, status: 'completed', processedAt: new Date().toISOString() } : tx
+      ));
+      toast.success('Транзакция одобрена');
+    } catch (e: any) {
+      toast.error(`Ошибка: ${e.message}`);
+    }
   };
 
   const handleReject = async (txId: string) => {
-    setTransactions(prev => prev.map(tx => 
-      tx.id === txId ? { ...tx, status: 'failed' } : tx
-    ));
-    toast.success('Транзакция отклонена');
+    try {
+      const res = await fetch(`/api/admin/transactions/${txId}/reject`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+      setTransactions(prev => prev.map(tx =>
+        tx.id === txId ? { ...tx, status: 'failed' } : tx
+      ));
+      toast.success('Транзакция отклонена, баланс возвращён');
+    } catch (e: any) {
+      toast.error(`Ошибка: ${e.message}`);
+    }
   };
 
   const getStatusBadge = (status: string) => {
@@ -137,10 +157,13 @@ export default function AdminTransactionsPage() {
   };
 
   const filteredTransactions = (transactions || []).filter(tx => {
-    const matchesSearch = 
-      tx.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.odid.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      tx.email.toLowerCase().includes(searchTerm.toLowerCase());
+    const q = searchTerm.toLowerCase();
+    const matchesSearch = !searchTerm ||
+      tx.username.toLowerCase().includes(q) ||
+      tx.odid.toLowerCase().includes(q) ||
+      tx.email.toLowerCase().includes(q) ||
+      String(tx.id).includes(q) ||
+      (tx.walletAddress || '').toLowerCase().includes(q);
     
     const matchesType = filterType === 'all' || tx.type === filterType;
     const matchesStatus = filterStatus === 'all' || tx.status === filterStatus;
@@ -206,7 +229,7 @@ export default function AdminTransactionsPage() {
               <Search className="absolute left-4 top-1/2 transform -translate-y-1/2 w-5 h-5 text-aurex-platinum-500" />
               <input
                 type="text"
-                placeholder="Поиск по имени, ID, email..."
+                placeholder="Поиск по #ID, имени, email, AUREX-ID..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="w-full pl-12 pr-4 py-3 bg-aurex-obsidian-800 border border-aurex-gold-500/20 rounded-xl text-white placeholder-aurex-platinum-500 focus:border-aurex-gold-500/50 focus:outline-none"
@@ -242,13 +265,14 @@ export default function AdminTransactionsPage() {
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-aurex-gold-500/20">
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Пользователь</th>
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Тип</th>
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Сумма</th>
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод</th>
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Статус</th>
-                    <th className="text-left px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Дата</th>
-                    <th className="text-right px-6 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Действия</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">#ID</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Пользователь</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Тип</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Сумма</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Метод</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Статус</th>
+                    <th className="text-left px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Дата</th>
+                    <th className="text-right px-4 py-4 text-xs uppercase tracking-wider text-aurex-platinum-500">Действия</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -268,36 +292,39 @@ export default function AdminTransactionsPage() {
                   ) : (
                     filteredTransactions.map((tx) => (
                       <tr key={tx.id} className="border-b border-aurex-gold-500/10 hover:bg-aurex-obsidian-700/50 transition-colors">
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
+                          <span className="font-mono text-aurex-gold-400 text-sm">#{tx.id}</span>
+                        </td>
+                        <td className="px-4 py-4">
                           <div>
                             <div className="text-white font-medium">{tx.username}</div>
                             <div className="text-xs text-aurex-gold-500">{tx.odid}</div>
                             <div className="text-xs text-aurex-platinum-500">{tx.email}</div>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <div className="flex items-center space-x-2">
                             {getTypeIcon(tx.type)}
                             <span className="text-white">{getTypeName(tx.type)}</span>
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <span className={`font-bold ${tx.type === 'withdrawal' ? 'text-red-500' : 'text-green-500'}`}>
                             {tx.type === 'withdrawal' ? '-' : '+'}₽{tx.amount.toLocaleString('ru-RU')}
                           </span>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <div>
                             <div className="text-white">{tx.method}</div>
                             {tx.walletAddress && (
-                              <div className="text-xs text-aurex-platinum-500">{tx.walletAddress}</div>
+                              <div className="text-xs text-aurex-platinum-500 font-mono">{tx.walletAddress}</div>
                             )}
                           </div>
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           {getStatusBadge(tx.status)}
                         </td>
-                        <td className="px-6 py-4">
+                        <td className="px-4 py-4">
                           <div className="text-sm text-aurex-platinum-400">
                             {new Date(tx.createdAt).toLocaleString('ru-RU', { 
                               day: '2-digit', 
@@ -307,7 +334,7 @@ export default function AdminTransactionsPage() {
                             })}
                           </div>
                         </td>
-                        <td className="px-6 py-4 text-right">
+                        <td className="px-4 py-4 text-right">
                           <div className="flex items-center justify-end space-x-2">
                             {tx.status === 'pending' && tx.type === 'withdrawal' && (
                               <>
