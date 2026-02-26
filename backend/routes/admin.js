@@ -1173,7 +1173,7 @@ router.get('/support-tickets', adminAuth, async (req, res) => {
              st.user_telegram_id, st.user_username, st.user_first_name,
              st.created_at,
              (SELECT COUNT(*) FROM support_ticket_messages WHERE ticket_id = st.id) as message_count,
-             (SELECT stm.text FROM support_ticket_messages stm WHERE stm.ticket_id = st.id ORDER BY stm.created_at DESC LIMIT 1) as last_message
+             (SELECT stm.message FROM support_ticket_messages stm WHERE stm.ticket_id = st.id ORDER BY stm.created_at DESC LIMIT 1) as last_message
       FROM support_tickets st
       ORDER BY st.created_at DESC
       LIMIT 100
@@ -1254,7 +1254,7 @@ router.get('/support-tickets/:id/messages', adminAuth, async (req, res) => {
     if (id.startsWith('tg_')) {
       const ticketId = id.replace('tg_', '');
       const result = await pool.query(
-        `SELECT id, sender, text, created_at
+        `SELECT id, sender_type as sender, message as text, created_at
          FROM support_ticket_messages
          WHERE ticket_id = $1
          ORDER BY created_at ASC`,
@@ -1263,7 +1263,7 @@ router.get('/support-tickets/:id/messages', adminAuth, async (req, res) => {
       return res.json({ success: true, data: result.rows.map(m => ({
         id: m.id,
         text: m.text,
-        sender: m.sender,
+        sender: m.sender === 'support' ? 'support' : 'user',
         createdAt: m.created_at
       })) });
     }
@@ -1317,7 +1317,7 @@ router.post('/support-tickets/:id/reply', adminAuth, async (req, res) => {
 
       // Save message to DB
       await pool.query(
-        `INSERT INTO support_ticket_messages (ticket_id, sender, text) VALUES ($1, 'support', $2)`,
+        `INSERT INTO support_ticket_messages (ticket_id, sender_type, message) VALUES ($1, 'support', $2)`,
         [ticketId, message]
       );
 
