@@ -379,6 +379,7 @@ router.get('/games', async (req, res) => {
         ['Peter & Sons', ['DCirque']],
         ['Push Gaming', ['The Great Banker', 'Olympus Unleashed', 'Big Bamboo', 'Fire Hopper', 'Razor Shark', "Jammin' Jars 2", 'Mad Blast', 'Dragon Hopper']],
         ['Onlyplay', ['Coin Storm', 'Hit the Vampire', 'Crazy Streamer', 'Aztec Gemstones', 'Wild Coins', 'Retro Tokyo', 'Coin Flynn', 'Rich Bankrupt']],
+        ['BeeFee', ['Summer Bling', 'Blasting Rubies', 'Golem Wildwoods', 'Road 2 Cash', 'Cave of Gems', 'Raiders Of The North', 'Megacity Football Fever', 'El Dorado Totems']],
       ];
 
       const findGame = (list, name, prov) => {
