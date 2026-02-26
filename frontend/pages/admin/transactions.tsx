@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/router';
 import Head from 'next/head';
 import { motion } from 'framer-motion';
 import { 
@@ -39,27 +40,44 @@ interface Transaction {
 
 export default function AdminTransactionsPage() {
   const { token } = useAuthStore();
+  const router = useRouter();
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterType, setFilterType] = useState<string>('all');
   const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [totalCount, setTotalCount] = useState(0);
 
+  // Read type from URL query param on mount
   useEffect(() => {
-    fetchTransactions();
-  }, []);
+    if (router.isReady) {
+      const typeFromUrl = router.query.type as string;
+      if (typeFromUrl && typeFromUrl !== 'all') {
+        setFilterType(typeFromUrl);
+      }
+    }
+  }, [router.isReady, router.query.type]);
 
-  const fetchTransactions = async () => {
+  // Re-fetch when filterType changes (server-side filtering)
+  useEffect(() => {
+    if (token) fetchTransactions(filterType, filterStatus);
+  }, [filterType, filterStatus, token]);
+
+  const fetchTransactions = async (type = 'all', status = 'all') => {
     setIsLoading(true);
-    
     try {
-      const res = await fetch('/api/admin/transactions?limit=100', {
+      const params = new URLSearchParams({ limit: '200' });
+      if (type && type !== 'all') params.set('type', type);
+      if (status && status !== 'all') params.set('status', status);
+
+      const res = await fetch(`/api/admin/transactions?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       const data = await res.json();
       
       const txList = Array.isArray(data.data) ? data.data : (data.data?.transactions || []);
-      if (data.success && txList.length >= 0) {
+      setTotalCount(data.total || txList.length);
+      if (data.success) {
         setTransactions(txList.map((t: any) => ({
           id: t.id || t._id,
           odid: t.odid || t.userOdid || 'N/A',
@@ -76,10 +94,8 @@ export default function AdminTransactionsPage() {
       }
     } catch (error) {
       console.error('Failed to fetch transactions:', error);
-      // Fallback
       setTransactions([]);
     }
-
     setIsLoading(false);
   };
 
@@ -156,19 +172,17 @@ export default function AdminTransactionsPage() {
     }
   };
 
+  // Filtering is done server-side for type/status; only search is done client-side
   const filteredTransactions = (transactions || []).filter(tx => {
+    if (!searchTerm) return true;
     const q = searchTerm.toLowerCase();
-    const matchesSearch = !searchTerm ||
+    return (
       tx.username.toLowerCase().includes(q) ||
       tx.odid.toLowerCase().includes(q) ||
       tx.email.toLowerCase().includes(q) ||
       String(tx.id).includes(q) ||
-      (tx.walletAddress || '').toLowerCase().includes(q);
-    
-    const matchesType = filterType === 'all' || tx.type === filterType;
-    const matchesStatus = filterStatus === 'all' || tx.status === filterStatus;
-    
-    return matchesSearch && matchesType && matchesStatus;
+      (tx.walletAddress || '').toLowerCase().includes(q)
+    );
   });
 
   const pendingWithdrawals = (transactions || []).filter(tx => tx.type === 'withdrawal' && tx.status === 'pending');
@@ -189,13 +203,13 @@ export default function AdminTransactionsPage() {
                 <span>Транзакции</span>
               </h1>
               <p className="text-aurex-platinum-400 mt-1">
-                Всего: {transactions.length} • Ожидают: {pendingWithdrawals.length}
+                Всего: {totalCount} • Ожидают: {pendingWithdrawals.length}
               </p>
             </div>
 
             <div className="flex gap-3">
               <button
-                onClick={fetchTransactions}
+                onClick={() => fetchTransactions(filterType, filterStatus)}
                 className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-700 text-aurex-platinum-300 rounded-lg border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
