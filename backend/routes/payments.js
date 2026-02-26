@@ -105,7 +105,7 @@ router.post('/deposit', auth, async (req, res) => {
     const minDeposits = {
       'P2P_CARD': 5000, 'P2P_SBP': 3000,
       'NIRVANA_SBP': 100, 'NIRVANA_C2C': 100,
-      'NIRVANA_NSPK': 50,
+      'NIRVANA_NSPK': 1000,
       'NIRVANA_SBER': 1000, 'NIRVANA_SBER_SBP': 1000,
       'NIRVANA_ALFA': 1000, 'NIRVANA_ALFA_SBP': 1000,
       'NIRVANA_VTB': 1000, 'NIRVANA_VTB_SBP': 1000,
