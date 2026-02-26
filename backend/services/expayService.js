@@ -41,10 +41,11 @@ apiClient.interceptors.response.use(
 );
 
 const DEPOSIT_SUB_TOKEN_MAP = {
-  'EXPAY_SBER': { token: 'RUBCISP2P', subToken: 'SBERCISP2P' },
-  'EXPAY_SBP':  { token: 'CARDRUBP2P', subToken: 'SBPRUB' },
-  'EXPAY_CARD': { token: 'CARDRUBP2P', subToken: 'CARDRUB' },
-  'EXPAY_NSPK': { token: 'CARDRUBP2P', subToken: 'NSPKRUB' }
+  'EXPAY_SBER':   { token: 'RUBCISP2P',  subToken: 'SBERCISP2P' },
+  'EXPAY_SBP':    { token: 'CARDRUBP2P', subToken: 'SBPRUB' },
+  'EXPAY_CARD':   { token: 'CARDRUBP2P', subToken: 'CARDRUB' },
+  'EXPAY_NSPK':   { token: 'CARDRUBP2P', subToken: 'NSPKRUB' },
+  'EXPAY_SBERQR': { token: 'CARDRUBP2P', subToken: 'SBERQR' }
 };
 
 const WITHDRAW_SUB_TOKEN_MAP = {

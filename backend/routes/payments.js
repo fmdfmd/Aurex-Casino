@@ -112,7 +112,8 @@ router.post('/deposit', auth, async (req, res) => {
       'NIRVANA_TRANS_SBP': 500, 'NIRVANA_TRANS_C2C': 500,
       'NIRVANA_MOBILE': 100,
       'EXPAY_SBER': 500, 'EXPAY_SBP': 500,
-      'EXPAY_CARD': 500, 'EXPAY_NSPK': 500
+      'EXPAY_CARD': 500, 'EXPAY_NSPK': 500,
+      'EXPAY_SBERQR': 100
     };
     const maxDeposits = {
       'P2P_CARD': 300000, 'P2P_SBP': 300000,
@@ -121,7 +122,8 @@ router.post('/deposit', auth, async (req, res) => {
       'NIRVANA_TRANS_SBP': 100000, 'NIRVANA_TRANS_C2C': 100000,
       'NIRVANA_MOBILE': 100000,
       'EXPAY_SBER': 300000, 'EXPAY_SBP': 300000,
-      'EXPAY_CARD': 300000, 'EXPAY_NSPK': 300000
+      'EXPAY_CARD': 300000, 'EXPAY_NSPK': 300000,
+      'EXPAY_SBERQR': 100000
     };
     const minDeposit = minDeposits[paymentMethod] || 100;
     const maxDeposit = maxDeposits[paymentMethod] || 300000;
