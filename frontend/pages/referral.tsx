@@ -61,9 +61,10 @@ export default function ReferralPage() {
   const [tiers, setTiers] = useState<ReferralTier[]>([]);
 
   useEffect(() => {
+    if (!token) return;
     fetchReferralData();
     fetchReferralTiers();
-  }, []);
+  }, [token]);
 
   const fetchReferralTiers = async () => {
     try {
