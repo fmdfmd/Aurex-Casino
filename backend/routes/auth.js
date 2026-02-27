@@ -920,10 +920,13 @@ router.post('/telegram', async (req, res) => {
 
 // GET /auth/telegram/callback — redirect-based flow (like Google)
 router.get('/telegram/callback', async (req, res) => {
+  // Приоритет: cookie (сохранён с фронта) → x-forwarded-host → дефолт
+  const cookieOrigin = req.cookies?.aurex_origin ? decodeURIComponent(req.cookies.aurex_origin) : null;
   const tgOrigin = req.headers['x-forwarded-host'] || req.headers.host;
-  const frontendUrl = (tgOrigin && !tgOrigin.includes('railway.app') && !tgOrigin.includes('localhost'))
-    ? `https://${tgOrigin}`
-    : config.server.frontendUrl;
+  const rawFrontend = cookieOrigin
+    || ((tgOrigin && !tgOrigin.includes('railway.app') && !tgOrigin.includes('localhost')) ? `https://${tgOrigin}` : null)
+    || config.server.frontendUrl;
+  const frontendUrl = rawFrontend.replace(/\/$/, '');
   try {
     // Pass referral code from cookie to processTelegramAuth
     const refCode = req.cookies?.aurex_ref;

@@ -26,6 +26,9 @@ export default function TelegramLoginButton({ botName }: TelegramLoginButtonProp
       document.cookie = `aurex_ref=${ref}; path=/; max-age=1800; SameSite=Lax`;
     }
 
+    // Сохраняем текущий домен в cookie — бэкенд после auth редиректит на него
+    document.cookie = `aurex_origin=${encodeURIComponent(window.location.origin)}; path=/; max-age=600; SameSite=Lax`;
+
     const script = document.createElement('script');
     script.src = 'https://telegram.org/js/telegram-widget.js?22';
     script.setAttribute('data-telegram-login', botName);
