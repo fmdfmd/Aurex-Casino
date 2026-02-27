@@ -59,17 +59,21 @@ export default function AdminTransactionsPage() {
     }
   }, [router.isReady, router.query.type]);
 
-  // Re-fetch when filterType changes (server-side filtering)
+  // Re-fetch when filterType/status/search changes (server-side filtering)
   useEffect(() => {
-    if (token) fetchTransactions(filterType, filterStatus);
-  }, [filterType, filterStatus, token]);
+    if (!token) return;
+    const delay = searchTerm ? 500 : 0; // debounce для поиска
+    const timer = setTimeout(() => fetchTransactions(filterType, filterStatus, searchTerm), delay);
+    return () => clearTimeout(timer);
+  }, [filterType, filterStatus, searchTerm, token]);
 
-  const fetchTransactions = async (type = 'all', status = 'all') => {
+  const fetchTransactions = async (type = 'all', status = 'all', search = '') => {
     setIsLoading(true);
     try {
       const params = new URLSearchParams({ limit: '200' });
       if (type && type !== 'all') params.set('type', type);
       if (status && status !== 'all') params.set('status', status);
+      if (search && search.trim()) params.set('search', search.trim());
 
       const res = await fetch(`/api/admin/transactions?${params}`, {
         headers: { Authorization: `Bearer ${token}` }
@@ -174,18 +178,8 @@ export default function AdminTransactionsPage() {
     }
   };
 
-  // Filtering is done server-side for type/status; only search is done client-side
-  const filteredTransactions = (transactions || []).filter(tx => {
-    if (!searchTerm) return true;
-    const q = searchTerm.toLowerCase();
-    return (
-      tx.username.toLowerCase().includes(q) ||
-      tx.odid.toLowerCase().includes(q) ||
-      tx.email.toLowerCase().includes(q) ||
-      String(tx.id).includes(q) ||
-      (tx.walletAddress || '').toLowerCase().includes(q)
-    );
-  });
+  // All filtering done server-side
+  const filteredTransactions = transactions || [];
 
   const pendingWithdrawals = (transactions || []).filter(tx => tx.type === 'withdrawal' && tx.status === 'pending');
 

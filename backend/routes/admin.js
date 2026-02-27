@@ -544,7 +544,7 @@ router.post('/users/:identifier/balance', adminAuth, [
 // Get transactions
 router.get('/transactions', adminAuth, async (req, res) => {
   try {
-    const { page = 1, limit = 50, type, status, userId } = req.query;
+    const { page = 1, limit = 50, type, status, userId, search } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(limit);
     
     let query = `
@@ -568,6 +568,19 @@ router.get('/transactions', adminAuth, async (req, res) => {
     if (userId) {
       values.push(userId);
       conditions.push(`t.user_id = $${values.length}`);
+    }
+
+    if (search && search.trim()) {
+      const s = search.trim();
+      const isNumericId = /^\d+$/.test(s);
+      if (isNumericId) {
+        values.push(parseInt(s));
+        values.push(`%${s}%`);
+        conditions.push(`(t.id = $${values.length - 1} OR u.odid ILIKE $${values.length} OR u.username ILIKE $${values.length} OR t.wallet_address ILIKE $${values.length})`);
+      } else {
+        values.push(`%${s}%`);
+        conditions.push(`(u.odid ILIKE $${values.length} OR u.username ILIKE $${values.length} OR u.email ILIKE $${values.length} OR t.wallet_address ILIKE $${values.length} OR t.description ILIKE $${values.length})`);
+      }
     }
     
     if (conditions.length > 0) {
