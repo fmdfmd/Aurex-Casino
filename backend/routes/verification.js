@@ -6,28 +6,9 @@ const fs = require('fs');
 const pool = require('../config/database');
 const { auth, adminAuth } = require('../middleware/auth');
 
-// Создаём папку uploads если её нет
-const uploadsDir = path.join(__dirname, '../uploads/verification');
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
-}
-
-// Настройка multer для загрузки файлов
-const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
-    cb(null, uploadsDir);
-  },
-  filename: (req, file, cb) => {
-    const userId = req.user?.id || 'unknown';
-    const docType = req.params.docType || 'doc';
-    const ext = path.extname(file.originalname) || '.jpg';
-    const filename = `${docType}_${userId}_${Date.now()}${ext}`;
-    cb(null, filename);
-  }
-});
-
+// Хранение файлов в памяти (Railway ephemeral disk - файлы не персистентны)
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (req, file, cb) => {
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp', 'application/pdf'];
@@ -45,7 +26,7 @@ const upload = multer({
 router.get('/status', auth, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT * FROM verifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT 1',
+      'SELECT * FROM verifications WHERE user_id = $1 ORDER BY submitted_at DESC NULLS LAST LIMIT 1',
       [req.user.id]
     );
     
@@ -135,16 +116,19 @@ router.post('/upload/:docType', auth, upload.single('file'), async (req, res) =>
       documents = result.rows[0].documents || {};
     }
 
-    // Обновляем документ
-    const fileUrl = req.file 
-      ? `/uploads/verification/${req.file.filename}`
-      : `/uploads/verification/${docType}_${req.user.id}_${Date.now()}.jpg`;
-    
+    // Конвертируем файл в base64 для хранения в БД (Railway ephemeral disk)
+    let fileData = null;
+    let mimeType = 'image/jpeg';
+    if (req.file) {
+      fileData = req.file.buffer.toString('base64');
+      mimeType = req.file.mimetype;
+    }
+
     documents[docType] = {
       uploaded: true,
       status: 'pending',
-      url: fileUrl,
-      filename: req.file?.filename || `${docType}_${req.user.id}.jpg`,
+      mimeType,
+      fileData, // base64 в БД
       uploadedAt: new Date().toISOString()
     };
 
