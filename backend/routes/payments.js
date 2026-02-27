@@ -542,52 +542,24 @@ router.post('/withdraw', auth, async (req, res) => {
     });
 
     if (isNirvanaMethod(paymentMethod)) {
-      const token = getNirvanaToken(paymentMethod);
-      const isCardMethod = ['NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(paymentMethod);
-      const receiver = isCardMethod ? (cardNumber || '').replace(/\s/g, '') : (phone ? `7${phone}` : '');
-
-      try {
-        const nirvanaResponse = await nirvanaPayService.createWithdrawal({
-          amount: parseFloat(amount),
-          transactionId: transaction.id,
-          token,
-          currency,
-          receiver,
-          bankName: bankName || token,
-          recipientName: ''
-        });
-
-        if (nirvanaResponse.trackerID) {
-          await pool.query(
-            "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
-            [nirvanaResponse.trackerID, transaction.id]
-          );
+      // Создаём заявку как pending — НЕ вызываем Nirvana API сразу.
+      // Выплата произойдёт только когда админ нажмёт "Выплатить" в транзакциях.
+      return res.json({
+        success: true,
+        message: 'Заявка на вывод создана. Ожидайте обработки.',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: 'pending',
+            createdAt: transaction.created_at
+          },
+          provider: 'nirvana',
+          fee: { percent: feePercent, amount: feeAmount },
+          netAmount: amount,
+          totalDeducted
         }
-
-        return res.json({
-          success: true,
-          message: 'Заявка на вывод создана',
-          data: {
-            transaction: {
-              id: transaction.id,
-              amount: parseFloat(transaction.amount),
-              status: transaction.status,
-              createdAt: transaction.created_at
-            },
-            provider: 'nirvana',
-            fee: { percent: feePercent, amount: feeAmount },
-            netAmount: amount,
-            totalDeducted
-          }
-        });
-      } catch (nirvanaErr) {
-        // Nirvana failed — cancel tx and refund balance
-        console.error(`[Nirvana] Withdrawal failed for tx ${transaction.id}:`, nirvanaErr.message);
-        await pool.query("UPDATE transactions SET status = 'failed' WHERE id = $1", [transaction.id]);
-        await pool.query('UPDATE users SET balance = balance + $1 WHERE id = $2', [totalDeducted, req.user.id]);
-        const reason = nirvanaErr.response?.data?.reason || nirvanaErr.message;
-        return res.status(400).json({ success: false, message: `Вывод не создан: ${reason}` });
-      }
+      });
     }
 
     if (isExpayMethod(paymentMethod)) {

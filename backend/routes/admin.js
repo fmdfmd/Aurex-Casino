@@ -638,82 +638,82 @@ router.get('/transactions', adminAuth, async (req, res) => {
 router.post('/transactions/:id/:action', adminAuth, async (req, res) => {
   try {
     const { id, action } = req.params;
-    
+
     if (!['approve', 'reject'].includes(action)) {
       return res.status(400).json({ success: false, error: 'Invalid action' });
     }
-    
-    const newStatus = action === 'approve' ? 'completed' : 'failed';
+
+    // Получаем транзакцию
+    const txCheck = await pool.query('SELECT * FROM transactions WHERE id = $1', [id]);
+    if (txCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, error: 'Transaction not found' });
+    }
+    const tx = txCheck.rows[0];
+    const method = tx.payment_method || '';
+    const isNirvanaWithdrawal = method.startsWith('NIRVANA_') && tx.type === 'withdrawal';
+
+    if (action === 'approve' && isNirvanaWithdrawal) {
+      // Для Nirvana: сначала отправляем в API, потом ставим completed
+      const receiver = tx.wallet_address || '';
+      const amount = Math.abs(parseFloat(tx.amount));
+
+      try {
+        const token = nirvanaPayService.getToken(method);
+        const isCard = ['NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(method);
+        const formattedReceiver = isCard
+          ? receiver.replace(/\s/g, '')
+          : (receiver.startsWith('7') ? receiver : `7${receiver}`);
+
+        const nirvanaResp = await nirvanaPayService.createWithdrawal({
+          amount,
+          transactionId: tx.id,
+          token,
+          currency: tx.currency || 'RUB',
+          receiver: formattedReceiver,
+          bankName: token,
+          recipientName: ''
+        });
+
+        // Nirvana приняла — ставим completed + сохраняем trackerID
+        const trackerID = nirvanaResp.trackerID || null;
+        await pool.query(
+          `UPDATE transactions SET status = 'completed', wallet_address = COALESCE($1, wallet_address), updated_at = NOW() WHERE id = $2`,
+          [trackerID, tx.id]
+        );
+        console.log(`[Admin Approve] Nirvana OK for tx ${tx.id}, trackerID: ${trackerID}`);
+        return res.json({ success: true, message: 'Выплата отправлена через Nirvana', data: { ...tx, status: 'completed' } });
+
+      } catch (err) {
+        const reason = err.response?.data?.reason || err.message;
+        console.error(`[Admin Approve] Nirvana FAILED for tx ${tx.id}:`, reason);
+        // Не меняем статус — оставляем pending, возвращаем ошибку администратору
+        return res.status(400).json({ success: false, error: `Nirvana отклонила выплату: ${reason}. Транзакция остаётся на проверке.` });
+      }
+    }
+
+    // Для всех остальных (не Nirvana, или reject)
     const { withTransaction } = require('../utils/dbTransaction');
-    
+    const newStatus = action === 'approve' ? 'completed' : 'failed';
+
     const transaction = await withTransaction(pool, async (client) => {
       const result = await client.query(
         'UPDATE transactions SET status = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING *',
         [newStatus, id]
       );
-      
-      if (result.rows.length === 0) {
-        throw { status: 404, message: 'Transaction not found' };
-      }
-      
-      const tx = result.rows[0];
-      
-      if (tx.type === 'withdrawal') {
-        // Lock user row
-        await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [tx.user_id]);
-        
+      if (result.rows.length === 0) throw { status: 404, message: 'Transaction not found' };
+
+      const updated = result.rows[0];
+      if (updated.type === 'withdrawal') {
+        await client.query('SELECT id FROM users WHERE id = $1 FOR UPDATE', [updated.user_id]);
         if (action === 'reject') {
-          // Rejected — возвращаем деньги
           await client.query(
             'UPDATE users SET balance = balance + $1 WHERE id = $2',
-            [Math.abs(parseFloat(tx.amount)), tx.user_id]
+            [Math.abs(parseFloat(updated.amount)), updated.user_id]
           );
         }
       }
-      
-      return tx;
+      return updated;
     });
-
-    // After DB transaction — send payout to payment provider if needed
-    if (action === 'approve' && transaction.type === 'withdrawal') {
-      const method = transaction.payment_method || '';
-      const receiver = transaction.wallet_address || '';
-      const amount = Math.abs(parseFloat(transaction.amount));
-      const txId = transaction.id;
-
-      // Nirvana Pay — send to API if no trackerID yet (wallet_address looks like phone/card, not UUID)
-      const isNirvana = method.startsWith('NIRVANA_');
-      const looksLikeTrackerID = receiver.length > 15 || receiver.includes('-');
-
-      if (isNirvana && receiver && !looksLikeTrackerID) {
-        try {
-          const token = nirvanaPayService.getToken(method);
-          const isCard = ['NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB'].includes(method);
-          const formattedReceiver = isCard ? receiver.replace(/\s/g, '') : (receiver.startsWith('7') ? receiver : `7${receiver}`);
-
-          const nirvanaResp = await nirvanaPayService.createWithdrawal({
-            amount,
-            transactionId: txId,
-            token,
-            currency: transaction.currency || 'RUB',
-            receiver: formattedReceiver,
-            bankName: token,
-            recipientName: ''
-          });
-
-          if (nirvanaResp.trackerID) {
-            await pool.query(
-              'UPDATE transactions SET wallet_address = $1 WHERE id = $2',
-              [nirvanaResp.trackerID, txId]
-            );
-          }
-          console.log(`[Admin Approve] Nirvana withdrawal sent for tx ${txId}, trackerID: ${nirvanaResp.trackerID}`);
-        } catch (err) {
-          console.error(`[Admin Approve] Nirvana withdrawal error for tx ${txId}:`, err.message);
-          // Don't fail the approve — just log
-        }
-      }
-    }
 
     res.json({ success: true, message: `Transaction ${action}d`, data: transaction });
   } catch (error) {
