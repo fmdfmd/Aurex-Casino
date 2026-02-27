@@ -117,7 +117,8 @@ router.get('/list', auth, async (req, res) => {
       : tier.commissionPercent;
     
     const result = await pool.query(`
-      SELECT u.id, u.username, u.created_at, u.deposit_count,
+      SELECT u.id, u.odid, u.username, u.created_at, u.deposit_count,
+        COALESCE(u.total_deposited, 0) as total_deposited,
         COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
         COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
       FROM users u
@@ -132,9 +133,11 @@ router.get('/list', auth, async (req, res) => {
       const ggr = Math.max(0, parseFloat(r.total_bets) - parseFloat(r.total_wins));
       return {
         id: r.id,
-        username: r.username.substring(0, 2) + '***' + r.username.slice(-1),
+        odid: r.odid,
+        username: r.username,
         registeredAt: r.created_at,
         depositCount: r.deposit_count,
+        totalDeposited: parseFloat(r.total_deposited) || 0,
         ggr,
         earned: ggr * (effectivePercent / 100),
         status: r.deposit_count > 0 ? 'active' : 'inactive',

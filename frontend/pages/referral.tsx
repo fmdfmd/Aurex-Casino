@@ -21,10 +21,12 @@ import { useTranslation } from '../hooks/useTranslation';
 import toast from 'react-hot-toast';
 
 interface Referral {
-  id: string;
+  id: number;
+  odid: string;
   username: string;
   joinedAt: string;
   totalDeposits: number;
+  depositCount: number;
   yourEarnings: number;
   status: 'active' | 'inactive';
 }
@@ -108,10 +110,12 @@ export default function ReferralPage() {
       const referralList = listData.success ? (listData.data?.referrals || listData.data || []) : [];
       if (Array.isArray(referralList)) {
         setReferrals(referralList.map((r: any) => ({
-          id: r.id || r.odid,
+          id: r.id,
+          odid: r.odid,
           username: r.username,
           joinedAt: r.registeredAt || r.registered_at || r.created_at,
-          totalDeposits: r.totalDeposits || r.total_deposits || 0,
+          totalDeposits: r.totalDeposited || r.totalDeposits || r.total_deposits || 0,
+          depositCount: r.depositCount || 0,
           yourEarnings: r.earned || r.yourEarnings || 0,
           status: r.depositCount > 0 || r.isActive ? 'active' : 'inactive',
         })));
@@ -454,15 +458,16 @@ export default function ReferralPage() {
                                 </div>
                                 <div>
                                   <div className="text-white font-medium">{ref.username}</div>
+                                  <div className="text-xs text-aurex-gold-500/70 font-mono">{ref.odid}</div>
                                   <div className="text-xs text-aurex-platinum-500">
-                                    {t('profile.referralProgram.joinedAt', { date: new Date(ref.joinedAt).toLocaleDateString() })}
+                                    Зарегистрирован {new Date(ref.joinedAt).toLocaleDateString('ru-RU')}
                                   </div>
                                 </div>
                               </div>
                               <div className="text-right">
-                                <div className="text-aurex-gold-500 font-bold">+₽{ref.yourEarnings}</div>
-                                <div className="text-xs text-aurex-platinum-500">
-                                  {t('profile.referralProgram.deposits', { amount: ref.totalDeposits })}
+                                <div className="text-aurex-gold-500 font-bold">+₽{Math.round(ref.yourEarnings)}</div>
+                                <div className="text-xs text-aurex-platinum-400">
+                                  Депозитов: {ref.depositCount} шт · ₽{Math.round(ref.totalDeposits).toLocaleString('ru-RU')}
                                 </div>
                               </div>
                             </div>
