@@ -25,7 +25,7 @@ const formatUser = (user) => {
     firstName: user.first_name || null,
     lastName: user.last_name || null,
     country: user.country || null,
-    birthDate: user.birth_date || null,
+    birthDate: user.birth_date ? new Date(user.birth_date).toISOString().slice(0, 10) : null,
     balance,
     bonusBalance,
     currency,
@@ -339,7 +339,7 @@ router.get('/me', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { firstName, lastName, phone, country, birthDate } = req.body;
+    const { firstName, lastName, phone, country, birthDate, email } = req.body;
     
     const updates = [];
     const values = [];
@@ -364,6 +364,15 @@ router.put('/profile', auth, async (req, res) => {
     if (birthDate !== undefined) {
       values.push(birthDate || null);
       updates.push(`birth_date = $${values.length}`);
+    }
+    if (email !== undefined && email) {
+      const emailLower = email.toLowerCase().trim();
+      const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [emailLower, req.user.id]);
+      if (existing.rows.length > 0) {
+        return res.status(400).json({ success: false, error: 'Этот email уже используется другим аккаунтом' });
+      }
+      values.push(emailLower);
+      updates.push(`email = $${values.length}`);
     }
     
     if (updates.length === 0) {

@@ -98,7 +98,10 @@ export default function ProfilePage() {
         lastName: formData.lastName,
         phone: formData.phone,
         country: formData.country,
-        birthDate: formData.birthDate
+        birthDate: formData.birthDate,
+        email: formData.email
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
       });
       if (response.data?.data?.user) {
         updateUser(response.data.data.user);
