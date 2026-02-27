@@ -94,9 +94,6 @@ const defaultPaymentMethodsConfig = {
     { id: 'NIRVANA_NSPK', name: 'НСПК QR', iconUrl: '/images/payments/nspk.jpg', minDeposit: 1000, maxDeposit: 150000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'nirvana', subtitle: 'от 1 000₽' },
     { id: 'NIRVANA_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 100₽' },
     { id: 'NIRVANA_C2C', name: 'Карта C2C', iconUrl: '/images/payments/card.png', minDeposit: 100, maxDeposit: 100000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 100₽' },
-    { id: 'NIRVANA_SBER', name: 'Сбербанк', iconUrl: '/images/payments/sber.svg', minDeposit: 1000, maxDeposit: 50000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 1 000₽' },
-    { id: 'NIRVANA_ALFA', name: 'Альфа-Банк', iconUrl: '/images/payments/alfa.svg', minDeposit: 1000, maxDeposit: 50000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 1 000₽' },
-    { id: 'NIRVANA_VTB', name: 'ВТБ', iconUrl: '/images/payments/vtb.svg', minDeposit: 1000, maxDeposit: 50000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 1 000₽' },
   ],
   crypto: [],
   banks: [
