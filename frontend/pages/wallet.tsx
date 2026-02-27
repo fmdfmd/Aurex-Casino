@@ -91,6 +91,33 @@ export default function WalletPage() {
     amount: number;
     transactionId: number;
   } | null>(null);
+  const [pendingWithdrawal, setPendingWithdrawal] = useState<Transaction | null>(null);
+  const [isCancellingWithdrawal, setIsCancellingWithdrawal] = useState<number | null>(null);
+
+  const handleCancelWithdrawal = async (txId: number) => {
+    if (!confirm('Отменить вывод и вернуть средства на баланс?')) return;
+    setIsCancellingWithdrawal(txId);
+    try {
+      const res = await fetch(`/api/payments/withdraw/${txId}/cancel`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success) {
+        toast.success('Вывод отменён, средства возвращены на баланс');
+        fetchTransactions();
+        // Обновляем баланс
+        const { refreshUser } = useAuthStore.getState();
+        if (refreshUser) refreshUser();
+      } else {
+        toast.error(data.message || 'Не удалось отменить вывод');
+      }
+    } catch {
+      toast.error('Ошибка отмены вывода');
+    } finally {
+      setIsCancellingWithdrawal(null);
+    }
+  };
   const [paymentMethods, setPaymentMethods] = useState<{
     crypto: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number; paymentMethod?: string }[];
     fiat: { id: string; name: string; iconUrl?: string; icon?: string; subtitle?: string; color?: string; minDeposit?: number; maxDeposit?: number; minWithdraw?: number; depositFee?: number; withdrawFee?: number }[];
@@ -1351,6 +1378,16 @@ export default function WalletPage() {
                                   <Copy className="w-3 h-3 opacity-40 group-hover:opacity-100 transition-opacity" />
                                   <span className="font-mono">#{tx.transactionId || tx.id}</span>
                                 </div>
+                                {tx.type === 'withdrawal' && tx.status === 'pending' && (
+                                  <button
+                                    onClick={() => handleCancelWithdrawal(tx.transactionId || tx.id)}
+                                    disabled={isCancellingWithdrawal === (tx.transactionId || tx.id)}
+                                    className="mt-2 flex items-center gap-1 px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs rounded-lg transition-colors disabled:opacity-50"
+                                  >
+                                    <X className="w-3 h-3" />
+                                    {isCancellingWithdrawal === (tx.transactionId || tx.id) ? 'Отмена...' : 'Отменить вывод'}
+                                  </button>
+                                )}
                               </div>
                             </div>
                           ))}
