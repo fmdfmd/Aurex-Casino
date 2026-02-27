@@ -573,7 +573,13 @@ router.get('/transactions', adminAuth, async (req, res) => {
     if (search && search.trim()) {
       const s = search.trim();
       const isNumericId = /^\d+$/.test(s);
-      if (isNumericId) {
+      const isDepId = /^dep_(\d+)$/i.test(s); // Expay provider ID формат dep_688
+      if (isDepId) {
+        // dep_688 → ищем транзакцию по id=688
+        const txId = parseInt(s.replace(/^dep_/i, ''));
+        values.push(txId);
+        conditions.push(`t.id = $${values.length}`);
+      } else if (isNumericId) {
         values.push(parseInt(s));
         values.push(`%${s}%`);
         conditions.push(`(t.id = $${values.length - 1} OR u.odid ILIKE $${values.length} OR u.username ILIKE $${values.length} OR t.wallet_address ILIKE $${values.length})`);

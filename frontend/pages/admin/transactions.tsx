@@ -205,7 +205,7 @@ export default function AdminTransactionsPage() {
 
             <div className="flex gap-3">
               <button
-                onClick={() => fetchTransactions(filterType, filterStatus)}
+                onClick={() => fetchTransactions(filterType, filterStatus, searchTerm)}
                 className="flex items-center space-x-2 px-4 py-2 bg-aurex-obsidian-700 text-aurex-platinum-300 rounded-lg border border-aurex-gold-500/20 hover:border-aurex-gold-500/50 transition-all"
               >
                 <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
