@@ -86,11 +86,12 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   fiat: [
-    // AVE PAY — низкая комиссия (от 3000-5000₽)
+    // AVE PAY — основные методы
     { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: 5000, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 3 000₽' },
     { id: 'P2P_CARD', name: 'Карта', iconUrl: '/images/payments/card.png', minDeposit: 5000, maxDeposit: 300000, minWithdraw: 5000, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 5 000₽' },
+    { id: 'EXPAY_SBERQR', name: 'Сбер QR', iconUrl: '/images/payments/sber.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'expay', subtitle: 'от 100₽' },
+    // Nirvana Pay
     { id: 'NIRVANA_NSPK', name: 'НСПК QR', iconUrl: '/images/payments/nspk.jpg', minDeposit: 1000, maxDeposit: 150000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'nirvana', subtitle: 'от 1 000₽' },
-    // Nirvana Pay — актуальные токены
     { id: 'NIRVANA_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: 100, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 100₽' },
     { id: 'NIRVANA_C2C', name: 'Карта C2C', iconUrl: '/images/payments/card.png', minDeposit: 100, maxDeposit: 100000, minWithdraw: 100, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 100₽' },
     { id: 'NIRVANA_SBER', name: 'Сбербанк', iconUrl: '/images/payments/sber.svg', minDeposit: 1000, maxDeposit: 50000, minWithdraw: 1000, depositFee: 13, withdrawFee: 5, provider: 'nirvana', subtitle: 'от 1 000₽' },
@@ -100,8 +101,7 @@ const defaultPaymentMethodsConfig = {
     { id: 'EXPAY_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 500, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'expay', subtitle: 'от 500₽' },
     { id: 'EXPAY_CARD', name: 'Карта', iconUrl: '/images/payments/card.png', minDeposit: 500, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'expay', subtitle: 'от 500₽' },
     { id: 'EXPAY_SBER', name: 'Сбербанк', iconUrl: '/images/payments/sber.svg', minDeposit: 500, maxDeposit: 300000, minWithdraw: 1000, depositFee: 0, withdrawFee: 5, provider: 'expay', subtitle: 'от 500₽' },
-    { id: 'EXPAY_NSPK', name: 'НСПК QR', iconUrl: '/images/payments/nspk.jpg', minDeposit: 500, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'expay', subtitle: 'QR-код' },
-    { id: 'EXPAY_SBERQR', name: 'Сбер QR', iconUrl: '/images/payments/sber.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'expay', subtitle: 'QR через Сбербанк' }
+    { id: 'EXPAY_NSPK', name: 'НСПК QR', iconUrl: '/images/payments/nspk.jpg', minDeposit: 500, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'expay', subtitle: 'QR-код' }
   ],
   crypto: [],
   banks: [
