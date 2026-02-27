@@ -55,6 +55,7 @@ router.get('/stats', auth, async (req, res) => {
       FROM transactions t
       JOIN users u ON t.user_id = u.id
       WHERE u.referred_by = $1::text 
+        AND u.total_deposited > 0
         AND t.created_at >= date_trunc('month', CURRENT_DATE)
     `, [String(req.user.id)]);
     
@@ -251,6 +252,7 @@ async function processWeeklyReferralGGR(dbPool) {
     JOIN transactions t ON t.user_id = u_ref.id
       AND t.created_at >= $1 AND t.created_at < $2
     WHERE u_ref.referred_by IS NOT NULL
+      AND u_ref.total_deposited > 0
     GROUP BY u_ref.referred_by
     HAVING COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) > 
            COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0)
