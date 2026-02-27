@@ -1321,9 +1321,10 @@ router.post('/support-tickets/:id/reply', adminAuth, async (req, res) => {
         `INSERT INTO ticket_messages (ticket_id, user_id, message, is_staff) VALUES ($1, $2, $3, true)`,
         [ticketId, req.user.id, message]
       );
+      // Назначаем оператора и ставим статус in_progress чтобы у пользователя разблокировался ввод
       await pool.query(
-        `UPDATE tickets SET status = 'pending', updated_at = NOW() WHERE id = $1`,
-        [ticketId]
+        `UPDATE tickets SET status = 'in_progress', assigned_to = $2, assigned_operator_name = $3, updated_at = NOW() WHERE id = $1`,
+        [ticketId, req.user.id, req.user.username || 'Оператор']
       );
       return res.json({ success: true, message: 'Reply sent' });
     }
