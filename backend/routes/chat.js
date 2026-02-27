@@ -182,11 +182,41 @@ router.post('/message', async (req, res) => {
 });
 
 // ===== LIVE SUPPORT: Create ticket from chat widget =====
+// ===== LIVE SUPPORT: Check active ticket =====
+router.get('/ticket/active', auth, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `SELECT id, status, assigned_operator_name FROM tickets 
+       WHERE user_id = $1 AND category = 'live_chat' AND status IN ('open', 'in_progress')
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (result.rows.length === 0) {
+      return res.json({ success: true, ticketId: null });
+    }
+    const ticket = result.rows[0];
+    res.json({ success: true, ticketId: ticket.id, status: ticket.status, operatorName: ticket.assigned_operator_name || null });
+  } catch (error) {
+    console.error('Check active ticket error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 router.post('/ticket', auth, async (req, res) => {
   try {
     const { message } = req.body;
     const subject = 'Чат: запрос оператора';
     const text = message || 'Пользователь запросил оператора из чата';
+
+    // Проверяем — есть ли уже открытый тикет у этого пользователя
+    const existing = await pool.query(
+      `SELECT id FROM tickets WHERE user_id = $1 AND category = 'live_chat' AND status IN ('open', 'in_progress')
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (existing.rows.length > 0) {
+      return res.json({ success: true, ticketId: existing.rows[0].id, ticketNumber: existing.rows[0].id, existing: true });
+    }
 
     const ticketResult = await pool.query(
       `INSERT INTO tickets (user_id, subject, message, category, priority, status)

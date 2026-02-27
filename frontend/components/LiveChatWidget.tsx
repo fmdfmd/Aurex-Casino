@@ -52,8 +52,30 @@ export default function LiveChatWidget() {
         text: `Здравствуйте${user ? `, ${user.username}` : ''}! 👋 Я Стефани, AI-ассистент AUREX. Чем могу помочь?`,
         timestamp: new Date(),
       }]);
+
+      // Восстанавливаем активный тикет если есть
+      if (token && !ticketId) {
+        fetch('/api/chat/ticket/active', { headers: { Authorization: `Bearer ${token}` } })
+          .then(r => r.json())
+          .then(data => {
+            if (data.success && data.ticketId) {
+              setTicketId(data.ticketId);
+              setMode(data.operatorName ? 'operator' : 'waiting');
+              if (data.operatorName) setOperatorName(data.operatorName);
+              setMessages(prev => [...prev, {
+                id: 'restored',
+                type: 'system',
+                text: data.operatorName
+                  ? `⏳ У вас активный чат с оператором ${data.operatorName}`
+                  : '⏳ У вас активный запрос оператора. Ожидайте подключения...',
+                timestamp: new Date(),
+              }]);
+            }
+          })
+          .catch(() => {});
+      }
     }
-  }, [isOpen, user]);
+  }, [isOpen, user, token]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
