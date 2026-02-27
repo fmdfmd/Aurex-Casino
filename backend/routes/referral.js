@@ -6,10 +6,10 @@ const { auth } = require('../middleware/auth');
 // Referral tiers: commission % from referral's GGR
 const REFERRAL_TIERS = [
   { level: 1, name: 'Новичок', requiredReferrals: 0, commissionPercent: 10, bonus: 0 },
-  { level: 2, name: 'Партнёр', requiredReferrals: 5, commissionPercent: 12, bonus: 1000 },
-  { level: 3, name: 'Эксперт', requiredReferrals: 15, commissionPercent: 15, bonus: 5000 },
-  { level: 4, name: 'Мастер', requiredReferrals: 30, commissionPercent: 18, bonus: 15000 },
-  { level: 5, name: 'Легенда', requiredReferrals: 50, commissionPercent: 20, bonus: 50000 },
+  { level: 2, name: 'Партнёр', requiredReferrals: 5, commissionPercent: 12, bonus: 100 },
+  { level: 3, name: 'Эксперт', requiredReferrals: 15, commissionPercent: 15, bonus: 500 },
+  { level: 4, name: 'Мастер', requiredReferrals: 30, commissionPercent: 18, bonus: 1500 },
+  { level: 5, name: 'Легенда', requiredReferrals: 50, commissionPercent: 20, bonus: 5000 },
 ];
 
 function getReferralTier(totalReferrals) {
