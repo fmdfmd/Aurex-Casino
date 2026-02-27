@@ -192,6 +192,11 @@ class AvePayService {
     return response.data;
   }
 
+  async getPaymentStatus(paymentId) {
+    const response = await apiClient.get(`/api/v1/payments/${paymentId}`);
+    return response.data;
+  }
+
   /**
    * Get merchant balances by currency
    */

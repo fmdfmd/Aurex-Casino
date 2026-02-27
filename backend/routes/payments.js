@@ -248,7 +248,44 @@ router.post('/deposit', auth, async (req, res) => {
       });
     }
 
-    // AVE PAY flow (existing)
+    // AVE PAY flow — check for existing pending deposit (max 1 active per user)
+    const existingPending = await pool.query(
+      `SELECT id, wallet_address, created_at FROM transactions 
+       WHERE user_id = $1 AND type = 'deposit' AND status = 'pending' 
+         AND payment_method IN ('P2P_SBP','P2P_CARD')
+         AND created_at > NOW() - INTERVAL '20 minutes'
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+
+    if (existingPending.rows.length > 0) {
+      const existing = existingPending.rows[0];
+      // Cancel the newly created transaction since we'll reuse the existing one
+      await pool.query("DELETE FROM transactions WHERE id = $1", [transaction.id]);
+
+      // Get redirect URL from AVE PAY for existing payment
+      let redirectUrl = null;
+      if (existing.wallet_address) {
+        try {
+          const statusRes = await avePayService.getPaymentStatus(existing.wallet_address);
+          redirectUrl = statusRes?.result?.redirectUrl || null;
+        } catch (e) {
+          console.warn('[AvePay] Could not fetch existing payment status:', e.message);
+        }
+      }
+
+      return res.json({
+        success: true,
+        message: 'У вас уже есть активная заявка на пополнение',
+        data: {
+          transaction: { id: existing.id, amount: parseFloat(amount), status: 'pending', createdAt: existing.created_at },
+          provider: 'avepay',
+          redirectUrl,
+          avePayId: existing.wallet_address
+        }
+      });
+    }
+
     const customer = {};
     if (req.user.email) customer.email = req.user.email;
     if (req.user.phone) customer.phone = req.user.phone;
