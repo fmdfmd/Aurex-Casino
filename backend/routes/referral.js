@@ -40,7 +40,7 @@ router.get('/stats', auth, async (req, res) => {
         COUNT(*) FILTER (WHERE deposit_count > 0) as active_referrals
       FROM users
       WHERE referred_by = $1::text
-    `, [req.user.id]);
+    `, [String(req.user.id)]);
     
     const refStats = refResult.rows[0];
     const totalReferrals = parseInt(refStats.total_referrals);
@@ -56,7 +56,7 @@ router.get('/stats', auth, async (req, res) => {
       JOIN users u ON t.user_id = u.id
       WHERE u.referred_by = $1::text 
         AND t.created_at >= date_trunc('month', CURRENT_DATE)
-    `, [req.user.id]);
+    `, [String(req.user.id)]);
     
     const monthBets = parseFloat(ggrResult.rows[0].total_bets) || 0;
     const monthWins = parseFloat(ggrResult.rows[0].total_wins) || 0;
@@ -107,8 +107,8 @@ router.get('/list', auth, async (req, res) => {
     
     // Get referral count + custom percent
     const meResult = await pool.query(
-      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1::text) as ref_count FROM users WHERE id = $1',
-      [req.user.id]
+      'SELECT custom_referral_percent, (SELECT COUNT(*) FROM users WHERE referred_by = $1::text) as ref_count FROM users WHERE id = $2',
+      [String(req.user.id), req.user.id]
     );
     const totalRefs = parseInt(meResult.rows[0].ref_count);
     const tier = getReferralTier(totalRefs);
@@ -127,7 +127,7 @@ router.get('/list', auth, async (req, res) => {
       GROUP BY u.id
       ORDER BY u.created_at DESC
       LIMIT $2 OFFSET $3
-    `, [req.user.id, parseInt(limit), offset]);
+    `, [String(req.user.id), parseInt(limit), offset]);
     
     const referrals = result.rows.map(r => {
       const ggr = Math.max(0, parseFloat(r.total_bets) - parseFloat(r.total_wins));
@@ -246,7 +246,7 @@ async function processWeeklyReferralGGR(dbPool) {
     SELECT 
       u_ref.referred_by as referrer_id,
       (SELECT COUNT(*) FROM users WHERE referred_by = u_ref.referred_by) as total_referrals,
-      (SELECT custom_referral_percent FROM users WHERE id::text = u_ref.referred_by) as custom_percent,
+      (SELECT custom_referral_percent FROM users WHERE id = u_ref.referred_by) as custom_percent,
       COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
       COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
     FROM users u_ref
