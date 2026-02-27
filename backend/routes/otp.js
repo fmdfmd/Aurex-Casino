@@ -14,10 +14,9 @@ const OTP_RESEND_SECONDS = parseInt(process.env.OTP_RESEND_SECONDS || '15', 10);
 const OTP_MAX_ATTEMPTS = parseInt(process.env.OTP_MAX_ATTEMPTS || '5', 10);
 const OTP_CODE_DIGITS = 4; // uCaller uses 4-digit codes
 
-// uCaller — верификация звонком
-const UCALLER_SERVICE_ID = process.env.UCALLER_SERVICE_ID;
-const UCALLER_SECRET_KEY = process.env.UCALLER_SECRET_KEY;
-const UCALLER_API = 'https://api.ucaller.ru/v1.0';
+// SMS.ru — верификация по SMS
+const SMSRU_API_KEY = process.env.SMSRU_API_KEY;
+const SMSRU_API = 'https://sms.ru/sms/send';
 
 function getOtpSecret() {
   return process.env.OTP_SECRET || config.jwt.secret;
@@ -68,23 +67,26 @@ async function createOtpRow({ destination, channel, purpose, codeHash, ipAddress
   return result.rows[0];
 }
 
-async function initUcallerCall(phone11, code) {
-  if (!UCALLER_SERVICE_ID || !UCALLER_SECRET_KEY) {
-    throw new Error('UCALLER_SERVICE_ID or UCALLER_SECRET_KEY is not set');
+async function sendSmsCode(phone11, code) {
+  if (!SMSRU_API_KEY) {
+    throw new Error('SMSRU_API_KEY не задан в переменных окружения Railway');
   }
 
-  const resp = await axios.post(`${UCALLER_API}/initCall`, {
-    phone: Number(phone11),
-    code: Number(code)
-  }, {
-    timeout: 15000,
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${UCALLER_SECRET_KEY}.${UCALLER_SERVICE_ID}`
-    }
+  const resp = await axios.get(SMSRU_API, {
+    params: {
+      api_id: SMSRU_API_KEY,
+      to: phone11,
+      msg: `AUREX Casino: ваш код подтверждения ${code}. Никому не сообщайте!`,
+      json: 1
+    },
+    timeout: 15000
   });
 
-  console.log('[uCaller] initCall response:', JSON.stringify(resp.data));
+  console.log('[SMS.ru] response:', JSON.stringify(resp.data));
+
+  if (resp.data?.status !== 'OK') {
+    throw new Error(`SMS.ru error: ${resp.data?.status_text || 'Unknown error'}`);
+  }
   return resp.data;
 }
 
@@ -153,10 +155,7 @@ router.post('/sms/send', async (req, res) => {
     });
 
     try {
-      const ucallerResult = await initUcallerCall(normalized, code);
-      if (!ucallerResult.status) {
-        throw new Error(ucallerResult.error || 'uCaller initCall failed');
-      }
+      await sendSmsCode(normalized, code);
     } catch (e) {
       await pool.query('UPDATE otp_codes SET consumed_at = NOW() WHERE id = $1', [row.id]);
       throw e;
@@ -164,12 +163,12 @@ router.post('/sms/send', async (req, res) => {
 
     return res.json({
       success: true,
-      message: 'Звонок совершён',
+      message: 'SMS с кодом отправлен',
       data: { expiresInSeconds: OTP_TTL_SECONDS }
     });
   } catch (error) {
-    console.error('OTP call send error:', error.response?.data || error.message);
-    return res.status(500).json({ success: false, error: 'Не удалось совершить звонок' });
+    console.error('OTP SMS send error:', error.response?.data || error.message);
+    return res.status(500).json({ success: false, error: 'Не удалось отправить SMS. Попробуйте позже.' });
   }
 });
 
