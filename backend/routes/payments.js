@@ -439,6 +439,39 @@ router.post('/withdraw', auth, async (req, res) => {
       return res.status(400).json({ success: false, message: 'Неверная сумма' });
     }
 
+    // Защита от спама — не более 1 попытки вывода за 15 минут при наличии недавней ошибки
+    const recentFailed = await pool.query(
+      `SELECT id, created_at FROM transactions
+       WHERE user_id = $1 AND type = 'withdrawal' AND status = 'failed'
+         AND created_at > NOW() - INTERVAL '15 minutes'
+       ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id]
+    );
+    if (recentFailed.rows.length > 0) {
+      const failedAt = new Date(recentFailed.rows[0].created_at);
+      const retryAt = new Date(failedAt.getTime() + 15 * 60 * 1000);
+      const minutesLeft = Math.ceil((retryAt - Date.now()) / 60000);
+      return res.status(429).json({
+        success: false,
+        message: `Предыдущая заявка не была обработана. Пожалуйста, попробуйте через ${minutesLeft} мин.`
+      });
+    }
+
+    // Не более 1 активной (pending) заявки на вывод одновременно
+    const pendingWithdraw = await pool.query(
+      `SELECT id FROM transactions
+       WHERE user_id = $1 AND type = 'withdrawal' AND status = 'pending'
+         AND created_at > NOW() - INTERVAL '15 minutes'
+       LIMIT 1`,
+      [req.user.id]
+    );
+    if (pendingWithdraw.rows.length > 0) {
+      return res.status(429).json({
+        success: false,
+        message: 'У вас уже есть активная заявка на вывод. Пожалуйста, подождите 15 минут.'
+      });
+    }
+
     const avepayMethods = ['P2P_SBP', 'P2P_CARD'];
     const minWithdraw = avepayMethods.includes(paymentMethod) ? 5000 : 1000;
     if (amount < minWithdraw) {
