@@ -25,7 +25,7 @@ const formatUser = (user) => {
     firstName: user.first_name || null,
     lastName: user.last_name || null,
     country: user.country || null,
-    birthDate: user.birth_date ? new Date(user.birth_date).toISOString().slice(0, 10) : null,
+    birthDate: user.birth_date ? (typeof user.birth_date === 'string' ? user.birth_date.slice(0, 10) : user.birth_date.toISOString().slice(0, 10)) : null,
     balance,
     bonusBalance,
     currency,
@@ -339,10 +339,23 @@ router.get('/me', auth, async (req, res) => {
 // Update user profile
 router.put('/profile', auth, async (req, res) => {
   try {
-    const { firstName, lastName, phone, country, birthDate, email } = req.body;
+    const { firstName, lastName, email, phone, country, birthDate } = req.body;
     
     const updates = [];
     const values = [];
+
+    if (email !== undefined && email) {
+      // Проверяем что email не занят другим пользователем
+      const emailCheck = await pool.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [email.toLowerCase().trim(), req.user.id]
+      );
+      if (emailCheck.rows.length > 0) {
+        return res.status(400).json({ success: false, error: 'Email уже используется другим аккаунтом' });
+      }
+      values.push(email.toLowerCase().trim());
+      updates.push(`email = $${values.length}`);
+    }
     
     if (firstName !== undefined) {
       values.push(firstName);
@@ -364,15 +377,6 @@ router.put('/profile', auth, async (req, res) => {
     if (birthDate !== undefined) {
       values.push(birthDate || null);
       updates.push(`birth_date = $${values.length}`);
-    }
-    if (email !== undefined && email) {
-      const emailLower = email.toLowerCase().trim();
-      const existing = await pool.query('SELECT id FROM users WHERE email = $1 AND id != $2', [emailLower, req.user.id]);
-      if (existing.rows.length > 0) {
-        return res.status(400).json({ success: false, error: 'Этот email уже используется другим аккаунтом' });
-      }
-      values.push(emailLower);
-      updates.push(`email = $${values.length}`);
     }
     
     if (updates.length === 0) {

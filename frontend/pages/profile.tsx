@@ -96,12 +96,10 @@ export default function ProfilePage() {
       const response = await axios.put('/api/auth/profile', {
         firstName: formData.firstName,
         lastName: formData.lastName,
+        email: formData.email,
         phone: formData.phone,
         country: formData.country,
-        birthDate: formData.birthDate,
-        email: formData.email
-      }, {
-        headers: { Authorization: `Bearer ${token}` }
+        birthDate: formData.birthDate
       });
       if (response.data?.data?.user) {
         updateUser(response.data.data.user);
@@ -303,8 +301,9 @@ export default function ProfilePage() {
                         <input
                           type="email"
                           value={formData.email}
-                          disabled
-                          className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white opacity-50"
+                          onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                          disabled={!isEditing}
+                          className="w-full px-4 py-3 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white disabled:opacity-50 focus:border-aurex-gold-500/50 focus:outline-none"
                         />
                       </div>
                       <div>
