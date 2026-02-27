@@ -140,14 +140,14 @@ export default function AdminTicketsPage() {
       t.odid.toLowerCase().includes(search.toLowerCase()) ||
       t.subject.toLowerCase().includes(search.toLowerCase());
     const matchFilter = filter === 'all' ||
-      (filter === 'open' && ['open', 'pending'].includes(t.status)) ||
+      (filter === 'open' && ['open', 'pending', 'in_progress'].includes(t.status)) ||
       (filter === 'web' && t.source === 'web') ||
       (filter === 'telegram' && t.source === 'telegram') ||
       (filter === 'resolved' && t.status === 'resolved');
     return matchSearch && matchFilter;
   });
 
-  const openCount = tickets.filter(t => ['open', 'pending'].includes(t.status)).length;
+  const openCount = tickets.filter(t => ['open', 'pending', 'in_progress'].includes(t.status)).length;
   const tgCount = tickets.filter(t => t.source === 'telegram' && t.status !== 'resolved').length;
 
   const statusIcon = (status: string) => {
