@@ -203,7 +203,8 @@ export default function WalletPage() {
           status: t.status,
           method: t.method || t.description || 'N/A',
           createdAt: t.createdAt,
-          transactionId: t.externalRef || t.id
+          transactionId: t.externalRef || t.id,
+          dbId: t.id
         })));
       } else {
         // Пустой список если нет транзакций
@@ -1383,12 +1384,12 @@ export default function WalletPage() {
                                 </div>
                                 {tx.type === 'withdrawal' && tx.status === 'pending' && (
                                   <button
-                                    onClick={() => handleCancelWithdrawal(Number(tx.transactionId || tx.id))}
-                                    disabled={isCancellingWithdrawal === Number(tx.transactionId || tx.id)}
+                                    onClick={() => handleCancelWithdrawal(Number((tx as any).dbId || tx.id))}
+                                    disabled={isCancellingWithdrawal === Number((tx as any).dbId || tx.id)}
                                     className="mt-2 flex items-center gap-1 px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs rounded-lg transition-colors disabled:opacity-50"
                                   >
                                     <X className="w-3 h-3" />
-                                    {isCancellingWithdrawal === (tx.transactionId || tx.id) ? 'Отмена...' : 'Отменить вывод'}
+                                    {isCancellingWithdrawal === Number((tx as any).dbId || tx.id) ? 'Отмена...' : 'Отменить вывод'}
                                   </button>
                                 )}
                               </div>
