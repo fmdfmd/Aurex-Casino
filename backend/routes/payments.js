@@ -102,6 +102,24 @@ router.post('/deposit', auth, async (req, res) => {
     const useNirvana = isNirvanaMethod(paymentMethod);
     const useExpay = isExpayMethod(paymentMethod);
 
+    // Rate limit: max 5 Nirvana deposit attempts per 15 minutes
+    if (useNirvana) {
+      const windowStart = new Date(Date.now() - 15 * 60 * 1000);
+      const recentAttempts = await pool.query(
+        `SELECT COUNT(*) as cnt FROM transactions
+         WHERE user_id = $1 AND type = 'deposit'
+           AND payment_method ILIKE 'NIRVANA_%'
+           AND created_at >= $2`,
+        [req.user.id, windowStart]
+      );
+      if (parseInt(recentAttempts.rows[0].cnt) >= 5) {
+        return res.status(429).json({
+          success: false,
+          message: 'Вы создали слишком много заявок. Попробуйте через 15 минут.'
+        });
+      }
+    }
+
     const minDeposits = {
       'P2P_CARD': 5000, 'P2P_SBP': 3000,
       'NIRVANA_SBP': 100, 'NIRVANA_C2C': 100,
