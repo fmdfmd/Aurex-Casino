@@ -87,8 +87,8 @@ const defaultGamesConfig = {
 const defaultPaymentMethodsConfig = {
   fiat: [
     // AVE PAY — основные методы
-    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: 5000, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 3 000₽' },
-    { id: 'P2P_CARD', name: 'Карта', iconUrl: '/images/payments/card.png', minDeposit: 5000, maxDeposit: 300000, minWithdraw: 5000, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 5 000₽' },
+    { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 3 000₽' },
+    { id: 'P2P_CARD', name: 'Карта', iconUrl: '/images/payments/card.png', minDeposit: 5000, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 5 000₽' },
     { id: 'EXPAY_SBERQR', name: 'Сбер QR', iconUrl: '/images/payments/sber.svg', minDeposit: 100, maxDeposit: 100000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'expay', subtitle: 'от 100₽' },
     // Nirvana Pay
     { id: 'NIRVANA_NSPK', name: 'НСПК QR', iconUrl: '/images/payments/nspk.jpg', minDeposit: 1000, maxDeposit: 150000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'nirvana', subtitle: 'от 1 000₽' },
