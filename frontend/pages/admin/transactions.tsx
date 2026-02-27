@@ -34,6 +34,7 @@ interface Transaction {
   status: 'pending' | 'completed' | 'failed' | 'cancelled';
   method: string;
   walletAddress?: string;
+  providerTxId?: string;
   createdAt: string;
   processedAt?: string;
 }
@@ -88,6 +89,7 @@ export default function AdminTransactionsPage() {
           status: t.status,
           method: t.paymentMethod || t.method || t.description || 'N/A',
           walletAddress: t.externalRef || t.walletAddress || t.wallet_address,
+          providerTxId: t.providerTxId || null,
           createdAt: t.createdAt || t.created_at,
           processedAt: t.processedAt || t.processed_at
         })));
@@ -322,6 +324,9 @@ export default function AdminTransactionsPage() {
                         <td className="px-2 py-3">
                           <div className="truncate">
                             <div className="text-white text-xs">{tx.method}</div>
+                            {tx.providerTxId && (
+                              <div className="text-xs text-aurex-gold-400 font-mono truncate" title="ID у провайдера">{tx.providerTxId}</div>
+                            )}
                             {tx.walletAddress && (
                               <div className="text-xs text-aurex-platinum-500 font-mono truncate">{tx.walletAddress}</div>
                             )}

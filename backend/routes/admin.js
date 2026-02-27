@@ -321,7 +321,7 @@ router.get('/users', adminAuth, async (req, res) => {
       suspiciousReason: u.suspicious_reason || null,
       registrationIp: u.registration_ip || null
     }));
-    
+
     res.json({
       success: true,
       data: {
@@ -585,7 +585,7 @@ router.get('/transactions', adminAuth, async (req, res) => {
     let countQuery = `SELECT COUNT(*) FROM transactions t JOIN users u ON t.user_id = u.id`;
     if (conditions.length > 0) countQuery += ' WHERE ' + conditions.join(' AND ');
     const countResult = await pool.query(countQuery, values.slice(0, values.length - 2));
-    
+
     res.json({
       success: true,
       total: parseInt(countResult.rows[0].count),
@@ -601,6 +601,11 @@ router.get('/transactions', adminAuth, async (req, res) => {
         paymentMethod: t.payment_method,
         description: t.description,
         externalRef: t.wallet_address || null,
+        providerTxId: t.payment_method?.startsWith('EXPAY_')
+          ? `dep_${t.id}`
+          : t.payment_method?.startsWith('NIRVANA_')
+            ? (t.wallet_address || null)
+            : (t.wallet_address || null),
         createdAt: t.created_at
       }))
     });
