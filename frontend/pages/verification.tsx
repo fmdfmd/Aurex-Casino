@@ -43,6 +43,8 @@ export default function VerificationPage() {
 
   // Загружаем статус верификации из API
   useEffect(() => {
+    if (!token) return;
+
     const fetchVerificationStatus = async () => {
       try {
         const res = await fetch('/api/verification/status', {
@@ -77,11 +79,7 @@ export default function VerificationPage() {
       }
     };
 
-    if (token) {
-      fetchVerificationStatus();
-    } else {
-      setIsLoading(false);
-    }
+    fetchVerificationStatus();
   }, [token]);
 
   const documentTypes = {
@@ -156,13 +154,7 @@ export default function VerificationPage() {
       }
     } catch (error) {
       console.error('Upload error:', error);
-      // Fallback - локальное обновление
-      setDocuments(docs => docs.map(doc => 
-        doc.type === type 
-          ? { ...doc, status: 'pending', uploadedAt: new Date().toISOString() }
-          : doc
-      ));
-      toast.success('Документ загружен и отправлен на проверку');
+      toast.error('Ошибка загрузки. Попробуйте ещё раз.');
     } finally {
       setUploadingType(null);
     }
