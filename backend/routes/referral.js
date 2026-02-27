@@ -119,18 +119,16 @@ router.get('/list', auth, async (req, res) => {
     const result = await pool.query(`
       SELECT u.id, u.odid, u.username, u.created_at, u.deposit_count,
         COALESCE(u.total_deposited, 0) as total_deposited,
-        COALESCE(SUM(CASE WHEN t.type = 'bet' THEN ABS(t.amount) ELSE 0 END), 0) as total_bets,
-        COALESCE(SUM(CASE WHEN t.type = 'win' THEN ABS(t.amount) ELSE 0 END), 0) as total_wins
+        COALESCE(u.total_wagered, 0) as total_wagered
       FROM users u
-      LEFT JOIN transactions t ON t.user_id = u.id
       WHERE u.referred_by = $1::text
-      GROUP BY u.id
       ORDER BY u.created_at DESC
       LIMIT $2 OFFSET $3
     `, [String(req.user.id), parseInt(limit), offset]);
     
     const referrals = result.rows.map(r => {
-      const ggr = Math.max(0, parseFloat(r.total_bets) - parseFloat(r.total_wins));
+      const wagered = parseFloat(r.total_wagered) || 0;
+      const earned = wagered * (effectivePercent / 100) * 0.05;
       return {
         id: r.id,
         odid: r.odid,
@@ -138,8 +136,8 @@ router.get('/list', auth, async (req, res) => {
         registeredAt: r.created_at,
         depositCount: r.deposit_count,
         totalDeposited: parseFloat(r.total_deposited) || 0,
-        ggr,
-        earned: ggr * (effectivePercent / 100),
+        ggr: wagered,
+        earned,
         status: r.deposit_count > 0 ? 'active' : 'inactive',
       };
     });
