@@ -449,7 +449,10 @@ export default function WalletPage() {
       };
 
       setTransactions(prev => [newTransaction, ...prev]);
-      toast.success(`Заявка на вывод ₽${depositAmount.toLocaleString('ru-RU')} создана!`);
+      toast.success(
+        `✅ Заявка на вывод ₽${depositAmount.toLocaleString('ru-RU')} принята!\n\n⏳ Заявка находится в обработке. Вы можете отменить её в истории транзакций пока мы не подтвердили выплату.\n\nСпасибо за внимание и понимание 🙏`,
+        { duration: 8000, style: { maxWidth: '380px', whiteSpace: 'pre-line' } }
+      );
 
       setAmount('');
       setCardNumber('');
