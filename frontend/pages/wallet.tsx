@@ -3,11 +3,11 @@ import Head from 'next/head';
 import Image from 'next/image';
 import { motion, AnimatePresence } from 'framer-motion';
 import { 
-  Wallet,
+  Wallet, 
   ArrowUpRight,
   ArrowDownLeft,
   Bitcoin,
-  CreditCard,
+  CreditCard, 
   Clock,
   CheckCircle,
   XCircle,
@@ -88,7 +88,7 @@ export default function WalletPage() {
     receiver: string;
     bankName: string;
     recipientName: string;
-    amount: number;
+  amount: number;
     transactionId: number;
   } | null>(null);
   const [pendingWithdrawal, setPendingWithdrawal] = useState<Transaction | null>(null);
@@ -292,7 +292,7 @@ export default function WalletPage() {
         body: JSON.stringify({
           amount: depositAmount,
           paymentMethod: actualPaymentMethod,
-          currency: 'RUB',
+      currency: 'RUB',
           ...(actualPaymentMethod === 'EXPAY_NSPK' && nspkPhone ? { nspkPhone: `7${nspkPhone}` } : {})
         })
       });
@@ -527,7 +527,7 @@ export default function WalletPage() {
                 </div>
                 <h1 className="text-3xl sm:text-4xl font-black mb-2" style={{ fontFamily: 'Cinzel, serif' }}>
                   <span className="aurex-imperial-text">{t('wallet.title')}</span>
-                </h1>
+              </h1>
                 <p className="text-aurex-platinum-400">{t('wallet.subtitle')}</p>
               </motion.div>
             </div>
@@ -535,15 +535,15 @@ export default function WalletPage() {
             {/* Balance Cards */}
             <div className="grid md:grid-cols-3 gap-4 mb-8">
               {/* Main Balance */}
-              <motion.div
+                <motion.div
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="bg-gradient-to-br from-aurex-gold-500 to-aurex-gold-600 rounded-2xl p-6 text-aurex-obsidian-900"
-              >
-                <div className="flex items-center justify-between mb-4">
+                >
+                  <div className="flex items-center justify-between mb-4">
                   <Wallet className="w-8 h-8" />
                   <span className="text-sm font-medium opacity-80">{t('wallet.mainBalance')}</span>
-                </div>
+                    </div>
                 <div className="text-4xl font-black mb-1">{formatCurrency(user?.balance || 0)}</div>
                 <div className="text-sm opacity-80">Доступно для игры и вывода</div>
               </motion.div>
@@ -558,7 +558,7 @@ export default function WalletPage() {
                 <div className="flex items-center justify-between mb-4">
                   <Gift className="w-8 h-8" />
                   <span className="text-sm font-medium opacity-80">{t('wallet.bonusBalance')}</span>
-                </div>
+                  </div>
                 <div className="text-4xl font-black mb-1">{formatCurrency(user?.bonusBalance || 0)}</div>
                 <div className="text-sm opacity-80">Требует отыгрыша</div>
               </motion.div>
@@ -573,12 +573,12 @@ export default function WalletPage() {
                 <div className="flex items-center justify-between mb-4">
                   <Crown className="w-8 h-8 text-aurex-gold-500" />
                   <span className="text-sm font-medium text-aurex-platinum-400">{t('wallet.vipLevel')}</span>
-                </div>
+                  </div>
                 <div className="text-4xl font-black text-aurex-gold-500 mb-1">
                   {['Bronze', 'Silver', 'Gold', 'Platinum', 'Emperor'][Math.max(0, Math.min((user?.vipLevel || 1) - 1, 4))]}
                 </div>
                 <div className="text-sm text-aurex-platinum-400">{user?.vipPoints || 0} VIP очков</div>
-              </motion.div>
+                </motion.div>
             </div>
 
             {/* Wager Progress */}
@@ -594,7 +594,7 @@ export default function WalletPage() {
                     <div>
                       <h3 className="text-white font-bold">Активный вейджер</h3>
                       <p className="text-sm text-aurex-platinum-400">x{user?.wager?.multiplier || 0} отыгрыш</p>
-                    </div>
+            </div>
                   </div>
                   <div className="text-right">
                     <div className="text-aurex-gold-500 font-bold">
@@ -660,10 +660,10 @@ export default function WalletPage() {
               <div className="lg:col-span-2">
                 <AnimatePresence mode="wait">
                   {activeTab === 'deposit' && (
-                    <motion.div
+            <motion.div
                       key="deposit"
-                      initial={{ opacity: 0, y: 20 }}
-                      animate={{ opacity: 1, y: 0 }}
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
                       exit={{ opacity: 0, y: -20 }}
                       className="bg-aurex-obsidian-800 border border-aurex-gold-500/20 rounded-2xl p-6"
                     >
@@ -678,13 +678,13 @@ export default function WalletPage() {
                           <div className="flex items-center justify-between">
                             <div className="flex items-center space-x-3">
                               <Gift className="w-8 h-8 text-aurex-gold-500" />
-                              <div>
+                          <div>
                                 <div className="text-white font-bold">Бонус {currentBonus.percent}% на {currentBonus.name}</div>
                                 <div className="text-sm text-aurex-platinum-400">
                                   До ₽{(currentBonus.maxBonus || 0).toLocaleString('ru-RU')} • Вейджер x{currentBonus.wager}
-                                </div>
-                              </div>
                             </div>
+                          </div>
+                        </div>
                             <label className="flex items-center space-x-2 cursor-pointer">
                               <input
                                 type="checkbox"
@@ -695,7 +695,7 @@ export default function WalletPage() {
                               <span className="text-sm text-aurex-platinum-300">Активировать</span>
                             </label>
                           </div>
-                        </div>
+                          </div>
                       )}
 
                       {/* Fiat Methods */}
@@ -715,7 +715,7 @@ export default function WalletPage() {
                               {selectedMethod === method.id && (
                                 <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
                                   <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
-                                </div>
+                        </div>
                               )}
                               {method.iconUrl ? (
                                 <img src={method.iconUrl} alt={method.name} className="w-full h-10 rounded-lg mx-auto mb-1.5 object-contain group-hover:scale-110 transition-transform" />
@@ -725,11 +725,11 @@ export default function WalletPage() {
                               <div className="text-white font-medium text-xs text-center">{method.name}</div>
                               <div className="text-[10px] text-aurex-platinum-500 text-center mt-0.5">
                                 {method.subtitle || `от ${(method.minDeposit || 100).toLocaleString('ru-RU')} ₽`}
-                              </div>
-                            </button>
-                          ))}
-                        </div>
                       </div>
+                            </button>
+                    ))}
+                  </div>
+                </div>
 
                       {/* Crypto Methods — temporarily unavailable */}
                       {paymentMethods.crypto.length > 0 && (
@@ -749,7 +749,7 @@ export default function WalletPage() {
                                 {selectedMethod === method.id && (
                                   <div className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-aurex-gold-500 rounded-full flex items-center justify-center">
                                     <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
-                                  </div>
+                    </div>
                                 )}
                                 {method.iconUrl ? (
                                   <img src={method.iconUrl} alt={method.name} className="w-11 h-11 rounded-full mx-auto mb-2 object-contain group-hover:scale-110 transition-transform" />
@@ -762,8 +762,8 @@ export default function WalletPage() {
                                 )}
                               </button>
                             ))}
-                          </div>
-                        </div>
+                      </div>
+                      </div>
                       )}
 
                       {/* Bank selection not needed for deposits (confirmed by AVE PAY support) */}
@@ -793,8 +793,8 @@ export default function WalletPage() {
                               {preset >= 1000 ? `${preset / 1000}K` : preset} ₽
                             </button>
                           ))}
-                        </div>
-                      </div>
+                    </div>
+                  </div>
 
                       {/* Summary */}
                       {depositAmount > 0 && (
@@ -802,24 +802,24 @@ export default function WalletPage() {
                           <div className="flex justify-between text-sm">
                             <span className="text-aurex-platinum-400">Депозит</span>
                             <span className="text-white">₽{depositAmount.toFixed(2)}</span>
-                          </div>
+                    </div>
                           {bonusAmount > 0 && (
                             <div className="flex justify-between text-sm">
                               <span className="text-aurex-gold-500">Бонус {currentBonus?.percent}%</span>
                               <span className="text-aurex-gold-500">+₽{bonusAmount.toFixed(2)}</span>
-                            </div>
+                        </div>
                           )}
                           <div className="border-t border-aurex-gold-500/20 pt-2 flex justify-between font-bold">
                             <span className="text-white">Итого на счёт</span>
                             <span className="text-aurex-gold-500">₽{(depositAmount + bonusAmount).toFixed(2)}</span>
-                          </div>
+                      </div>
                           {wagerRequired > 0 && (
                             <div className="flex justify-between text-xs">
                               <span className="text-aurex-platinum-500">Вейджер для вывода</span>
                               <span className="text-aurex-platinum-400">₽{wagerRequired.toFixed(2)}</span>
-                            </div>
-                          )}
                         </div>
+                          )}
+                      </div>
                       )}
 
                       {/* Nirvana Pay — payment details card */}
@@ -830,24 +830,24 @@ export default function WalletPage() {
                           className="mb-6 p-5 bg-gradient-to-br from-green-500/10 to-emerald-500/10 border-2 border-green-500/40 rounded-xl"
                         >
                           <div className="flex items-center justify-between mb-4">
-                            <div className="flex items-center space-x-2">
+                        <div className="flex items-center space-x-2">
                               <CheckCircle className="w-5 h-5 text-green-500" />
                               <h3 className="text-white font-bold">Реквизиты для перевода</h3>
-                            </div>
+                        </div>
                             <button
                               onClick={() => setNirvanaPaymentDetails(null)}
                               className="text-aurex-platinum-500 hover:text-white transition-colors"
                             >
                               <X className="w-5 h-5" />
                             </button>
-                          </div>
+                      </div>
 
                           <div className="space-y-3">
                             <div className="flex justify-between items-center p-3 bg-aurex-obsidian-900/60 rounded-lg">
                               <div>
                                 <div className="text-xs text-aurex-platinum-500">Сумма</div>
                                 <div className="text-white font-bold text-lg">₽{nirvanaPaymentDetails.amount.toLocaleString('ru-RU')}</div>
-                              </div>
+                    </div>
                             </div>
 
                             {nirvanaPaymentDetails.receiver?.startsWith('http') ? (
@@ -874,16 +874,16 @@ export default function WalletPage() {
                                   className="p-2 bg-aurex-obsidian-700 rounded-lg hover:bg-aurex-obsidian-600 transition-colors"
                                 >
                                   <Copy className="w-4 h-4 text-aurex-gold-500" />
-                                </button>
-                              </div>
+                    </button>
+                  </div>
                             )}
 
                             {nirvanaPaymentDetails.recipientName && (
                               <div className="p-3 bg-aurex-obsidian-900/60 rounded-lg">
                                 <div className="text-xs text-aurex-platinum-500">Получатель</div>
                                 <div className="text-white font-medium">{nirvanaPaymentDetails.recipientName}</div>
-                              </div>
-                            )}
+                </div>
+              )}
                           </div>
 
                           <div className="mt-4 p-3 bg-yellow-500/10 border border-yellow-500/30 rounded-lg">
@@ -894,7 +894,7 @@ export default function WalletPage() {
                               </div>
                             </div>
                           </div>
-                        </motion.div>
+            </motion.div>
                       )}
 
                       {selectedMethod === 'EXPAY_NSPK' && !user?.phone && (
@@ -923,8 +923,8 @@ export default function WalletPage() {
                               placeholder="(900) 123-45-67"
                               className="flex-1 bg-transparent text-white px-3 py-3 outline-none"
                             />
-                          </div>
-                        </div>
+          </div>
+        </div>
                       )}
 
                       {/* Submit */}
@@ -949,7 +949,7 @@ export default function WalletPage() {
                   )}
 
                   {activeTab === 'withdraw' && (
-                    <motion.div
+            <motion.div
                       key="withdraw"
                       initial={{ opacity: 0, y: 20 }}
                       animate={{ opacity: 1, y: 0 }}
@@ -966,7 +966,7 @@ export default function WalletPage() {
                         <div className="mb-6 p-4 bg-yellow-500/10 border border-yellow-500/30 rounded-xl">
                           <div className="flex items-start space-x-3">
                             <AlertTriangle className="w-6 h-6 text-yellow-500 flex-shrink-0" />
-                            <div>
+                <div>
                               <div className="text-yellow-400 font-bold">Активный вейджер</div>
                               <div className="text-sm text-yellow-300/80">
                                 Для вывода необходимо отыграть ещё ₽{((user.wager.required || 0) - (user.wager.completed || 0)).toFixed(2)}
@@ -980,7 +980,7 @@ export default function WalletPage() {
                       <div className="mb-6 p-5 bg-gradient-to-r from-aurex-obsidian-900 to-aurex-obsidian-900/80 rounded-xl border border-aurex-gold-500/10">
                         <div className="text-sm text-aurex-platinum-400 mb-1">Доступно для вывода</div>
                         <div className="text-3xl font-black text-white">{formatCurrency(user?.balance || 0)}</div>
-                      </div>
+                </div>
 
                       {/* Withdrawal methods */}
                       <div className="mb-6">
@@ -990,7 +990,7 @@ export default function WalletPage() {
                         <div className="grid grid-cols-3 gap-3 mb-3">
                           {paymentMethods.fiat.filter((m: any) => m.minWithdraw != null).map((method: any) => (
                             <button
-                              key={method.id}
+                        key={method.id}
                               onClick={() => {
                                 setSelectedMethod(method.id);
                                 setCardNumber('');
@@ -1009,7 +1009,7 @@ export default function WalletPage() {
                                   <CheckCircle className="w-3.5 h-3.5 text-aurex-obsidian-900" />
                                 </div>
                               )}
-                              <div className="flex items-center space-x-3">
+                        <div className="flex items-center space-x-3">
                                 {method.iconUrl ? (
                                   <img src={method.iconUrl} alt={method.name} className="w-16 h-10 rounded-lg object-contain group-hover:scale-110 transition-transform" />
                                 ) : (
@@ -1018,17 +1018,17 @@ export default function WalletPage() {
                                 <div className="text-left">
                                   <div className="text-white font-medium text-sm">{method.name}</div>
                                   <div className="text-xs text-aurex-platinum-500">от {(method.minWithdraw || 1000).toLocaleString('ru-RU')} ₽ • {method.withdrawFee || 5}%</div>
-                                </div>
-                              </div>
+                          </div>
+                            </div>
                             </button>
-                          ))}
-                        </div>
+                    ))}
+                </div>
 
                         {/* Crypto — hidden when unavailable */}
                         {paymentMethods.crypto.length > 0 && (
                           <div className="grid grid-cols-3 gap-3">
                             {paymentMethods.crypto.map((method) => (
-                              <button
+                  <button
                                 key={method.id}
                                 onClick={() => {
                                   setSelectedMethod(method.id);
@@ -1058,16 +1058,16 @@ export default function WalletPage() {
                                   <div className="text-[10px] text-aurex-platinum-500 text-center">{method.subtitle}</div>
                                 )}
                                 <div className="text-[10px] text-aurex-platinum-600 text-center mt-0.5">{method.withdrawFee || 2}%</div>
-                              </button>
+                  </button>
                             ))}
-                          </div>
-                        )}
+          </div>
+        )}
                       </div>
 
                       {/* Dynamic inputs based on selected method */}
                       <AnimatePresence mode="wait">
                         {selectedMethod && ['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'NIRVANA_SBER', 'NIRVANA_ALFA', 'NIRVANA_VTB', 'EXPAY_SBER', 'EXPAY_CARD'].includes(selectedMethod) && (
-                          <motion.div
+            <motion.div
                             key="card-input"
                             initial={{ opacity: 0, height: 0 }}
                             animate={{ opacity: 1, height: 'auto' }}
@@ -1100,14 +1100,14 @@ export default function WalletPage() {
                             exit={{ opacity: 0, height: 0 }}
                             className="mb-6 space-y-4"
                           >
-                            <div>
+                <div>
                               <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
                                 <Smartphone className="w-4 h-4" />
                                 <span>Номер телефона</span>
-                              </label>
+                  </label>
                               <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-aurex-platinum-500 font-mono">+7</span>
-                                <input
+                  <input
                                   type="text"
                                   value={phone}
                                   onChange={(e) => {
@@ -1118,11 +1118,11 @@ export default function WalletPage() {
                                   maxLength={10}
                                   className="w-full pl-12 pr-4 py-3.5 bg-aurex-obsidian-900 border border-aurex-gold-500/20 rounded-xl text-white text-lg font-mono tracking-wider focus:border-aurex-gold-500/50 focus:outline-none focus:ring-1 focus:ring-aurex-gold-500/20 placeholder-aurex-platinum-600"
                                 />
-                              </div>
-                            </div>
+                  </div>
+                </div>
 
                             {['P2P_SBP', 'NIRVANA_SBP', 'EXPAY_SBP'].includes(selectedMethod || '') && (
-                            <div>
+                <div>
                               <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
                                 <Building2 className="w-4 h-4" />
                                 <span>Банк получателя</span>
@@ -1199,9 +1199,9 @@ export default function WalletPage() {
                             <label className="block text-sm text-aurex-platinum-400 mb-2 flex items-center space-x-2">
                               <Bitcoin className="w-4 h-4" />
                               <span>Адрес кошелька</span>
-                            </label>
-                            <input
-                              type="text"
+                  </label>
+                  <input
+                    type="text"
                               value={withdrawAddress}
                               onChange={(e) => setWithdrawAddress(e.target.value)}
                               placeholder="Введите адрес кошелька"
@@ -1242,7 +1242,7 @@ export default function WalletPage() {
                                   {preset >= 1000 ? `${preset / 1000}K` : preset} ₽
                                 </button>
                               ))}
-                            </div>
+                </div>
                             <button
                               onClick={() => setAmount(String(Math.floor(user?.balance || 0)))}
                               className="text-sm text-aurex-gold-500 hover:text-aurex-gold-400 font-medium transition-colors"
@@ -1268,15 +1268,15 @@ export default function WalletPage() {
                             <div className="flex justify-between text-sm">
                               <span className="text-aurex-platinum-400">Сумма вывода</span>
                               <span className="text-white font-medium">₽{depositAmount.toLocaleString('ru-RU')}</span>
-                            </div>
+                    </div>
                             <div className="flex justify-between text-sm">
                               <span className="text-aurex-platinum-400">Комиссия ({feePercent}%)</span>
                               <span className="text-red-400 font-medium">-₽{feeAmt.toLocaleString('ru-RU')}</span>
-                            </div>
+                  </div>
                             <div className="border-t border-aurex-gold-500/20 pt-2 flex justify-between font-bold">
                               <span className="text-white">Спишется со счёта</span>
                               <span className="text-aurex-gold-500">₽{totalDeducted.toLocaleString('ru-RU')}</span>
-                            </div>
+                </div>
                             <div className="flex justify-between text-xs">
                               <span className="text-aurex-platinum-500">Получите на {selectedMethod === 'P2P_CARD' ? 'карту' : selectedMethod === 'P2P_SBP' ? 'СБП' : 'кошелёк'}</span>
                               <span className="text-aurex-platinum-400">₽{depositAmount.toLocaleString('ru-RU')}</span>
@@ -1286,7 +1286,7 @@ export default function WalletPage() {
                       })()}
 
                       {/* Submit */}
-                      <button
+                  <button
                         onClick={handleWithdraw}
                         disabled={
                           !selectedMethod ||
@@ -1311,7 +1311,7 @@ export default function WalletPage() {
                             <span>Вывести {depositAmount > 0 ? `₽${depositAmount.toLocaleString('ru-RU')}` : ''}</span>
                           </>
                         )}
-                      </button>
+                  </button>
 
                       <div className="flex items-center justify-center space-x-2 mt-4">
                         <Shield className="w-3.5 h-3.5 text-aurex-platinum-500" />
@@ -1383,24 +1383,24 @@ export default function WalletPage() {
                                   <span className="font-mono">#{tx.transactionId || tx.id}</span>
                                 </div>
                                 {tx.type === 'withdrawal' && tx.status === 'pending' && (
-                                  <button
+                  <button
                                     onClick={() => handleCancelWithdrawal(Number((tx as any).dbId || tx.id))}
                                     disabled={isCancellingWithdrawal === Number((tx as any).dbId || tx.id)}
                                     className="mt-2 flex items-center gap-1 px-2 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 text-xs rounded-lg transition-colors disabled:opacity-50"
-                                  >
+                  >
                                     <X className="w-3 h-3" />
                                     {isCancellingWithdrawal === Number((tx as any).dbId || tx.id) ? 'Отмена...' : 'Отменить вывод'}
-                                  </button>
+                  </button>
                                 )}
-                              </div>
+                </div>
                             </div>
                           ))}
                         </div>
                       )}
-                    </motion.div>
+            </motion.div>
                   )}
                 </AnimatePresence>
-              </div>
+          </div>
 
               {/* Sidebar */}
               <div className="space-y-6">
