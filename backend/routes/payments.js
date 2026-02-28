@@ -138,8 +138,8 @@ router.post('/deposit', auth, async (req, res) => {
       'EXPAY_SBER': 500, 'EXPAY_SBP': 500,
       'EXPAY_CARD': 500, 'EXPAY_NSPK': 500,
       'EXPAY_SBERQR': 100,
-      'RUKASSA_CARD': 100, 'RUKASSA_SBP': 100,
-      'RUKASSA_ANY': 100
+      'RUKASSA_CARD': 1000, 'RUKASSA_SBP': 1000,
+      'RUKASSA_CRYPTO': 100
     };
     const maxDeposits = {
       'P2P_CARD': 300000, 'P2P_SBP': 300000,
@@ -279,7 +279,8 @@ router.post('/deposit', auth, async (req, res) => {
       const rukassaResponse = await rukassaService.createPayment({
         amount: parseFloat(amount),
         transactionId: transaction.id,
-        userId: req.user.id
+        userId: req.user.id,
+        paymentMethod
       });
 
       await pool.query(

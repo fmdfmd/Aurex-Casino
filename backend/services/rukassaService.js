@@ -10,16 +10,30 @@ class RukassaService {
     return crypto.createHash('md5').update(`${shopId}${token}${orderId}`).digest('hex');
   }
 
-  async createPayment({ amount, transactionId, userId }) {
-    const orderId = `dep_${transactionId}`;
+  getMethodCode(paymentMethod) {
+    const map = {
+      'RUKASSA_CARD': 'CARD',
+      'RUKASSA_SBP': 'SBP',
+      'RUKASSA_CRYPTO': 'CRYPTO'
+    };
+    return map[paymentMethod] || null;
+  }
 
-    const params = new URLSearchParams({
+  async createPayment({ amount, transactionId, userId, paymentMethod }) {
+    const orderId = `dep_${transactionId}`;
+    const methodCode = this.getMethodCode(paymentMethod);
+
+    const payload = {
       shop_id: SHOP_ID,
       token: TOKEN,
       order_id: orderId,
       amount: String(Math.round(amount)),
       data: JSON.stringify({ userId: String(userId) })
-    });
+    };
+
+    if (methodCode) payload.method = methodCode;
+
+    const params = new URLSearchParams(payload);
 
     console.log(`[Rukassa] Creating payment: order=${orderId} amount=${amount}`);
 
