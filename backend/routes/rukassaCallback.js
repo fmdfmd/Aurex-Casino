@@ -5,26 +5,36 @@ const rukassaService = require('../services/rukassaService');
 
 async function handleCallback(req, res) {
   try {
-    const data = { ...req.query, ...req.body };
-    console.log('[Rukassa Callback] Received:', data);
+    const body = { ...req.query, ...req.body };
+    console.log('[Rukassa Callback] Received:', body);
 
-    const { order_id, amount, in_amount, status, sign, shop_id } = data;
+    const { id, order_id, amount, in_amount, status, createdDateTime, data } = body;
 
     if (!order_id || !status) {
       console.warn('[Rukassa Callback] Missing required fields');
       return res.status(400).send('Bad Request');
     }
 
-    // Verify signature
-    const TOKEN = process.env.RUKASSA_TOKEN || 'bf451c373f382bf178d47a461ba058524';
-    const SHOP_ID = process.env.RUKASSA_SHOP_ID || '3596';
-    if (sign && !rukassaService.verifyWebhook(SHOP_ID, TOKEN, order_id, sign)) {
-      console.error('[Rukassa Callback] Invalid signature');
-      return res.status(403).send('Forbidden');
+    // Verify HMAC-SHA256 signature from header
+    const signature = req.headers['signature'] || req.headers['http_signature'];
+    if (signature) {
+      const isValid = rukassaService.verifyWebhook(id, createdDateTime, amount, signature);
+      if (!isValid) {
+        console.error('[Rukassa Callback] Invalid signature');
+        return res.status(403).send('ERROR SIGN');
+      }
+    }
+
+    // Check paid amount
+    const paidAmount = parseFloat(in_amount || 0);
+    const expectedAmount = parseFloat(amount || 0);
+    if (status === 'PAID' && paidAmount < expectedAmount) {
+      console.error(`[Rukassa Callback] Amount mismatch: paid=${paidAmount} expected=${expectedAmount}`);
+      return res.status(200).send('ERROR AMOUNT');
     }
 
     // Parse our transaction ID from order_id (format: dep_TXID)
-    const match = order_id.match(/^dep_(\d+)$/);
+    const match = String(order_id).match(/^dep_(\d+)$/);
     if (!match) {
       console.warn('[Rukassa Callback] Unknown order_id format:', order_id);
       return res.status(200).send('OK');
@@ -49,13 +59,13 @@ async function handleCallback(req, res) {
         return res.status(200).send('OK');
       }
 
-      const depositAmount = parseFloat(in_amount || amount || tx.amount);
+      const depositAmount = paidAmount > 0 ? paidAmount : parseFloat(tx.amount);
 
       await pool.query('BEGIN');
       try {
         await pool.query(
           "UPDATE transactions SET status = 'completed', description = $1 WHERE id = $2",
-          [`Пополнение баланса [RUKASSA PAID]`, txId]
+          [`Пополнение баланса [RUKASSA]`, txId]
         );
         await pool.query(
           "UPDATE users SET balance = balance + $1 WHERE id = $2",
@@ -73,8 +83,6 @@ async function handleCallback(req, res) {
         ['Пополнение баланса [RUKASSA CANCEL]', txId]
       );
       console.log(`[Rukassa Callback] Payment cancelled: tx=${txId}`);
-    } else {
-      console.log(`[Rukassa Callback] Status=${status} for tx=${txId}, no action`);
     }
 
     res.status(200).send('OK');
