@@ -241,7 +241,7 @@ router.post('/deposit', auth, async (req, res) => {
           userIp: req.ip,
           userAgent: req.headers['user-agent'],
           userPhone: req.user.phone || nspkPhone || undefined,
-          redirectUrl: 'https://aurex.casino/wallet'
+          redirectUrl: `https://${req.headers['x-forwarded-host'] || req.headers.host || 'aurex1.casino'}/wallet`
         });
       } catch (expayErr) {
         const reason = expayErr.response?.data?.description || expayErr.message;

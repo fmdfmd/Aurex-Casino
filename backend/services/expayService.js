@@ -81,7 +81,7 @@ class ExpayService {
       fingerprint: String(userId),
       call_back_url: config.expay.callbackUrl,
       alter_refer_custom_options: {
-        redirect_url: redirectUrl || 'https://aurex.casino/wallet',
+        redirect_url: redirectUrl || 'https://aurex1.casino/wallet',
         default_language: 'ru',
         redirect_time_sec: 5
       }
