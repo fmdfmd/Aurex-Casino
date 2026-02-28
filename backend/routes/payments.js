@@ -529,8 +529,13 @@ router.post('/withdraw', auth, async (req, res) => {
       });
     }
 
-    const avepayMethods = ['P2P_SBP', 'P2P_CARD'];
-    const minWithdraw = avepayMethods.includes(paymentMethod) ? 5000 : 1000;
+    const minWithdrawMap = {
+      'P2P_SBP': 5000, 'P2P_CARD': 5000,
+      'NIRVANA_SBP': 1000, 'NIRVANA_C2C': 1000,
+      'RUKASSA_CARD': 5000, 'RUKASSA_SBP': 5000,
+      'RUKASSA_CRYPTO': 1000
+    };
+    const minWithdraw = minWithdrawMap[paymentMethod] || 1000;
     if (amount < minWithdraw) {
       return res.status(400).json({ success: false, message: `Минимальная сумма вывода: ${minWithdraw.toLocaleString('ru-RU')} ₽` });
     }
@@ -539,8 +544,9 @@ router.post('/withdraw', auth, async (req, res) => {
     const feeAmount = Math.round(amount * feePercent) / 100;
     const totalDeducted = amount + feeAmount;
 
-    const needsCard = paymentMethod === 'P2P_CARD' || paymentMethod === 'NIRVANA_C2C' || paymentMethod === 'NIRVANA_TRANS_C2C' || paymentMethod === 'EXPAY_SBER' || paymentMethod === 'EXPAY_CARD';
-    const needsPhone = paymentMethod === 'P2P_SBP' || ['NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP', 'EXPAY_SBP'].includes(paymentMethod);
+    const needsCard = ['P2P_CARD', 'NIRVANA_C2C', 'NIRVANA_TRANS_C2C', 'EXPAY_SBER', 'EXPAY_CARD', 'RUKASSA_CARD'].includes(paymentMethod);
+    const needsPhone = ['P2P_SBP', 'NIRVANA_SBP', 'NIRVANA_SBER_SBP', 'NIRVANA_ALFA_SBP', 'NIRVANA_VTB_SBP', 'NIRVANA_TRANS_SBP', 'EXPAY_SBP', 'RUKASSA_SBP'].includes(paymentMethod);
+    const needsWallet = paymentMethod === 'RUKASSA_CRYPTO';
 
     if (needsCard && !cardNumber) {
       return res.status(400).json({ success: false, message: 'Укажите номер карты' });
@@ -548,6 +554,10 @@ router.post('/withdraw', auth, async (req, res) => {
 
     if (needsPhone && !phone) {
       return res.status(400).json({ success: false, message: 'Укажите номер телефона' });
+    }
+
+    if (needsWallet && !walletAddress) {
+      return res.status(400).json({ success: false, message: 'Укажите адрес крипто-кошелька' });
     }
     
     const { withTransaction } = require('../utils/dbTransaction');
@@ -597,6 +607,44 @@ router.post('/withdraw', auth, async (req, res) => {
       
       return txResult.rows[0];
     });
+
+    if (isRukassaMethod(paymentMethod)) {
+      const wayMap = { 'RUKASSA_CARD': 'CARD', 'RUKASSA_SBP': 'SBP', 'RUKASSA_CRYPTO': 'USDT' };
+      const way = wayMap[paymentMethod] || 'CARD';
+      const wallet = cardNumber || phone || walletAddress;
+
+      try {
+        const rukassaRes = await rukassaService.createWithdraw({
+          amount,
+          wallet,
+          way,
+          orderId: `wd_${transaction.id}`
+        });
+
+        await pool.query(
+          "UPDATE transactions SET wallet_address = $1, status = 'pending' WHERE id = $2",
+          [String(rukassaRes.id || ''), transaction.id]
+        );
+
+        return res.json({
+          success: true,
+          message: 'Заявка на вывод создана. Ожидайте обработки.',
+          data: { transaction: { id: transaction.id, amount: -totalDeducted, status: 'pending' } }
+        });
+      } catch (err) {
+        await pool.query(
+          "UPDATE transactions SET status = 'failed' WHERE id = $1",
+          [transaction.id]
+        );
+        await pool.query(
+          'UPDATE users SET balance = balance + $1, total_withdrawn = total_withdrawn - $1 WHERE id = $2',
+          [totalDeducted, req.user.id]
+        );
+        const errMsg = err.message || 'Ошибка создания выплаты';
+        console.error('[Rukassa] Withdraw error:', errMsg);
+        return res.status(400).json({ success: false, message: errMsg });
+      }
+    }
 
     if (isNirvanaMethod(paymentMethod)) {
       // Создаём заявку как pending — НЕ вызываем Nirvana API сразу.
