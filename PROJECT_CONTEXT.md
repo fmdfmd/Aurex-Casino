@@ -1,6 +1,6 @@
 # AUREX Casino - Полный контекст проекта
 
-> **Последнее обновление: 27 февраля 2026** (рефералы, верификация, профиль, чат поддержки, транзакции)
+> **Последнее обновление: 28 февраля 2026** (Rukassa интеграция, rate limiting выводов/депозитов, порядок платёжных методов, защита от спама)
 
 ---
 
@@ -1622,3 +1622,120 @@ created_at, updated_at
 ```
 - `status`: `open` → ждёт оператора, `in_progress` → оператор подключён, `resolved` → закрыт
 - При первом ответе администратора: автоматически `in_progress` + `assigned_operator_name`
+
+---
+
+## Исправления и доработки 28 февраля 2026
+
+### Rukassa — НОВЫЙ ПРОВАЙДЕР (ИНТЕГРИРОВАН, ждёт активации методов)
+
+**Статус:** Интегрирован. Мерчант создан, ожидаем активации методов (все показывают "НЕ РАБОТАЕТ"). Написали в @rukassasupport3.
+
+**Данные мерчанта:**
+```
+Мерчант ID (shop_id): 3596
+API Token:            bf451c373f382bf178d47a461ba058524
+Домен:                aurex1.casino
+Личный кабинет:       https://lk.rukassa.io
+Поддержка:            @rukassasupport3 (Telegram)
+```
+
+**API Endpoints:**
+```
+Создать платёж:  POST https://lk.rukassa.io/api/v1/create
+Статус платежа:  POST https://lk.rukassa.io/api/v1/getPayInfo
+Создать вывод:   POST https://lk.rukassa.io/api/v1/createWithdraw
+Отменить вывод:  POST https://lk.rukassa.io/api/v1/cancelWithdraw
+Баланс:          POST https://lk.rukassa.io/api/v1/getBalance
+```
+
+**Методы оплаты (коды для API):**
+| Наш ID | Код Rukassa | Мин. депозит | Мин. вывод |
+|--------|------------|-------------|------------|
+| RUKASSA_CARD | `card` | 1 000 ₽ | 5 000 ₽ |
+| RUKASSA_SBP | `sbp` | 1 000 ₽ | 5 000 ₽ |
+| RUKASSA_CRYPTO | `crypta` | 100 ₽ | 1 000 ₽ |
+
+**Webhook (URL оповещения):** `https://aurex-casino-production.up.railway.app/api/payments/rukassa/callback`
+**Верификация подпись:** `HMAC-SHA256(id|createdDateTime|amount, token)` из заголовка `Signature`
+**Статусы:** `PAID`, `WAIT`, `CANCEL`
+
+**Вывод API:**
+- Использует email/password (не shop_id/token!)
+- way: `CARD`, `SBP`, `USDT`, `PHONE`
+- Нужно добавить Railway env: `RUKASSA_EMAIL`, `RUKASSA_PASSWORD`
+
+**Переменные Railway:**
+- `RUKASSA_SHOP_ID` — `3596`
+- `RUKASSA_TOKEN` — `bf451c373f382bf178d47a461ba058524`
+- `RUKASSA_EMAIL` — email аккаунта Rukassa (нужен для выводов)
+- `RUKASSA_PASSWORD` — пароль аккаунта Rukassa (нужен для выводов)
+- `RUKASSA_CALLBACK_URL` — `https://aurex-casino-production.up.railway.app/api/payments/rukassa/callback`
+
+**Файлы интеграции:**
+- `backend/services/rukassaService.js` — createPayment, createWithdraw, getPaymentInfo, verifyWebhook
+- `backend/routes/rukassaCallback.js` — обработка GET/POST коллбеков (HMAC-SHA256 верификация)
+- `backend/routes/payments.js` — маршрутизация депозитов/выводов через Rukassa
+- `backend/routes/config.js` — методы Rukassa в fiat массиве (скрыты до активации)
+
+**Верификация домена (meta тег):**
+- В `frontend/pages/_app.tsx` добавлен `<meta name="verification" content="52c409f1571f500e28f490a302a12540" />`
+- `frontend/pages/index.tsx` — убран серверный редирект (заменён на client-side), чтобы боты видели meta теги
+
+**Cloudflare:**
+- IP Rukassa для вайтлиста: `45.88.106.169`
+- У aurex1.casino Free план Cloudflare — WAF недоступен
+- DNS Only (серое облако) — трафик идёт напрямую, вебхуки не блокируются
+
+---
+
+### Rate Limiting (защита от спама) — 28 февраля 2026
+
+**Депозиты AVE PAY:**
+- Не более 1 активной pending заявки за 20 минут на пользователя
+- При повторном запросе возвращается существующий redirect URL
+- Новая транзакция удаляется из БД если есть активная
+- Файл: `backend/routes/payments.js` (existingPending check)
+
+**Выводы (все провайдеры):**
+- Если есть failed вывод за последние 15 минут → новый заблокирован с сообщением "Попробуйте через X мин."
+- Если есть pending вывод за последние 15 минут → новый заблокирован
+- Файл: `backend/routes/payments.js` (recentFailed + pendingWithdraw checks)
+
+---
+
+### Порядок платёжных методов (28 февраля 2026)
+
+**Текущий порядок (депозит):**
+1. **СБП** (AVE PAY) — от 3 000 ₽
+2. **Карта** (AVE PAY) — от 5 000 ₽
+3. **НСПК QR** (Nirvana) — от 1 000 ₽
+4. ~~Карта (Rukassa)~~ — скрыт (ждём активации)
+5. ~~СБП (Rukassa)~~ — скрыт (ждём активации)
+6. ~~Крипта (Rukassa)~~ — скрыт (ждём активации)
+7. **СБП** (Nirvana) — от 100 ₽
+8. **Карта C2C** (Nirvana) — от 100 ₽
+
+**Текущий порядок (вывод):**
+1. **СБП** (Nirvana) — от 1 000 ₽
+2. **Карта C2C** (Nirvana) — от 1 000 ₽
+
+**Убраны из списка (скрыты):**
+- AVE PAY P2P_SBP и P2P_CARD выводы — `minWithdraw: null` (AVE PAY не работает для выводов)
+- Все Expay методы кроме SBERQR — ждём активации токенов
+- EXPAY_SBERQR — ждём финального подтверждения от Expay
+- NIRVANA_SBER, NIRVANA_ALFA, NIRVANA_VTB — убраны (ликвидность = 0)
+- Rukassa методы — ждём активации (все "НЕ РАБОТАЕТ")
+
+---
+
+### Admin Panel — показ Provider TX ID (28 февраля 2026)
+- Для Expay транзакций в таблице транзакций показывается `dep_XXX` жёлтым цветом
+- Это ID для передачи провайдеру при запросах в поддержку
+- Файл: `backend/routes/admin.js` (поле `providerTxId`), `frontend/pages/admin/transactions.tsx`
+
+---
+
+### Фиксы (28 февраля 2026)
+- **TypeScript ошибка** в `frontend/pages/wallet.tsx` (строка 1386): `tx.transactionId || tx.id` мог быть `string`, функция ожидала `number`. Фикс: `Number(tx.transactionId || tx.id)`
+- **index.tsx:** убран `getServerSideProps` с редиректом, заменён на client-side `router.replace('/games')` чтобы боты видели meta теги для верификации домена
