@@ -5,6 +5,7 @@ const { auth, adminAuth } = require('../middleware/auth');
 const avePayService = require('../services/avePayService');
 const nirvanaPayService = require('../services/nirvanaPayService');
 const expayService = require('../services/expayService');
+const rukassaService = require('../services/rukassaService');
 const { DEPOSIT_BONUSES } = require('../config/bonusConfig');
 
 function isNirvanaMethod(method) {
@@ -13,6 +14,10 @@ function isNirvanaMethod(method) {
 
 function isExpayMethod(method) {
   return method && method.startsWith('EXPAY_');
+}
+
+function isRukassaMethod(method) {
+  return method && method.startsWith('RUKASSA_');
 }
 
 function getNirvanaToken(method) {
@@ -101,6 +106,7 @@ router.post('/deposit', auth, async (req, res) => {
 
     const useNirvana = isNirvanaMethod(paymentMethod);
     const useExpay = isExpayMethod(paymentMethod);
+    const useRukassa = isRukassaMethod(paymentMethod);
 
     // Rate limit: max 5 Nirvana deposit attempts per 15 minutes
     if (useNirvana) {
@@ -131,7 +137,9 @@ router.post('/deposit', auth, async (req, res) => {
       'NIRVANA_MOBILE': 100,
       'EXPAY_SBER': 500, 'EXPAY_SBP': 500,
       'EXPAY_CARD': 500, 'EXPAY_NSPK': 500,
-      'EXPAY_SBERQR': 100
+      'EXPAY_SBERQR': 100,
+      'RUKASSA_CARD': 100, 'RUKASSA_SBP': 100,
+      'RUKASSA_ANY': 100
     };
     const maxDeposits = {
       'P2P_CARD': 300000, 'P2P_SBP': 300000,
@@ -262,6 +270,36 @@ router.post('/deposit', auth, async (req, res) => {
           provider: 'expay',
           redirectUrl: expayResponse.redirectUrl || null,
           avePayId: null
+        }
+      });
+    }
+
+    // RUKASSA flow
+    if (useRukassa) {
+      const rukassaResponse = await rukassaService.createPayment({
+        amount: parseFloat(amount),
+        transactionId: transaction.id,
+        userId: req.user.id
+      });
+
+      await pool.query(
+        "UPDATE transactions SET wallet_address = $1 WHERE id = $2",
+        [String(rukassaResponse.rukassaId), transaction.id]
+      );
+
+      return res.json({
+        success: true,
+        message: 'Перенаправляем на оплату',
+        data: {
+          transaction: {
+            id: transaction.id,
+            amount: parseFloat(transaction.amount),
+            status: transaction.status,
+            createdAt: transaction.created_at
+          },
+          provider: 'rukassa',
+          redirectUrl: rukassaResponse.paymentUrl,
+          rukassaId: rukassaResponse.rukassaId
         }
       });
     }

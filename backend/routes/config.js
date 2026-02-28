@@ -86,6 +86,8 @@ const defaultGamesConfig = {
 
 const defaultPaymentMethodsConfig = {
   fiat: [
+    // Rukassa
+    { id: 'RUKASSA_ANY', name: 'Карта / СБП', iconUrl: '/images/payments/card.png', minDeposit: 100, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: null, provider: 'rukassa', subtitle: 'от 100₽' },
     // AVE PAY — основные методы
     { id: 'P2P_SBP', name: 'СБП', iconUrl: '/images/payments/sbp.svg', minDeposit: 3000, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 3 000₽' },
     { id: 'P2P_CARD', name: 'Карта', iconUrl: '/images/payments/card.png', minDeposit: 5000, maxDeposit: 300000, minWithdraw: null, depositFee: 0, withdrawFee: 5, provider: 'avepay', subtitle: 'от 5 000₽' },

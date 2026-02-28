@@ -34,6 +34,7 @@ const chatRoutes = require('./routes/chat');
 const avePayCallbackRoutes = require('./routes/avePayCallback');
 const nirvanaPayCallbackRoutes = require('./routes/nirvanaPayCallback');
 const expayCallbackRoutes = require('./routes/expayCallback');
+const rukassaCallbackRoutes = require('./routes/rukassaCallback');
 
 const app = express();
 // Railway / Cloudflare / Nginx стоят перед Express → доверяем первый прокси
@@ -136,6 +137,7 @@ app.use('/api/chat', chatRoutes);
 app.use('/api/payments/avepay/callback', avePayCallbackRoutes);
 app.use('/api/payments/nirvana/callback', nirvanaPayCallbackRoutes);
 app.use('/api/payments/expay/callback', expayCallbackRoutes);
+app.use('/api/payments/rukassa/callback', rukassaCallbackRoutes);
 
 // Game callback routes (специфический путь для callback от провайдера)
 app.use('/api/callback/softgamings', softgamingsCallbackRoutes); // SoftGamings (более специфичный путь)

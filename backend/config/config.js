@@ -64,6 +64,13 @@ module.exports = {
     callbackUrl: process.env.NIRVANAPAY_CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/payments/nirvana/callback'
   },
 
+  // Rukassa Payment System
+  rukassa: {
+    shopId: process.env.RUKASSA_SHOP_ID || '3596',
+    token: process.env.RUKASSA_TOKEN || 'bf451c373f382bf178d47a461ba058524',
+    callbackUrl: process.env.RUKASSA_CALLBACK_URL || 'https://aurex-casino-production.up.railway.app/api/payments/rukassa/callback'
+  },
+
   // Google OAuth
   google: {
     clientId: process.env.GOOGLE_CLIENT_ID || '',
