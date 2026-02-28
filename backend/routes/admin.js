@@ -101,8 +101,8 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const usersResult = await pool.query(`
       SELECT 
         COUNT(*) as total,
-        COUNT(*) FILTER (WHERE created_at >= CURRENT_DATE) as today,
-        COUNT(*) FILTER (WHERE last_login >= CURRENT_DATE - INTERVAL '1 day' AND is_active = true) as active
+        COUNT(*) FILTER (WHERE created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow') as today,
+        COUNT(*) FILTER (WHERE last_login >= NOW() - INTERVAL '1 day' AND is_active = true) as active
       FROM users
     `);
 
@@ -110,7 +110,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const gamesResult = await pool.query(`
       SELECT 
         COUNT(*) as total_sessions,
-        COUNT(*) FILTER (WHERE started_at >= CURRENT_DATE) as today_sessions,
+        COUNT(*) FILTER (WHERE started_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow') as today_sessions,
         COUNT(DISTINCT user_id) FILTER (WHERE started_at >= NOW() - INTERVAL '30 minutes') as active_sessions
       FROM game_sessions
     `);
@@ -119,9 +119,9 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const financeResult = await pool.query(`
       SELECT 
         COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed'), 0) as total_deposits,
-        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed' AND created_at >= CURRENT_DATE), 0) as today_deposits,
+        COALESCE(SUM(amount) FILTER (WHERE type = 'deposit' AND status = 'completed' AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'), 0) as today_deposits,
         COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'completed'), 0) as total_withdrawals,
-        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'completed' AND created_at >= CURRENT_DATE), 0) as today_withdrawals,
+        COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'completed' AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'), 0) as today_withdrawals,
         COALESCE(SUM(ABS(amount)) FILTER (WHERE type = 'withdrawal' AND status = 'pending'), 0) as pending_withdrawals
       FROM transactions
     `);
@@ -130,7 +130,7 @@ router.get('/dashboard', adminAuth, async (req, res) => {
     const revenueResult = await pool.query(`
       SELECT 
         COALESCE(SUM(bet_amount - win_amount), 0) as total_revenue,
-        COALESCE(SUM(bet_amount - win_amount) FILTER (WHERE started_at >= CURRENT_DATE), 0) as today_revenue
+        COALESCE(SUM(bet_amount - win_amount) FILTER (WHERE started_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'), 0) as today_revenue
       FROM game_sessions
     `);
 
@@ -156,8 +156,8 @@ router.get('/dashboard', adminAuth, async (req, res) => {
       SELECT 
         COUNT(*) FILTER (WHERE status = 'active') as active_count,
         COALESCE(SUM(amount) FILTER (WHERE status = 'active'), 0) as active_amount,
-        COUNT(*) FILTER (WHERE status = 'active' AND created_at >= CURRENT_DATE) as today_count,
-        COALESCE(SUM(amount) FILTER (WHERE status = 'active' AND created_at >= CURRENT_DATE), 0) as today_amount
+        COUNT(*) FILTER (WHERE status = 'active' AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow') as today_count,
+        COALESCE(SUM(amount) FILTER (WHERE status = 'active' AND created_at >= date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'Europe/Moscow'), 0) as today_amount
       FROM bonuses
     `);
 
