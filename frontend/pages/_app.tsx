@@ -98,6 +98,7 @@ export default function App({ Component, pageProps }: AppProps) {
         {/* SEO */}
         <meta name="keywords" content="AUREX casino, онлайн казино, слоты, live casino, premium casino, VIP casino, мгновенные выплаты" />
         <meta name="robots" content="index, follow" />
+        <meta name="verification" content="52c409f1571f500e28f490a302a12540" />
         <meta name="theme-color" content="#0A0A0A" />
         <meta name="apple-mobile-web-app-title" content="AUREX Casino" />
         <meta name="application-name" content="AUREX Casino" />
