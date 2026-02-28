@@ -103,7 +103,7 @@ export default function ReferralPage() {
       }
 
       // Получаем список рефералов
-      const listRes = await fetch('/api/referral/list', {
+      const listRes = await fetch('/api/referral/list?limit=1000', {
         headers: { Authorization: `Bearer ${token}` }
       });
       const listData = await listRes.json();
